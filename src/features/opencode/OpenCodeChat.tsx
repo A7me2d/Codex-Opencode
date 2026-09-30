@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CircleStop, Plus, Send } from 'lucide-react'
+import { ChevronDown, CircleStop, Plus, Send } from 'lucide-react'
 import { Spinner } from '../../components/ui/Spinner'
 import { MessageBubble } from '../../components/MessageBubble'
 import { api } from '../../lib/api'
@@ -40,6 +40,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newModel, setNewModel] = useState('')
+  const [minimized, setMinimized] = useState(false)
   const box = useRef<HTMLTextAreaElement>(null)
 
   const current = useMemo(() => sessions.find((entry) => entry.id === selected) ?? null, [selected, sessions])
@@ -143,12 +144,25 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     }
   }
 
-  return <section aria-label="شات مباشر مع OpenCode" className="flex min-h-0 flex-1 flex-col border-t border-line">
-    <div className="shrink-0 space-y-2 border-b border-line bg-paper px-3 py-2.5">
+  return <section aria-label="شات مباشر مع OpenCode" className={cx('min-h-0 border-t border-line', minimized ? 'shrink-0' : 'flex flex-1 flex-col')}>
+    <div className={cx('shrink-0 bg-paper px-3 py-2.5', minimized ? '' : 'space-y-2 border-b border-line')}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-bold text-ink">شات مباشر مع OpenCode</span>
-        <span className="text-[10px] text-ink-soft">{sessions.length} جلسات متاحة</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-ink-soft">{sessions.length} جلسات متاحة</span>
+          <button
+            type="button"
+            onClick={() => setMinimized((value) => !value)}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-card hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/35"
+            aria-label={minimized ? 'توسيع شات OpenCode' : 'تصغير شات OpenCode'}
+            aria-expanded={!minimized}
+            title={minimized ? 'توسيع' : 'تصغير'}
+          >
+            <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200', minimized ? '' : 'rotate-180')} aria-hidden="true" />
+          </button>
+        </div>
       </div>
+      {!minimized ? <>
       <div className="flex items-center gap-2">
         <select
           value={selected}
@@ -199,9 +213,10 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
           {current.updatedAt ? <span>· {relativeTime(current.updatedAt)}</span> : null}
         </p>
       ) : null}
+      </> : null}
     </div>
 
-    {!selected ? (
+    {!minimized && (!selected ? (
       <p className="flex flex-1 items-center justify-center px-6 text-center text-xs leading-6 text-ink-soft">
         اختر جلسة من القائمة، أو ابدأ جلسة جديدة، لتتحدث مع OpenCode مباشرة بدون Codex.
       </p>
@@ -240,6 +255,6 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
           <p className="mt-2 px-1 text-[10px] text-ink-soft">Enter للإرسال · Shift + Enter لسطر جديد · هذا الشات لا يمرّ على Codex.</p>
         </div>
       </>
-    )}
+    ))}
   </section>
 }
