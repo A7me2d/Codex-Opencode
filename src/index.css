@@ -6,29 +6,29 @@
  */
 @theme {
   /* Surfaces */
-  --color-paper: #f6f7fb;
-  --color-card: #ffffff;
-  --color-line: #dde3ef;
-  --color-line-strong: #8490ab;
+  --color-paper: #f5f6f8;
+  --color-card: #fcfcfd;
+  --color-line: #d9e0e8;
+  --color-line-strong: #7c8998;
 
   /* Text */
-  --color-ink: #172033;
-  --color-ink-soft: #4c5a72;
+  --color-ink: #1b2735;
+  --color-ink-soft: #596575;
 
   /* Accents (the palette brief) */
-  --color-relay: #276ef1; /* Relay blue   */
-  --color-ready: #0b8f69; /* Ready green  */
-  --color-review: #c58519; /* Review amber */
+  --color-relay: #635bff; /* Codex violet */
+  --color-ready: #0c8e70; /* OpenCode teal */
+  --color-review: #b77916; /* Review amber */
 
   /* Text-safe variants of the same hues, so small labels stay AA-legible on tints. */
-  --color-relay-ink: #1b54c4;
-  --color-ready-ink: #076b4e;
-  --color-review-ink: #8a5b10;
+  --color-relay-ink: #4b43d3;
+  --color-ready-ink: #08745b;
+  --color-review-ink: #865607;
 
   /* Tinted backgrounds */
-  --color-relay-tint: #e8f0fe;
-  --color-ready-tint: #e6f5f0;
-  --color-review-tint: #fdf3e2;
+  --color-relay-tint: #eeedff;
+  --color-ready-tint: #e4f5ef;
+  --color-review-tint: #fff4df;
 
   --font-sans: "Segoe UI", "Noto Sans Arabic", "Dubai", Tahoma, system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, SFMono-Regular, monospace;

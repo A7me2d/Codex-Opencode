@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
@@ -10,6 +10,7 @@ const appDirectory = path.dirname(fileURLToPath(import.meta.url))
 const distDirectory = path.join(appDirectory, 'dist')
 const stateDirectory = path.join(appDirectory, '.relay-state')
 const eventsPath = path.join(stateDirectory, 'events.json')
+const codexStatePath = path.join(stateDirectory, 'codex.json')
 const maxBodyBytes = 256 * 1024
 const getTimeoutMs = 30_000
 const postTimeoutMs = 15 * 60_000
@@ -46,6 +47,10 @@ function isInside(parent, target) {
 
 function safeSessionId(value) {
   return typeof value === 'string' && /^ses_[A-Za-z0-9]+$/.test(value) ? value : undefined
+}
+
+function safeCodexThreadId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{6,200}$/.test(value) ? value : undefined
 }
 
 function publicError(error) {
@@ -212,6 +217,650 @@ async function openCodeApi(method, apiPath, body) {
   throw new Error('OpenCode returned a response Relay Room could not read.')
 }
 
+function codexExecutableCandidates() {
+  const candidates = []
+  const override = process.env.CODEX_EXE
+  if (override) candidates.push(override)
+
+  const desktopBin = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'OpenAI', 'Codex', 'bin')
+    : undefined
+
+  if (desktopBin) {
+    try {
+      for (const entry of readdirSync(desktopBin, { withFileTypes: true })) {
+        if (entry.isDirectory()) candidates.push(path.join(desktopBin, entry.name, 'codex.exe'))
+      }
+    } catch {
+      // The desktop installation is optional. Keep looking for an explicit CLI.
+    }
+  }
+
+  if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'npm', 'codex.exe'))
+  return [...new Set(candidates)]
+}
+
+let cachedCodexExecutable
+
+function resolveCodexExecutable() {
+  if (cachedCodexExecutable) return cachedCodexExecutable
+
+  const candidates = codexExecutableCandidates()
+  for (const candidate of candidates) {
+    try {
+      if (statSync(candidate).isFile()) {
+        cachedCodexExecutable = candidate
+        return candidate
+      }
+    } catch {
+      // Keep looking.
+    }
+  }
+
+  throw new Error(
+    `Relay Room could not find the Codex Desktop CLI. Set CODEX_EXE to its absolute path. Checked: ${candidates.join(', ') || 'no local candidates'}`,
+  )
+}
+
+const relayCodexInstructions = [
+  'You are Codex inside Relay Room: the architect, reasoner, and reviewer.',
+  'Do not write or edit implementation code in this thread. Explain the plan, reason about tradeoffs, and review work.',
+  'OpenCode / Big Pickle is the implementer. You may call relay.delegate_to_opencode only when the latest user message explicitly contains $opencode.',
+  'When it contains $opencode, call that tool immediately with the implementation request; do not inspect files or begin implementation yourself first.',
+  'When the user asks to review linked OpenCode work, inspect git diff and run the most relevant existing tests, build, or lint command when the read-only environment permits it. Report evidence and delegate corrections through the same explicit $opencode route.',
+  'Never claim a handoff, a test, or a code change unless the tool output or local command result confirmed it.',
+].join('\n')
+
+const relayDynamicTools = [
+  {
+    type: 'namespace',
+    name: 'relay',
+    description: 'Relay Room tools for explicitly delegated OpenCode implementation work.',
+    tools: [
+      {
+        type: 'function',
+        name: 'delegate_to_opencode',
+        description: 'Queue the user\'s explicitly requested $opencode implementation task with OpenCode / Big Pickle.',
+        inputSchema: {
+          type: 'object',
+          properties: { task: { type: 'string', description: 'The implementation task from the user.' } },
+          required: ['task'],
+          additionalProperties: false,
+        },
+      },
+    ],
+  },
+]
+
+class CodexAppServerBridge {
+  constructor() {
+    this.child = null
+    this.started = null
+    this.nextId = 1
+    this.pending = new Map()
+    this.stdoutBuffer = ''
+    this.stderr = ''
+    this.liveMessages = new Map()
+    this.delegationGrants = new Map()
+    this.activeThreads = new Set()
+    this.resumingThreads = new Map()
+  }
+
+  async ensureStarted() {
+    if (!this.started) {
+      this.started = this.start().catch((error) => {
+        this.started = null
+        throw error
+      })
+    }
+    return this.started
+  }
+
+  async start() {
+    const executable = resolveCodexExecutable()
+    const child = spawn(executable, ['app-server', '--listen', 'stdio://'], {
+      cwd: watchRoot,
+      env: process.env,
+      windowsHide: true,
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+
+    this.child = child
+    this.stderr = ''
+    this.activeThreads.clear()
+    this.resumingThreads.clear()
+    child.stdout.on('data', (chunk) => this.consumeStdout(chunk.toString()))
+    child.stderr.on('data', (chunk) => {
+      this.stderr = `${this.stderr}${chunk.toString()}`.slice(-4000)
+    })
+    child.on('error', (error) => this.failAll(error))
+    child.on('close', (code) => {
+      if (this.child !== child) return
+      this.child = null
+      this.started = null
+      this.failAll(new Error(`Codex app-server stopped${code === null ? '' : ` with code ${code}`}.`))
+    })
+
+    await this.requestRaw('initialize', {
+      clientInfo: { name: 'relay-room', title: 'Relay Room', version: '1.1.0' },
+      capabilities: { experimentalApi: true },
+    }, 20_000)
+    this.write({ jsonrpc: '2.0', method: 'initialized', params: {} })
+
+    return { connected: true, identity: 'Codex Desktop local session' }
+  }
+
+  async call(method, params, timeoutMs = 30_000) {
+    await this.ensureStarted()
+    return this.requestRaw(method, params, timeoutMs)
+  }
+
+  requestRaw(method, params, timeoutMs) {
+    if (!this.child?.stdin?.writable) {
+      return Promise.reject(new Error('Codex app-server is not available.'))
+    }
+
+    const id = this.nextId++
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(String(id))
+        reject(new Error(`Codex app-server did not answer ${method} in time.`))
+      }, timeoutMs)
+      this.pending.set(String(id), { resolve, reject, timer })
+      this.write({ jsonrpc: '2.0', id, method, params })
+    })
+  }
+
+  write(message) {
+    if (!this.child?.stdin?.writable) throw new Error('Codex app-server is not available.')
+    this.child.stdin.write(`${JSON.stringify(message)}\n`)
+  }
+
+  consumeStdout(chunk) {
+    this.stdoutBuffer += chunk
+    let newline = this.stdoutBuffer.indexOf('\n')
+    while (newline >= 0) {
+      const line = this.stdoutBuffer.slice(0, newline).trim()
+      this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1)
+      if (line) {
+        try {
+          this.handlePacket(JSON.parse(line))
+        } catch {
+          // App-server diagnostics are not protocol packets. Keep the bridge alive.
+        }
+      }
+      newline = this.stdoutBuffer.indexOf('\n')
+    }
+  }
+
+  handlePacket(packet) {
+    if (typeof packet?.method === 'string' && packet.id !== undefined) {
+      void this.handleServerRequest(packet)
+      return
+    }
+
+    if (typeof packet?.method === 'string') {
+      this.handleNotification(packet)
+      return
+    }
+
+    if (packet?.id === undefined) return
+    const pending = this.pending.get(String(packet.id))
+    if (!pending) return
+    this.pending.delete(String(packet.id))
+    clearTimeout(pending.timer)
+    if (packet.error) {
+      pending.reject(new Error(packet.error.message || 'Codex app-server returned an error.'))
+      return
+    }
+    pending.resolve(packet.result)
+  }
+
+  async handleServerRequest(packet) {
+    let result
+    try {
+      if (packet.method !== 'item/tool/call') throw new Error(`Unsupported Codex client request: ${packet.method}`)
+      result = await handleCodexToolCall(packet.params)
+    } catch (error) {
+      result = {
+        success: false,
+        contentItems: [{ type: 'inputText', text: `Relay Room could not complete this request: ${publicError(error)}` }],
+      }
+    }
+
+    try {
+      this.write({ jsonrpc: '2.0', id: packet.id, result })
+    } catch {
+      // The process has already stopped; there is nothing left to respond to.
+    }
+  }
+
+  handleNotification(packet) {
+    const params = packet.params ?? {}
+    if (packet.method === 'thread/realtime/item/started' || packet.method === 'thread/realtime/itemAdded') {
+      this.recordLiveItem(params.threadId, params.item)
+      return
+    }
+
+    if (packet.method === 'thread/realtime/item/transcript/delta') {
+      this.appendLiveDelta(params.threadId, params.itemId, params.delta)
+      return
+    }
+
+    if (packet.method === 'thread/realtime/item/completed') {
+      this.recordLiveItem(params.threadId, params.item)
+      this.removeLiveItem(params.threadId, params.item?.id)
+      return
+    }
+
+    if (packet.method === 'turn/completed') {
+      this.clearDelegationGrant(params.threadId, params.turn?.id ?? params.turnId)
+    }
+  }
+
+  recordLiveItem(threadId, item) {
+    if (!safeCodexThreadId(threadId) || !item?.id || item.type !== 'agentMessage') return
+    const messages = this.liveMessages.get(threadId) ?? new Map()
+    messages.set(item.id, { id: item.id, type: 'agentMessage', text: String(item.text ?? ''), live: true })
+    this.liveMessages.set(threadId, messages)
+  }
+
+  appendLiveDelta(threadId, itemId, delta) {
+    if (!safeCodexThreadId(threadId) || typeof itemId !== 'string' || typeof delta !== 'string') return
+    const messages = this.liveMessages.get(threadId) ?? new Map()
+    const previous = messages.get(itemId) ?? { id: itemId, type: 'agentMessage', text: '', live: true }
+    previous.text += delta
+    messages.set(itemId, previous)
+    this.liveMessages.set(threadId, messages)
+  }
+
+  removeLiveItem(threadId, itemId) {
+    const messages = this.liveMessages.get(threadId)
+    if (!messages || typeof itemId !== 'string') return
+    messages.delete(itemId)
+    if (messages.size === 0) this.liveMessages.delete(threadId)
+  }
+
+  getLiveMessages(threadId) {
+    return Array.from(this.liveMessages.get(threadId)?.values() ?? [])
+  }
+
+  markThreadActive(threadId) {
+    if (safeCodexThreadId(threadId)) this.activeThreads.add(threadId)
+  }
+
+  async resumeThread(threadId, params) {
+    if (this.activeThreads.has(threadId)) return
+    const pending = this.resumingThreads.get(threadId)
+    if (pending) return pending
+
+    const resume = this.call('thread/resume', { threadId, ...params })
+      .then((response) => {
+        this.activeThreads.add(threadId)
+        return response
+      })
+      .finally(() => this.resumingThreads.delete(threadId))
+    this.resumingThreads.set(threadId, resume)
+    return resume
+  }
+
+  allowDelegation(threadId, task) {
+    this.delegationGrants.set(threadId, { task, turnId: null, expiresAt: Date.now() + 10 * 60_000, used: false })
+  }
+
+  bindDelegationTurn(threadId, turnId) {
+    const grant = this.delegationGrants.get(threadId)
+    if (grant && typeof turnId === 'string') grant.turnId = turnId
+  }
+
+  consumeDelegationGrant(threadId, turnId) {
+    const grant = this.delegationGrants.get(threadId)
+    if (!grant || grant.used || grant.expiresAt < Date.now()) return undefined
+    if (grant.turnId && grant.turnId !== turnId) return undefined
+    grant.used = true
+    return grant
+  }
+
+  clearDelegationGrant(threadId, turnId) {
+    const grant = this.delegationGrants.get(threadId)
+    if (grant && (!turnId || !grant.turnId || grant.turnId === turnId)) this.delegationGrants.delete(threadId)
+  }
+
+  failAll(error) {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(error)
+    }
+    this.pending.clear()
+  }
+
+  stop() {
+    const child = this.child
+    this.child = null
+    this.started = null
+    this.activeThreads.clear()
+    this.resumingThreads.clear()
+    this.failAll(new Error('Relay Room stopped the Codex app-server.'))
+    if (child && !child.killed) child.kill()
+  }
+}
+
+const codexBridge = new CodexAppServerBridge()
+
+function emptyCodexState() {
+  return { threads: {}, links: {} }
+}
+
+async function readCodexState() {
+  try {
+    const parsed = JSON.parse(await readFile(codexStatePath, 'utf8'))
+    if (!parsed || typeof parsed !== 'object') return emptyCodexState()
+    return {
+      threads: parsed.threads && typeof parsed.threads === 'object' ? parsed.threads : {},
+      links: parsed.links && typeof parsed.links === 'object' ? parsed.links : {},
+    }
+  } catch (error) {
+    if (error?.code === 'ENOENT') return emptyCodexState()
+    return emptyCodexState()
+  }
+}
+
+async function updateCodexState(change) {
+  const state = await readCodexState()
+  const result = await change(state)
+  await mkdir(stateDirectory, { recursive: true })
+  await writeFile(codexStatePath, JSON.stringify(state, null, 2), 'utf8')
+  return result
+}
+
+function shortThreadTitle(value) {
+  const title = String(value ?? '').replaceAll('\u0000', '').trim().replace(/\s+/g, ' ')
+  return title.slice(0, 120) || 'محادثة جديدة'
+}
+
+async function registerRelayCodexThread(thread, title) {
+  const id = safeCodexThreadId(thread?.id)
+  if (!id) throw new Error('Codex app-server did not return a usable thread id.')
+  const saved = {
+    id,
+    title: shortThreadTitle(title ?? thread?.name ?? thread?.title),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+  await updateCodexState((state) => {
+    state.threads[id] = { ...state.threads[id], ...saved }
+  })
+  return saved
+}
+
+async function requireRelayCodexThread(threadId) {
+  const id = safeCodexThreadId(threadId)
+  if (!id) throw new HttpError(400, 'Invalid Codex thread id.')
+  const state = await readCodexState()
+  if (!state.threads[id]) throw new HttpError(404, 'This Codex session does not belong to Relay Room.')
+  return { id, saved: state.threads[id] }
+}
+
+async function ensureRelayCodexThreadLoaded(threadId) {
+  await requireRelayCodexThread(threadId)
+  try {
+    await codexBridge.resumeThread(threadId, {
+      cwd: watchRoot,
+      sandbox: 'read-only',
+      approvalPolicy: 'never',
+      developerInstructions: relayCodexInstructions,
+      excludeTurns: true,
+    })
+  } catch (error) {
+    if (publicError(error).includes('no rollout found')) {
+      throw new HttpError(409, 'This empty Codex session was not persisted before Relay Room restarted. Start a new conversation.')
+    }
+    throw error
+  }
+}
+
+async function listRelayCodexThreads() {
+  const state = await readCodexState()
+  const saved = Object.values(state.threads).filter((thread) => safeCodexThreadId(thread?.id))
+  if (saved.length === 0) return []
+
+  const response = await codexBridge.call('thread/list', {
+    cwd: watchRoot,
+    limit: 100,
+    sortKey: 'updated_at',
+    sortDirection: 'desc',
+  })
+  const remote = Array.isArray(response?.data) ? response.data : []
+  const byId = new Map(remote.map((thread) => [thread?.id, thread]))
+
+  return saved
+    .map((thread) => {
+      const live = byId.get(thread.id)
+      if (live?.path && !existsSync(live.path) && !codexBridge.activeThreads.has(thread.id)) return null
+      return {
+        ...thread,
+        ...(live && typeof live === 'object' ? live : {}),
+        id: thread.id,
+        // Keep the title entered in Relay Room. The app-server's derived title
+        // may lag behind a just-created session or contain a console code-page fallback.
+        title: thread.title ?? live?.name ?? live?.title,
+        updatedAt: live?.updatedAt ?? live?.updated_at ?? thread.updatedAt,
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0))
+}
+
+async function createRelayCodexThread(input) {
+  const title = shortThreadTitle(input?.title)
+  const response = await codexBridge.call('thread/start', {
+    cwd: watchRoot,
+    sandbox: 'read-only',
+    approvalPolicy: 'never',
+    developerInstructions: relayCodexInstructions,
+    dynamicTools: relayDynamicTools,
+    threadSource: 'appServer',
+  })
+  const thread = response?.thread ?? response?.data ?? response
+  const saved = await registerRelayCodexThread(thread, title)
+  codexBridge.markThreadActive(saved.id)
+
+  try {
+    await codexBridge.call('thread/name/set', { threadId: saved.id, name: title })
+  } catch {
+    // Naming is presentation-only; the session remains usable if an older CLI lacks this method.
+  }
+
+  return { ...thread, ...saved, id: saved.id, title }
+}
+
+function textFromCodexInput(content) {
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text)
+    .join('\n')
+}
+
+async function listRelayCodexMessages(threadId) {
+  await ensureRelayCodexThreadLoaded(threadId)
+  let response
+  try {
+    response = await codexBridge.call('thread/items/list', { threadId, limit: 200, sortDirection: 'asc' })
+  } catch (error) {
+    // Fresh empty app-server threads do not have a rollout file yet. The current
+    // Codex app-server reports that condition as an error instead of an empty list.
+    if (publicError(error).includes('missing source rollout')) return []
+    throw error
+  }
+  const entries = Array.isArray(response?.data) ? response.data : []
+  const items = entries.map((entry) => entry?.item).filter(Boolean)
+  const knownIds = new Set(items.map((item) => item.id))
+  const live = codexBridge.getLiveMessages(threadId).filter((item) => !knownIds.has(item.id))
+  return [...items, ...live]
+}
+
+function extractOpenCodeTask(text) {
+  const hasExplicitTag = /(?:^|\s)\$opencode\b/i.test(text)
+  if (!hasExplicitTag) return { hasExplicitTag: false, task: '' }
+  return { hasExplicitTag: true, task: text.replace(/\$opencode\b/gi, '').trim() }
+}
+
+async function sendRelayCodexMessage(threadId, input) {
+  await ensureRelayCodexThreadLoaded(threadId)
+  const text = String(input?.text ?? '').replaceAll('\u0000', '').trim()
+  if (!text) throw new HttpError(400, 'Write a message to Codex first.')
+  if (text.length > 100_000) throw new HttpError(413, 'The Codex message is too long.')
+
+  const delegation = extractOpenCodeTask(text)
+  if (delegation.hasExplicitTag && !delegation.task) {
+    throw new HttpError(400, 'Write the OpenCode request after $opencode.')
+  }
+  if (delegation.hasExplicitTag) codexBridge.allowDelegation(threadId, delegation.task)
+
+  try {
+    const response = await codexBridge.call('turn/start', {
+      threadId,
+      input: [{ type: 'text', text }],
+    })
+    const turnId = response?.turn?.id ?? response?.id
+    if (delegation.hasExplicitTag) codexBridge.bindDelegationTurn(threadId, turnId)
+    await updateCodexState((state) => {
+      if (state.threads[threadId]) state.threads[threadId].updatedAt = Date.now()
+    })
+    return response
+  } catch (error) {
+    codexBridge.clearDelegationGrant(threadId)
+    throw error
+  }
+}
+
+async function ensureOpenCodeLink(codexThreadId, task) {
+  const state = await readCodexState()
+  let link = state.links[codexThreadId]
+
+  if (link?.opencodeSessionId) {
+    try {
+      await requireScopedSession(link.opencodeSessionId)
+      return link
+    } catch {
+      link = undefined
+    }
+  }
+
+  const title = shortThreadTitle(`Codex · ${task}`)
+  const created = await openCodeApi('POST', '/api/session', {
+    title,
+    model: { providerID: 'opencode', id: 'big-pickle', variant: 'default' },
+    location: { directory: watchRoot },
+  })
+  const session = created?.data
+  if (!session?.id || !session?.location?.directory || !isInside(watchRoot, session.location.directory)) {
+    throw new Error('OpenCode returned a session outside the selected project scope.')
+  }
+
+  link = {
+    codexThreadId,
+    opencodeSessionId: session.id,
+    title,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+  await updateCodexState((next) => {
+    next.links[codexThreadId] = link
+  })
+  return link
+}
+
+async function delegateToOpenCode(codexThreadId, task) {
+  const link = await ensureOpenCodeLink(codexThreadId, task)
+  const response = await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/prompt`, { text: task, delivery: 'queue' })
+  const receipt = response?.data
+  const delivery = receipt?.delivery ?? response?.delivery
+  if (!receipt?.id || receipt.sessionID !== link.opencodeSessionId || delivery !== 'queue') {
+    throw new Error('OpenCode did not confirm that it durably queued this request.')
+  }
+
+  await updateCodexState((state) => {
+    if (state.links[codexThreadId]) state.links[codexThreadId].updatedAt = Date.now()
+  })
+  await appendRelayEvent({
+    role: 'codex',
+    kind: 'handoff-sent',
+    message: task,
+    sessionId: link.opencodeSessionId,
+    codexThreadId,
+  })
+  return link
+}
+
+async function handleCodexToolCall(params) {
+  if (params?.namespace !== 'relay' || params?.tool !== 'delegate_to_opencode') {
+    return {
+      success: false,
+      contentItems: [{ type: 'inputText', text: 'This Relay Room tool is not available for that request.' }],
+    }
+  }
+
+  const grant = codexBridge.consumeDelegationGrant(params.threadId, params.turnId)
+  if (!grant) {
+    return {
+      success: false,
+      contentItems: [{ type: 'inputText', text: 'OpenCode delegation is allowed only for a current user message that explicitly includes $opencode.' }],
+    }
+  }
+
+  try {
+    const link = await delegateToOpenCode(params.threadId, grant.task)
+    return {
+      success: true,
+      contentItems: [
+        {
+          type: 'inputText',
+          text: `OpenCode / Big Pickle confirmed the queued handoff in session ${link.opencodeSessionId}. Relay Room is showing its live messages in the handoff rail.`,
+        },
+      ],
+    }
+  } catch (error) {
+    return {
+      success: false,
+      contentItems: [{ type: 'inputText', text: `OpenCode handoff failed: ${publicError(error)}` }],
+    }
+  }
+}
+
+async function readOpenCodeHandoff(codexThreadId) {
+  await requireRelayCodexThread(codexThreadId)
+  const state = await readCodexState()
+  const link = state.links[codexThreadId]
+  if (!link?.opencodeSessionId) {
+    return { link: null, messages: [], forms: [], inbox: [], active: false }
+  }
+
+  try {
+    await requireScopedSession(link.opencodeSessionId)
+  } catch {
+    return { link: null, messages: [], forms: [], inbox: [], active: false }
+  }
+
+  const sessionId = link.opencodeSessionId
+  const [messagesResponse, formsResponse, inboxResponse, activeResponse] = await Promise.all([
+    openCodeApi('GET', `/api/session/${sessionId}/message`),
+    openCodeApi('GET', `/api/session/${sessionId}/form`),
+    openCodeApi('GET', `/api/session/${sessionId}/inbox`),
+    openCodeApi('GET', '/api/session/active'),
+  ])
+  const activeData = activeResponse?.data
+  return {
+    link,
+    messages: Array.isArray(messagesResponse?.data) ? messagesResponse.data : [],
+    forms: Array.isArray(formsResponse?.data) ? formsResponse.data : [],
+    inbox: Array.isArray(inboxResponse?.data) ? inboxResponse.data : [],
+    active: Boolean(activeData && typeof activeData === 'object' && activeData[sessionId]),
+  }
+}
+
 function safeFormId(value) {
   return typeof value === 'string' && /^frm_[A-Za-z0-9]+$/.test(value) ? value : undefined
 }
@@ -267,6 +916,7 @@ async function appendRelayEvent(input) {
     kind: String(input.kind ?? 'note').trim().slice(0, 64) || 'note',
     message,
     sessionId: safeSessionId(input.sessionId),
+    codexThreadId: safeCodexThreadId(input.codexThreadId),
   }
   const events = await readRelayEvents()
   await mkdir(stateDirectory, { recursive: true })
@@ -325,6 +975,51 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
 
   try {
+    if (request.method === 'GET' && url.pathname === '/api/codex/status') {
+      try {
+        const status = await codexBridge.ensureStarted()
+        sendJson(response, 200, { connected: true, ...status, root: watchRoot })
+      } catch (error) {
+        sendJson(response, 200, { connected: false, root: watchRoot, error: publicError(error) })
+      }
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/codex/threads') {
+      sendJson(response, 200, { data: await listRelayCodexThreads() })
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/codex/threads') {
+      const input = await readJson(request)
+      const thread = await createRelayCodexThread(input)
+      sendJson(response, 201, { data: thread })
+      return
+    }
+
+    const codexHandoffMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/handoff$/)
+    if (request.method === 'GET' && codexHandoffMatch) {
+      const [, threadId] = codexHandoffMatch
+      sendJson(response, 200, { data: await readOpenCodeHandoff(threadId) })
+      return
+    }
+
+    const codexMessagesMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/messages$/)
+    if (codexMessagesMatch) {
+      const [, threadId] = codexMessagesMatch
+      if (request.method === 'GET') {
+        sendJson(response, 200, { data: await listRelayCodexMessages(threadId) })
+        return
+      }
+      if (request.method === 'POST') {
+        const input = await readJson(request)
+        const turn = await sendRelayCodexMessage(threadId, input)
+        sendJson(response, 202, { data: turn })
+        return
+      }
+      throw new HttpError(405, 'Only GET and POST are supported for Codex messages.')
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/health') {
       try {
         const sessions = await listScopedSessions()
@@ -466,6 +1161,8 @@ const server = createServer(async (request, response) => {
     sendJson(response, status, { error: publicError(error) })
   }
 })
+
+server.on('close', () => codexBridge.stop())
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`Relay Room is listening at http://127.0.0.1:${port}`)
