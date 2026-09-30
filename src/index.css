@@ -61,6 +61,32 @@
     text-align: left;
   }
 
+  /* Pane scrollbars: present enough to grab, quiet enough to ignore. */
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  .thin-scroll::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  .thin-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .thin-scroll::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
+    background-color: var(--color-line-strong);
+  }
+
+  .thin-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-ink-soft);
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-relay);
     outline-offset: 2px;
