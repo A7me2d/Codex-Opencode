@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url))
+const projectDirectory = appDirectory
 const distDirectory = path.join(appDirectory, 'dist')
 const stateDirectory = path.join(appDirectory, '.relay-state')
 const eventsPath = path.join(stateDirectory, 'events.json')
@@ -32,6 +33,77 @@ const defaultRoot = path.resolve(appDirectory, '..', '..')
 const watchRoot = resolveExistingDirectory(option('--root') ?? process.env.WATCH_ROOT ?? defaultRoot)
 const requestedPort = Number(option('--port') ?? process.env.OPENCODE_OBSERVER_PORT ?? 4280)
 const port = Number.isInteger(requestedPort) && requestedPort > 0 ? requestedPort : 4280
+
+function powerShellSingleQuoted(value) {
+  return String(value).replaceAll("'", "''")
+}
+
+function openProjectDirectory() {
+  if (process.platform !== 'win32') throw new HttpError(501, 'Opening the project folder is currently available on Windows only.')
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('explorer.exe', [projectDirectory], {
+      cwd: projectDirectory,
+      detached: true,
+      shell: false,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
+}
+
+function selectProjectFile() {
+  if (process.platform !== 'win32') throw new HttpError(501, 'Choosing a local project file is currently available on Windows only.')
+
+  const initialDirectory = powerShellSingleQuoted(projectDirectory)
+  const script = [
+    'Add-Type -AssemblyName System.Windows.Forms',
+    '$dialog = New-Object System.Windows.Forms.OpenFileDialog',
+    `$dialog.InitialDirectory = '${initialDirectory}'`,
+    '$dialog.Filter = "All files (*.*)|*.*"',
+    '$dialog.Multiselect = $false',
+    '$dialog.CheckFileExists = $true',
+    '$result = $dialog.ShowDialog()',
+    'if ($result -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Write($dialog.FileName) }',
+  ].join('; ')
+
+  return new Promise((resolve, reject) => {
+    let stdout = ''
+    let stderr = ''
+    const child = spawn('powershell.exe', ['-NoProfile', '-STA', '-Command', script], {
+      cwd: projectDirectory,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: false,
+    })
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.once('error', reject)
+    child.once('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || 'The Windows file picker could not be opened.'))
+        return
+      }
+      const selectedPath = stdout.trim()
+      if (!selectedPath) {
+        resolve(null)
+        return
+      }
+      if (!isInside(projectDirectory, selectedPath)) {
+        reject(new HttpError(400, 'Choose a file inside this Relay Room project.'))
+        return
+      }
+      resolve(path.resolve(selectedPath))
+    })
+  })
+}
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -304,6 +376,8 @@ class CodexAppServerBridge {
     this.delegationGrants = new Map()
     this.activeThreads = new Set()
     this.resumingThreads = new Map()
+    this.runningTurns = new Map()
+    this.completedTurns = new Map()
   }
 
   async ensureStarted() {
@@ -330,6 +404,8 @@ class CodexAppServerBridge {
     this.stderr = ''
     this.activeThreads.clear()
     this.resumingThreads.clear()
+    this.runningTurns.clear()
+    this.completedTurns.clear()
     child.stdout.on('data', (chunk) => this.consumeStdout(chunk.toString()))
     child.stderr.on('data', (chunk) => {
       this.stderr = `${this.stderr}${chunk.toString()}`.slice(-4000)
@@ -339,6 +415,8 @@ class CodexAppServerBridge {
       if (this.child !== child) return
       this.child = null
       this.started = null
+      this.runningTurns.clear()
+      this.completedTurns.clear()
       this.failAll(new Error(`Codex app-server stopped${code === null ? '' : ` with code ${code}`}.`))
     })
 
@@ -455,7 +533,9 @@ class CodexAppServerBridge {
     }
 
     if (packet.method === 'turn/completed') {
-      this.clearDelegationGrant(params.threadId, params.turn?.id ?? params.turnId)
+      const turnId = params.turn?.id ?? params.turnId
+      this.completeTurn(params.threadId, turnId)
+      this.clearDelegationGrant(params.threadId, turnId)
     }
   }
 
@@ -488,6 +568,56 @@ class CodexAppServerBridge {
 
   markThreadActive(threadId) {
     if (safeCodexThreadId(threadId)) this.activeThreads.add(threadId)
+  }
+
+  markTurnRunning(threadId, turnId) {
+    if (!safeCodexThreadId(threadId) || typeof turnId !== 'string' || !turnId) return
+    const key = `${threadId}:${turnId}`
+    const completedAt = this.completedTurns.get(key)
+    if (completedAt && Date.now() - completedAt < 60_000) {
+      this.completedTurns.delete(key)
+      return
+    }
+    this.runningTurns.set(threadId, { turnId, startedAt: Date.now(), interruptRequested: false })
+  }
+
+  completeTurn(threadId, turnId) {
+    if (!safeCodexThreadId(threadId)) return
+    const current = this.runningTurns.get(threadId)
+    if (!turnId || !current || current.turnId === turnId) this.runningTurns.delete(threadId)
+    if (typeof turnId === 'string' && turnId) {
+      this.completedTurns.set(`${threadId}:${turnId}`, Date.now())
+      if (this.completedTurns.size > 100) {
+        const oldestKey = this.completedTurns.keys().next().value
+        if (oldestKey) this.completedTurns.delete(oldestKey)
+      }
+    }
+  }
+
+  getTurnState(threadId) {
+    const turn = this.runningTurns.get(threadId)
+    if (!turn) return { active: false }
+    return {
+      active: true,
+      turnId: turn.turnId,
+      startedAt: turn.startedAt,
+      stopping: turn.interruptRequested,
+    }
+  }
+
+  async interruptTurn(threadId) {
+    const turn = this.runningTurns.get(threadId)
+    if (!turn) throw new HttpError(409, 'Codex is not currently running a turn in this session.')
+    if (turn.interruptRequested) return this.getTurnState(threadId)
+
+    turn.interruptRequested = true
+    try {
+      await this.call('turn/interrupt', { threadId, turnId: turn.turnId }, 10_000)
+      return this.getTurnState(threadId)
+    } catch (error) {
+      turn.interruptRequested = false
+      throw error
+    }
   }
 
   async resumeThread(threadId, params) {
@@ -541,6 +671,8 @@ class CodexAppServerBridge {
     this.started = null
     this.activeThreads.clear()
     this.resumingThreads.clear()
+    this.runningTurns.clear()
+    this.completedTurns.clear()
     this.failAll(new Error('Relay Room stopped the Codex app-server.'))
     if (child && !child.killed) child.kill()
   }
@@ -725,6 +857,7 @@ async function sendRelayCodexMessage(threadId, input) {
       input: [{ type: 'text', text }],
     })
     const turnId = response?.turn?.id ?? response?.id
+    if (response?.turn?.status !== 'completed') codexBridge.markTurnRunning(threadId, turnId)
     if (delegation.hasExplicitTag) codexBridge.bindDelegationTurn(threadId, turnId)
     await updateCodexState((state) => {
       if (state.threads[threadId]) state.threads[threadId].updatedAt = Date.now()
@@ -975,6 +1108,23 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
 
   try {
+    if (request.method === 'GET' && url.pathname === '/api/project') {
+      sendJson(response, 200, { data: { directory: projectDirectory } })
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/project/open') {
+      await openProjectDirectory()
+      sendJson(response, 202, { data: { directory: projectDirectory } })
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/project/select-file') {
+      const selectedPath = await selectProjectFile()
+      sendJson(response, 200, { data: selectedPath ? { path: selectedPath } : null })
+      return
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/codex/status') {
       try {
         const status = await codexBridge.ensureStarted()
@@ -1001,6 +1151,20 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && codexHandoffMatch) {
       const [, threadId] = codexHandoffMatch
       sendJson(response, 200, { data: await readOpenCodeHandoff(threadId) })
+      return
+    }
+
+    const codexTurnStatusMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/status$/)
+    if (request.method === 'GET' && codexTurnStatusMatch) {
+      const { id } = await requireRelayCodexThread(codexTurnStatusMatch[1])
+      sendJson(response, 200, { data: codexBridge.getTurnState(id) })
+      return
+    }
+
+    const codexTurnStopMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/stop$/)
+    if (request.method === 'POST' && codexTurnStopMatch) {
+      const { id } = await requireRelayCodexThread(codexTurnStopMatch[1])
+      sendJson(response, 202, { data: await codexBridge.interruptTurn(id) })
       return
     }
 
