@@ -145,6 +145,10 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
 
   return <section aria-label="شات مباشر مع OpenCode" className="flex min-h-0 flex-1 flex-col border-t border-line">
     <div className="shrink-0 space-y-2 border-b border-line bg-paper px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold text-ink">شات مباشر مع OpenCode</span>
+        <span className="text-[10px] text-ink-soft">{sessions.length} جلسات متاحة</span>
+      </div>
       <div className="flex items-center gap-2">
         <select
           value={selected}
@@ -167,21 +171,27 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
         ) : null}
       </div>
 
-      <div className="flex items-center gap-2">
-        <select
-          value={newModel}
-          onChange={(event) => setNewModel(event.target.value)}
-          aria-label="موديل الجلسة الجديدة"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2 py-1 text-[10px] text-ink outline-none focus:border-ready/55"
-        >
-          <option value="">موديل الجلسة الجديدة: {clip(model || 'الافتراضي', 28)}</option>
-          {models.map((id) => <option key={id} value={id}>{clip(id, 40)}</option>)}
-        </select>
-        <button type="button" onClick={() => void startSession()} disabled={starting} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ready/30 bg-ready-tint px-2 py-1 text-[10px] font-bold text-ready-ink transition-colors hover:bg-ready-tint/80 disabled:opacity-55" aria-label="ابدأ جلسة OpenCode جديدة">
-          {starting ? <Spinner className="h-3 w-3" /> : <Plus className="h-3 w-3" aria-hidden="true" />}
-          جلسة جديدة
-        </button>
-      </div>
+      <details className="rounded-lg border border-line bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-[10px] font-bold text-ready-ink marker:content-none">
+          جلسة OpenCode جديدة
+          <span className="font-normal text-ink-soft">اختياري</span>
+        </summary>
+        <div className="flex items-center gap-2 border-t border-line p-2">
+          <select
+            value={newModel}
+            onChange={(event) => setNewModel(event.target.value)}
+            aria-label="موديل الجلسة الجديدة"
+            className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-2 py-1 text-[10px] text-ink outline-none focus:border-ready/55"
+          >
+            <option value="">موديل الجلسة الجديدة: {clip(model || 'الافتراضي', 28)}</option>
+            {models.map((id) => <option key={id} value={id}>{clip(id, 40)}</option>)}
+          </select>
+          <button type="button" onClick={() => void startSession()} disabled={starting} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ready/30 bg-ready-tint px-2 py-1 text-[10px] font-bold text-ready-ink transition-colors hover:bg-ready-tint/80 disabled:opacity-55" aria-label="ابدأ جلسة OpenCode جديدة">
+            {starting ? <Spinner className="h-3 w-3" /> : <Plus className="h-3 w-3" aria-hidden="true" />}
+            ابدأ
+          </button>
+        </div>
+      </details>
 
       {current ? (
         <p className="flex items-center gap-1.5 text-[10px] text-ink-soft">

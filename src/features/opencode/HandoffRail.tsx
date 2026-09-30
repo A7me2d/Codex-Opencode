@@ -13,7 +13,6 @@ import { readOpenCodeChat } from '../../lib/chat'
 import { asArray } from '../../lib/guards'
 import { readForms } from '../../lib/forms'
 import type { CodexThread, HandoffData, OpenCodeSession, RelayEvent } from '../../lib/types'
-import { SessionBrowser } from './SessionBrowser'
 import { OpenCodeChat } from './OpenCodeChat'
 import { ModelPicker } from './ModelPicker'
 import type { ModelPickerProps } from './ModelPicker'
@@ -78,10 +77,16 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
       {/* The model belongs to the conversation, not to the OpenCode session, so
           it is choosable before the first handoff — the choice is applied when
           that handoff creates the session. */}
-      <div className="mt-3">
-        <ModelPicker models={models} selected={model} onSelect={onModelChange} disabled={activity.active || changingModel} />
-        {modelError ? <ErrorNote>{modelError}</ErrorNote> : null}
-      </div>
+      <details className="mt-3 rounded-lg border border-line bg-paper">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[11px] font-bold text-ink-soft marker:content-none">
+          إعدادات التنفيذ
+          <span className="text-[10px] font-normal text-ink-soft">غيّر الموديل عند الحاجة</span>
+        </summary>
+        <div className="border-t border-line p-2.5">
+          <ModelPicker models={models} selected={model} onSelect={onModelChange} disabled={activity.active || changingModel} />
+          {modelError ? <ErrorNote>{modelError}</ErrorNote> : null}
+        </div>
+      </details>
     </div>
 
     {!thread ? <Empty>اختر جلسة Codex أولًا لرؤية أي تفويض مرتبط بها.</Empty>
@@ -95,12 +100,6 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
             workRoot={workRoot}
             onNotify={onNotify}
             onRefreshSessions={onRefreshSessions}
-          />
-          <SessionBrowser
-            sessions={sessions}
-            threadDirectory={thread.directory}
-            onNotify={onNotify}
-            onRefresh={onRefreshSessions}
           />
         </>
         : <>
@@ -164,14 +163,6 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
 
           <OpenCodeControls threadId={thread.id} sessionId={sessionId} active={handoff.active} onNotify={onNotify} />
 
-          <SessionBrowser
-            sessions={sessions}
-            threadDirectory={thread.directory}
-            linkedSessionId={sessionId}
-            onNotify={onNotify}
-            onRefresh={onRefreshSessions}
-          />
-
           {/* The same OpenCode session, in a direct chat: the handoff and the
               conversation are two views of one thing, not two features. */}
           <OpenCodeChat
@@ -192,7 +183,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 }
 
 function NoHandoff() {
-  return <Empty>
+  return <section className="shrink-0 border-b border-line bg-paper px-4 py-3">
     <div>
       <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-ready-tint text-ready-ink">
         <TerminalSquare className="h-5 w-5" aria-hidden="true" />
@@ -203,5 +194,5 @@ function NoHandoff() {
         اختر موديل التنفيذ من الأعلى الآن، وسيُستخدم عند أول تفويض.
       </p>
     </div>
-  </Empty>
+  </section>
 }
