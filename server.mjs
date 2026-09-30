@@ -16,6 +16,30 @@ const maxBodyBytes = 256 * 1024
 const getTimeoutMs = 30_000
 const postTimeoutMs = 15 * 60_000
 
+/**
+ * The model an OpenCode session runs on until the operator picks another one.
+ * Kept as a `providerID/modelID` selector so it reads the same as the browser's
+ * model list and as what OpenCode reports back on a session.
+ */
+const defaultOpenCodeModel = process.env.OPENCODE_MODEL ?? 'opencode/big-pickle'
+/** OpenCode calls an unqualified model choice "default"; variants are opt-in. */
+const defaultModelVariant = 'default'
+
+/** `providerID/modelID` -> the shape OpenCode accepts on a session. */
+function modelSelectorToPayload(selector) {
+  const value = String(selector ?? '').trim()
+  const slash = value.indexOf('/')
+  if (slash <= 0 || slash === value.length - 1) return null
+  return { providerID: value.slice(0, slash), id: value.slice(slash + 1), variant: defaultModelVariant }
+}
+
+/** The inverse: what OpenCode reports on a session -> `providerID/modelID`. */
+function modelPayloadToSelector(model) {
+  const providerID = typeof model?.providerID === 'string' ? model.providerID : ''
+  const id = typeof model?.id === 'string' ? model.id : ''
+  return providerID && id ? `${providerID}/${id}` : ''
+}
+
 function option(name) {
   const index = process.argv.indexOf(name)
   return index >= 0 ? process.argv[index + 1] : undefined
@@ -883,9 +907,10 @@ async function ensureOpenCodeLink(codexThreadId, task) {
   }
 
   const title = shortThreadTitle(`Codex · ${task}`)
+  const model = state.threads[codexThreadId]?.openCodeModel ?? defaultOpenCodeModel
   const created = await openCodeApi('POST', '/api/session', {
     title,
-    model: { providerID: 'opencode', id: 'big-pickle', variant: 'default' },
+    model: modelSelectorToPayload(model) ?? modelSelectorToPayload(defaultOpenCodeModel),
     location: { directory: watchRoot },
   })
   const session = created?.data
@@ -897,6 +922,7 @@ async function ensureOpenCodeLink(codexThreadId, task) {
     codexThreadId,
     opencodeSessionId: session.id,
     title,
+    model,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -1044,6 +1070,85 @@ async function requireOpenCodeLink(codexThreadId) {
   return link
 }
 
+/**
+ * Every model the local OpenCode install can run, in the shape the browser
+ * expects. Models that cannot run tool loops stay in the list so they are still
+ * selectable information, but the UI filters them out as implementers.
+ */
+async function listOpenCodeModels() {
+  const response = await openCodeApi('GET', '/api/model')
+  const models = Array.isArray(response?.data) ? response.data : []
+  return models
+    .map((model) => {
+      const id = modelPayloadToSelector(model)
+      if (!id) return null
+      const variants = Array.isArray(model?.variants)
+        ? model.variants.map((variant) => variant?.id).filter((variant) => typeof variant === 'string')
+        : []
+      return {
+        id,
+        providerID: String(model.providerID),
+        name: typeof model?.name === 'string' && model.name.trim() ? model.name : id,
+        variants,
+        tools: Boolean(model?.capabilities?.tools),
+      }
+    })
+    .filter(Boolean)
+}
+
+/** The model this Codex conversation runs OpenCode on. */
+async function readThreadOpenCodeModel(codexThreadId) {
+  const { saved } = await requireRelayCodexThread(codexThreadId)
+  return typeof saved.openCodeModel === 'string' && saved.openCodeModel ? saved.openCodeModel : defaultOpenCodeModel
+}
+
+/**
+ * Point one conversation at a different OpenCode model.
+ *
+ * The choice is written to the thread first so it survives a restart, then
+ * pushed to the live session. An idle session switches immediately; OpenCode
+ * refuses mid-turn, and so do we rather than silently queueing the change.
+ */
+async function setThreadOpenCodeModel(codexThreadId, input) {
+  const { id } = await requireRelayCodexThread(codexThreadId)
+  const selector = String(input?.model ?? '').trim()
+  const payload = modelSelectorToPayload(selector)
+  if (!payload) throw new HttpError(400, 'Send a model as providerID/modelID.')
+
+  const models = await listOpenCodeModels()
+  const chosen = models.find((model) => model.id === selector)
+  if (!chosen) throw new HttpError(404, 'That model is not available in this OpenCode install.')
+  if (!chosen.tools) throw new HttpError(409, 'That model cannot run tool loops, so it cannot implement work here.')
+
+  const state = await readCodexState()
+  const link = state.links[id]
+
+  if (link?.opencodeSessionId && safeSessionId(link.opencodeSessionId)) {
+    await requireScopedSession(link.opencodeSessionId)
+    const activeResponse = await openCodeApi('GET', '/api/session/active')
+    if (isOpenCodeSessionActive(activeResponse, link.opencodeSessionId)) {
+      throw new HttpError(409, 'OpenCode is working right now — switch the model when the current run ends.')
+    }
+
+    await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/model`, { model: payload })
+    const live = modelPayloadToSelector((await requireScopedSession(link.opencodeSessionId))?.model)
+    if (live !== selector) throw new Error('OpenCode did not confirm the model change.')
+  }
+
+  await updateCodexState((next) => {
+    next.threads[id] = { ...next.threads[id], openCodeModel: selector, updatedAt: Date.now() }
+    if (next.links[id]) next.links[id].model = selector
+  })
+  await appendRelayEvent({
+    role: 'operator',
+    kind: 'opencode-model-changed',
+    message: selector,
+    sessionId: link?.opencodeSessionId ?? '',
+    codexThreadId: id,
+  })
+  return { model: selector, name: chosen.name }
+}
+
 async function sendOperatorOpenCodeMessage(codexThreadId, input) {
   const text = String(input?.text ?? '').replaceAll('\u0000', '').trim()
   if (!text) throw new HttpError(400, 'Write a message to OpenCode first.')
@@ -1093,14 +1198,17 @@ async function readOpenCodeHandoff(codexThreadId) {
   await requireRelayCodexThread(codexThreadId)
   const state = await readCodexState()
   const link = state.links[codexThreadId]
+  // The chosen model is a property of the conversation, not of the OpenCode
+  // session, so it is reported even before a session exists for this thread.
+  const model = state.threads[codexThreadId]?.openCodeModel ?? defaultOpenCodeModel
   if (!link?.opencodeSessionId) {
-    return { link: null, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
+    return { link: null, model, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
   }
 
   try {
     await requireScopedSession(link.opencodeSessionId)
   } catch {
-    return { link: null, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
+    return { link: null, model, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
   }
 
   const sessionId = link.opencodeSessionId
@@ -1114,6 +1222,7 @@ async function readOpenCodeHandoff(codexThreadId) {
   const messages = Array.isArray(messagesResponse?.data) ? messagesResponse.data : []
   return {
     link,
+    model,
     messages,
     forms: Array.isArray(formsResponse?.data) ? formsResponse.data : [],
     inbox: Array.isArray(inboxResponse?.data) ? inboxResponse.data : [],
@@ -1299,6 +1408,21 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    const codexOpenCodeModelMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/opencode\/model$/)
+    if (codexOpenCodeModelMatch) {
+      const [, threadId] = codexOpenCodeModelMatch
+      if (request.method === 'GET') {
+        sendJson(response, 200, { data: { model: await readThreadOpenCodeModel(threadId) } })
+        return
+      }
+      if (request.method === 'POST') {
+        const input = await readJson(request)
+        sendJson(response, 200, { data: await setThreadOpenCodeModel(threadId, input) })
+        return
+      }
+      throw new HttpError(405, 'Only GET and POST are supported for the OpenCode model.')
+    }
+
     const codexTurnStatusMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/status$/)
     if (request.method === 'GET' && codexTurnStatusMatch) {
       const { id } = await requireRelayCodexThread(codexTurnStatusMatch[1])
@@ -1329,6 +1453,11 @@ const server = createServer(async (request, response) => {
       throw new HttpError(405, 'Only GET and POST are supported for Codex messages.')
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/models') {
+      sendJson(response, 200, { data: await listOpenCodeModels() })
+      return
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/health') {
       try {
         const sessions = await listScopedSessions()
@@ -1349,7 +1478,7 @@ const server = createServer(async (request, response) => {
       const title = String(input.title ?? 'New Relay').trim().slice(0, 120) || 'New Relay'
       const created = await openCodeApi('POST', '/api/session', {
         title,
-        model: { providerID: 'opencode', id: 'big-pickle', variant: 'default' },
+        model: modelSelectorToPayload(defaultOpenCodeModel),
         location: { directory: watchRoot },
       })
       const session = created.data
