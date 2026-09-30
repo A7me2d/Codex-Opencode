@@ -963,18 +963,144 @@ async function handleCodexToolCall(params) {
   }
 }
 
+function asOpenCodeRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+}
+
+function compactOpenCodeDetail(value, max = 180) {
+  if (typeof value !== 'string') return undefined
+  const text = value.replace(/\s+/g, ' ').trim()
+  return text ? text.slice(0, max) : undefined
+}
+
+function firstOpenCodeDetail(input, keys) {
+  for (const key of keys) {
+    const detail = compactOpenCodeDetail(input?.[key])
+    if (detail) return detail
+  }
+  return undefined
+}
+
+function describeOpenCodeTool(part) {
+  const toolName = String(part?.name ?? '').trim()
+  const normalizedName = toolName.toLowerCase()
+  const state = asOpenCodeRecord(part?.state)
+  const input = asOpenCodeRecord(state?.input)
+  const filePath = firstOpenCodeDetail(input, ['filePath', 'file_path', 'path', 'file', 'filename', 'target'])
+  const command = firstOpenCodeDetail(input, ['command', 'cmd', 'script'])
+  const query = firstOpenCodeDetail(input, ['query', 'pattern', 'search'])
+  const time = asOpenCodeRecord(part?.time)
+  const updatedAt = typeof time?.ran === 'number' ? time.ran : typeof time?.created === 'number' ? time.created : undefined
+
+  if (/edit|write|patch|apply/.test(normalizedName)) {
+    return { kind: 'edit', label: 'يعدّل ملفًا', detail: filePath, toolName, updatedAt }
+  }
+  if (/bash|shell|command|terminal|exec/.test(normalizedName)) {
+    return { kind: 'command', label: 'يشغّل أمرًا', detail: command ?? filePath, toolName, updatedAt }
+  }
+  if (/read|glob|grep|find|search|list/.test(normalizedName)) {
+    return { kind: 'inspect', label: 'يفحص ملفات المشروع', detail: filePath ?? query, toolName, updatedAt }
+  }
+  return { kind: 'tool', label: toolName ? `ينفّذ ${toolName}` : 'ينفّذ خطوة', detail: filePath ?? command ?? query, toolName, updatedAt }
+}
+
+function describeOpenCodeActivity(messages, active) {
+  if (!active) return { active: false, kind: 'idle', label: 'لا توجد عملية OpenCode نشطة' }
+
+  const runningTools = []
+  for (const message of messages) {
+    const record = asOpenCodeRecord(message)
+    if (record?.type !== 'assistant' || !Array.isArray(record.content)) continue
+    for (const part of record.content) {
+      const partRecord = asOpenCodeRecord(part)
+      const state = asOpenCodeRecord(partRecord?.state)
+      if (partRecord?.type === 'tool' && (state?.status === 'running' || state?.status === 'streaming')) {
+        runningTools.push(describeOpenCodeTool(partRecord))
+      }
+    }
+  }
+
+  if (runningTools.length > 0) {
+    runningTools.sort((left, right) => Number(left.updatedAt ?? 0) - Number(right.updatedAt ?? 0))
+    return { active: true, ...runningTools[runningTools.length - 1] }
+  }
+
+  return { active: true, kind: 'thinking', label: 'Big Pickle يفكّر في الخطوة التالية' }
+}
+
+function isOpenCodeSessionActive(activeResponse, sessionId) {
+  const activeData = activeResponse?.data
+  return Boolean(activeData && typeof activeData === 'object' && activeData[sessionId])
+}
+
+async function requireOpenCodeLink(codexThreadId) {
+  await requireRelayCodexThread(codexThreadId)
+  const state = await readCodexState()
+  const link = state.links[codexThreadId]
+  if (!link?.opencodeSessionId || !safeSessionId(link.opencodeSessionId)) {
+    throw new HttpError(409, 'OpenCode has not been linked to this Codex session yet.')
+  }
+  await requireScopedSession(link.opencodeSessionId)
+  return link
+}
+
+async function sendOperatorOpenCodeMessage(codexThreadId, input) {
+  const text = String(input?.text ?? '').replaceAll('\u0000', '').trim()
+  if (!text) throw new HttpError(400, 'Write a message to OpenCode first.')
+  if (text.length > 100_000) throw new HttpError(413, 'The OpenCode message is too long.')
+
+  const link = await requireOpenCodeLink(codexThreadId)
+  const activeResponse = await openCodeApi('GET', '/api/session/active')
+  const delivery = isOpenCodeSessionActive(activeResponse, link.opencodeSessionId) ? 'steer' : 'queue'
+  const response = await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/prompt`, { text, delivery })
+  const receipt = response?.data
+  if (!receipt?.id || receipt.sessionID !== link.opencodeSessionId || receipt.delivery !== delivery) {
+    throw new Error('OpenCode did not confirm that it accepted this message.')
+  }
+
+  await updateCodexState((state) => {
+    if (state.links[codexThreadId]) state.links[codexThreadId].updatedAt = Date.now()
+  })
+  await appendRelayEvent({
+    role: 'operator',
+    kind: 'opencode-message-sent',
+    message: text,
+    sessionId: link.opencodeSessionId,
+    codexThreadId,
+  })
+  return { delivery, receipt }
+}
+
+async function interruptOpenCodeSession(codexThreadId) {
+  const link = await requireOpenCodeLink(codexThreadId)
+  const activeResponse = await openCodeApi('GET', '/api/session/active')
+  if (!isOpenCodeSessionActive(activeResponse, link.opencodeSessionId)) {
+    throw new HttpError(409, 'OpenCode is not currently running in this session.')
+  }
+
+  await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/interrupt`)
+  await appendRelayEvent({
+    role: 'operator',
+    kind: 'opencode-stop-requested',
+    message: 'Requested an immediate OpenCode stop.',
+    sessionId: link.opencodeSessionId,
+    codexThreadId,
+  })
+  return { sessionId: link.opencodeSessionId }
+}
+
 async function readOpenCodeHandoff(codexThreadId) {
   await requireRelayCodexThread(codexThreadId)
   const state = await readCodexState()
   const link = state.links[codexThreadId]
   if (!link?.opencodeSessionId) {
-    return { link: null, messages: [], forms: [], inbox: [], active: false }
+    return { link: null, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
   }
 
   try {
     await requireScopedSession(link.opencodeSessionId)
   } catch {
-    return { link: null, messages: [], forms: [], inbox: [], active: false }
+    return { link: null, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
   }
 
   const sessionId = link.opencodeSessionId
@@ -984,13 +1110,15 @@ async function readOpenCodeHandoff(codexThreadId) {
     openCodeApi('GET', `/api/session/${sessionId}/inbox`),
     openCodeApi('GET', '/api/session/active'),
   ])
-  const activeData = activeResponse?.data
+  const active = isOpenCodeSessionActive(activeResponse, sessionId)
+  const messages = Array.isArray(messagesResponse?.data) ? messagesResponse.data : []
   return {
     link,
-    messages: Array.isArray(messagesResponse?.data) ? messagesResponse.data : [],
+    messages,
     forms: Array.isArray(formsResponse?.data) ? formsResponse.data : [],
     inbox: Array.isArray(inboxResponse?.data) ? inboxResponse.data : [],
-    active: Boolean(activeData && typeof activeData === 'object' && activeData[sessionId]),
+    active,
+    activity: describeOpenCodeActivity(messages, active),
   }
 }
 
@@ -1151,6 +1279,23 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && codexHandoffMatch) {
       const [, threadId] = codexHandoffMatch
       sendJson(response, 200, { data: await readOpenCodeHandoff(threadId) })
+      return
+    }
+
+    const codexOpenCodeMessagesMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/opencode\/messages$/)
+    if (codexOpenCodeMessagesMatch) {
+      if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported for OpenCode messages.')
+      const [, threadId] = codexOpenCodeMessagesMatch
+      const input = await readJson(request)
+      sendJson(response, 202, { data: await sendOperatorOpenCodeMessage(threadId, input) })
+      return
+    }
+
+    const codexOpenCodeStopMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/opencode\/stop$/)
+    if (codexOpenCodeStopMatch) {
+      if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported for stopping OpenCode.')
+      const [, threadId] = codexOpenCodeStopMatch
+      sendJson(response, 202, { data: await interruptOpenCodeSession(threadId) })
       return
     }
 

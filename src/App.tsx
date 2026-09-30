@@ -5,6 +5,7 @@ import {
   Bot,
   CircleStop,
   CircleDot,
+  FilePenLine,
   FileSearch,
   FolderOpen,
   GitPullRequestArrow,
@@ -82,12 +83,22 @@ interface HandoffLink {
   updatedAt?: number
 }
 
+interface OpenCodeActivity {
+  active: boolean
+  kind: 'idle' | 'thinking' | 'edit' | 'command' | 'inspect' | 'tool'
+  label: string
+  detail?: string
+  toolName?: string
+  updatedAt?: number
+}
+
 interface HandoffData {
   link: HandoffLink | null
   messages: unknown[]
   forms: unknown[]
   inbox: unknown[]
   active: boolean
+  activity: OpenCodeActivity
 }
 
 interface RelayEvent {
@@ -108,7 +119,7 @@ interface ChatMessage {
 }
 
 const pollCodexMessagesMs = 1_400
-const pollHandoffMs = 2_500
+const pollHandoffMs = 1_200
 const pollTurnStateMs = 800
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -225,6 +236,41 @@ function formLabel(form: unknown) {
   if (!form || typeof form !== 'object') return 'OpenCode يحتاج إلى توضيح'
   const record = form as Record<string, unknown>
   return readText(record.title ?? record.question ?? record.description) || 'OpenCode يحتاج إلى توضيح'
+}
+
+function openCodeActivityIcon(kind: OpenCodeActivity['kind']) {
+  if (kind === 'edit') return <FilePenLine className="h-4 w-4" aria-hidden="true" />
+  if (kind === 'command') return <TerminalSquare className="h-4 w-4" aria-hidden="true" />
+  if (kind === 'inspect') return <FileSearch className="h-4 w-4" aria-hidden="true" />
+  return <Sparkles className="h-4 w-4" aria-hidden="true" />
+}
+
+function relayEventHeading(event: RelayEvent) {
+  if (event.kind === 'opencode-message-sent') return 'أنت → OpenCode'
+  if (event.kind === 'opencode-stop-requested') return 'طلبت إيقاف OpenCode'
+  return 'أرسل Codex إلى OpenCode'
+}
+
+function OpenCodeComposer({ draft, onChange, onSubmit, sending, active, disabled, error }: {
+  draft: string
+  onChange: (value: string) => void
+  onSubmit: () => void
+  sending: boolean
+  active: boolean
+  disabled: boolean
+  error: string | null
+}) {
+  const submit = (event: FormEvent) => { event.preventDefault(); onSubmit() }
+  const keyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSubmit() } }
+  return <form onSubmit={submit} className="border-t border-line bg-paper p-3">
+    <label className="mb-2 block text-[11px] font-bold text-ready-ink">رسالة مباشرة إلى OpenCode</label>
+    <div className="flex items-end gap-2 rounded-xl border border-ready/20 bg-card p-2 focus-within:border-ready/55 focus-within:ring-2 focus-within:ring-ready/10">
+      <textarea value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} disabled={disabled || sending} rows={2} placeholder={active ? 'اكتب تصحيحًا، سيصل إلى العمل الجاري…' : 'اكتب إلى OpenCode مباشرة…'} className="min-h-[3.25rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75 disabled:cursor-not-allowed" />
+      <button type="submit" disabled={disabled || sending || !draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ready text-white transition-colors hover:bg-ready-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label="إرسال إلى OpenCode">{sending ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}</button>
+    </div>
+    <p className="mt-2 px-1 text-[10px] leading-5 text-ink-soft">{active ? 'ستوجّه رسالتك العمل الجاري مباشرة، وإذا أردت إيقافه استخدم زر الإيقاف أعلاه.' : 'ستدخل رسالتك إلى جلسة OpenCode المرتبطة بهذه المحادثة.'}</p>
+    {error ? <div className="mt-2 flex items-start gap-2 rounded-lg bg-review-tint px-3 py-2 text-xs leading-5 text-review-ink"><TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{error}</div> : null}
+  </form>
 }
 
 function StateDot({ active, warning = false }: { active: boolean; warning?: boolean }) {
@@ -366,16 +412,25 @@ function CodexConversation({ thread, messages, loading, draft, onDraftChange, on
   </section>
 }
 
-function HandoffRail({ thread, handoff, loading, events, onReview, reviewing }: {
+function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, openCodeDraft, onOpenCodeDraftChange, onSendOpenCode, sendingOpenCode, openCodeError, onStopOpenCode, stoppingOpenCode }: {
   thread: CodexThread | null
   handoff: HandoffData | null
   loading: boolean
   events: RelayEvent[]
   onReview: () => void
   reviewing: boolean
+  openCodeDraft: string
+  onOpenCodeDraftChange: (value: string) => void
+  onSendOpenCode: () => void
+  sendingOpenCode: boolean
+  openCodeError: string | null
+  onStopOpenCode: () => void
+  stoppingOpenCode: boolean
 }) {
   const openCodeMessages = useMemo(() => openCodeChat(handoff?.messages ?? []), [handoff?.messages])
-  const threadEvents = useMemo(() => events.filter((event) => event.codexThreadId === thread?.id).sort((a, b) => a.timestamp - b.timestamp), [events, thread?.id])
+  const threadEvents = useMemo(() => events.filter((event) => event.codexThreadId === thread?.id && event.kind === 'handoff-sent').sort((a, b) => a.timestamp - b.timestamp), [events, thread?.id])
+  const activity = handoff?.activity ?? { active: false, kind: 'idle' as const, label: 'لا توجد عملية OpenCode نشطة' }
+  const requiresAttention = Boolean(handoff?.forms.length)
   return <aside dir="rtl" className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:border-l lg:border-t-0">
     <div className="border-b border-line px-4 py-4"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-sm font-bold text-ink"><ArrowUpRight className="h-4 w-4 text-ready" aria-hidden="true" />مسار التفويض</div><StatusPill tone="openCode"><Bot className="h-3 w-3" aria-hidden="true" /> Big Pickle</StatusPill></div><p className="mt-2 text-[11px] leading-5 text-ink-soft">ما يرسله Codex إلى OpenCode، وما يرد به، يظهر هنا كما هو.</p></div>
     {!thread ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm leading-7 text-ink-soft">اختر جلسة Codex أولًا لرؤية أي تفويض مرتبط بها.</div> : loading && !handoff ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-ink-soft"><LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />يتم فحص مسار التفويض…</div> : !handoff?.link ? <div className="flex flex-1 items-center justify-center px-6 text-center"><div><div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-ready-tint text-ready-ink"><TerminalSquare className="h-5 w-5" aria-hidden="true" /></div><h2 className="mt-4 text-sm font-bold text-ink">لم يُفوَّض OpenCode في هذه الجلسة</h2><p className="mt-2 text-xs leading-6 text-ink-soft">في شات Codex اكتب <code className="rounded bg-paper px-1.5 py-0.5 font-mono text-relay-ink">$opencode</code> ثم طلب التنفيذ. لن يبدأ OpenCode بدون هذا الوسم.</p></div></div> : <div className="min-h-0 flex-1 overflow-y-auto">
