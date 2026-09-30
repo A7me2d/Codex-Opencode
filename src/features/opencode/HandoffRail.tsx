@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { ArrowUpRight, Bot, FileSearch, TerminalSquare, TriangleAlert } from 'lucide-react'
 import { CopyButton } from '../../components/CopyButton'
+import { ErrorNote } from '../../components/ui/ErrorNote'
 import { MessageBubble } from '../../components/MessageBubble'
 import { ScrollToLatest } from '../../components/ui/ScrollToLatest'
 import { Spinner } from '../../components/ui/Spinner'
@@ -32,12 +33,16 @@ export interface HandoffRailProps {
   models: ModelPickerProps['models']
   model: string
   onModelChange: (id: string) => void
+  /** True while the server is applying a model change. */
+  changingModel: boolean
+  /** Why the last model change did not stick, if it did not. */
+  modelError: string | null
 }
 
 const idleActivity = { active: false, kind: 'idle' as const, label: 'لا توجد عملية OpenCode نشطة' }
 
 /** Right column: what Codex delegated to OpenCode, and what OpenCode said back. */
-export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange }: HandoffRailProps) {
+export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange, changingModel, modelError }: HandoffRailProps) {
   const messages = useMemo(() => readOpenCodeChat(handoff?.messages), [handoff?.messages])
   const forms = useMemo(() => readForms(handoff?.forms), [handoff?.forms])
   const activity = handoff?.activity ?? idleActivity
@@ -50,6 +55,8 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
 
   // Stop the pane from mounting an unanswerable card if the link disappears.
   const sessionId = handoff?.link?.opencodeSessionId ?? ''
+  // Show the provider's own name so the rail says what is really running.
+  const modelLabel = models.find((entry) => entry.id === model)?.name ?? model ?? 'OpenCode'
 
   return <aside dir="rtl" className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
     <div className="shrink-0 border-b border-line px-4 py-4">
@@ -57,7 +64,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
         <div className="flex items-center gap-2 text-sm font-bold text-ink">
           <ArrowUpRight className="h-4 w-4 text-ready" aria-hidden="true" />مسار التفويض
         </div>
-        <StatusPill tone="openCode"><Bot className="h-3 w-3" aria-hidden="true" /> Big Pickle</StatusPill>
+        <StatusPill tone="openCode"><Bot className="h-3 w-3" aria-hidden="true" /> {modelLabel}</StatusPill>
       </div>
       <p className="mt-2 text-[11px] leading-5 text-ink-soft">ما يرسله Codex إلى OpenCode، وما يرد به، يظهر هنا كما هو.</p>
     </div>
@@ -80,7 +87,8 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
               </div>
             </div>
             <div className="mt-2.5">
-              <ModelPicker models={models} selected={model} onSelect={onModelChange} disabled={activity.active} />
+              <ModelPicker models={models} selected={model} onSelect={onModelChange} disabled={activity.active || changingModel} />
+              {modelError ? <ErrorNote>{modelError}</ErrorNote> : null}
             </div>
           </div>
 

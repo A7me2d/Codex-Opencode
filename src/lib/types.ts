@@ -83,6 +83,8 @@ export interface OpenCodeActivity {
 
 export interface HandoffData {
   link: HandoffLink | null
+  /** `providerID/modelID` this conversation runs OpenCode on. */
+  model?: string
   messages: unknown[]
   /** A question OpenCode cannot continue without; answered from the rail. */
   forms: unknown[]
@@ -124,4 +126,12 @@ export interface ModelInfo {
   variants: string[]
   /** Can this model run agentic tool loops at all? */
   tools: boolean
+}
+
+/** The result of pointing one conversation at a different OpenCode model. */
+export interface OpenCodeModelChange {
+  /** The selector now in effect. */
+  model: string
+  /** The provider's own label, for the confirmation notice. */
+  name?: string
 }

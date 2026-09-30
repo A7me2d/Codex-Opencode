@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { AlertStack } from './features/alerts/AlertStack'
@@ -6,10 +5,6 @@ import { CodexConversation } from './features/codex/CodexConversation'
 import { SessionList } from './features/codex/SessionList'
 import { HandoffRail } from './features/opencode/HandoffRail'
 import { useRelayRoom } from './hooks/useRelayRoom'
-
-/** The default implementer: Zen's free Big Pickle. */
-const defaultModel = 'opencode/big-pickle'
-const modelStorageKey = 'relay-room:model'
 
 /**
  * Relay Room — layout only.
@@ -21,11 +16,6 @@ const modelStorageKey = 'relay-room:model'
 export default function App() {
   const room = useRelayRoom()
   const { conversation } = room
-
-  // The chosen OpenCode model is a desk preference, not a server setting: it
-  // survives reloads and applies to every new handoff.
-  const [model, setModel] = useState(() => localStorage.getItem(modelStorageKey) ?? defaultModel)
-  useEffect(() => { localStorage.setItem(modelStorageKey, model) }, [model])
 
   return <div dir="rtl" className="flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
     <AlertStack alerts={room.alerts.list} onDismiss={room.alerts.onDismiss} />
@@ -91,8 +81,10 @@ export default function App() {
           onRefresh={conversation.refreshHandoff}
           onNotify={room.alerts.notify}
           models={room.models.data ?? []}
-          model={model}
-          onModelChange={setModel}
+          model={conversation.model.current}
+          onModelChange={conversation.model.onChange}
+          changingModel={conversation.model.changing}
+          modelError={conversation.model.error}
         />
       </ErrorBoundary>
     </main>

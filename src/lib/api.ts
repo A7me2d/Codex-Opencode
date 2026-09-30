@@ -6,7 +6,7 @@
  * the same `apiBase` prefix.
  */
 import { config } from '../app/config'
-import type { CodexItem, CodexStatus, CodexThread, CodexTurnState, HandoffData, ModelInfo, OpenCodeStatus, ProjectInfo, RelayEvent } from './types'
+import type { CodexItem, CodexStatus, CodexThread, CodexTurnState, HandoffData, ModelInfo, OpenCodeModelChange, OpenCodeStatus, ProjectInfo, RelayEvent } from './types'
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${config.apiBase}${url}`, {
@@ -70,6 +70,12 @@ export const api = {
 
   // Models: what the local OpenCode install can run
   models: () => requestJson<{ data: ModelInfo[] }>('/api/models').then(unwrap),
+
+  // Which model one conversation runs OpenCode on
+  threadModel: (threadId: string) =>
+    requestJson<{ data: { model: string } }>(`/api/codex/threads/${threadId}/opencode/model`).then(unwrap),
+  setThreadModel: (threadId: string, model: string) =>
+    post<{ data: OpenCodeModelChange }>(`/api/codex/threads/${threadId}/opencode/model`, { model }).then(unwrap),
 
   // Answering a question OpenCode raised
   replyToForm: (sessionId: string, formId: string, answer: Record<string, string>) =>

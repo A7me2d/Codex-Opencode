@@ -39,6 +39,15 @@ export interface ConversationController {
   composer: ComposerState
   turn: CodexTurnState
   refreshHandoff: () => void
+  model: OpenCodeModel
+}
+
+export interface OpenCodeModel {
+  /** `providerID/modelID` in effect for this conversation. */
+  current: string
+  changing: boolean
+  error: string | null
+  onChange: (selector: string) => void
 }
 
 /** Draft text plus the file paths that will travel with it. */
@@ -64,10 +73,15 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const [attaching, setAttaching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [queued, setQueued] = useState<{ threadId: string; text: string } | null>(null)
+  const [modelChange, setModelChange] = useState<{ changing: boolean; error: string | null }>({ changing: false, error: null })
 
   const messages = usePolling(() => (threadId ? api.messages(threadId) : null), config.poll.codexMessagesMs, { resetKey: scope })
   const turnRequest = usePolling(() => (threadId ? api.turnState(threadId) : null), config.poll.turnStateMs, { resetKey: scope })
   const handoff = usePolling(() => (threadId ? api.handoff(threadId) : null), config.poll.handoffMs, { resetKey: scope })
+
+  // The model is a property of the conversation: the server reports the one
+  // the live OpenCode session really runs, and remembers it per thread.
+  const currentModel = handoff.data?.model ?? ''
 
   const reported = turnRequest.data ?? { active: false }
   const turn = useMemo<CodexTurnState>(() => ({ ...reported, stopping: Boolean(reported.stopping || stopping) }), [reported, stopping])
@@ -168,6 +182,25 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     setAttachments((current) => current.filter((entry) => entry !== path))
   }, [])
 
+  /**
+   * Point this conversation at a different OpenCode model.
+   *
+   * The server owns the truth: it records the choice, pushes it to the live
+   * session, and answers with a readable reason when OpenCode refuses. The
+   * handoff is re-read afterwards so the rail shows what the session really
+   * runs rather than what was requested.
+   */
+  const changeModel = useCallback((selector: string) => {
+    if (!threadId || !selector || selector === currentModel) return
+    setModelChange({ changing: true, error: null })
+    void api.setThreadModel(threadId, selector).then(async () => {
+      setModelChange({ changing: false, error: null })
+      await refreshAll()
+    }).catch((failure: unknown) => {
+      setModelChange({ changing: false, error: failure instanceof Error ? failure.message : 'تعذّر تغيير الموديل.' })
+    })
+  }, [currentModel, refreshAll, threadId])
+
   return {
     view: {
       busy,
@@ -195,5 +228,11 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     },
     turn,
     refreshHandoff: () => void handoff.refresh(),
+    model: {
+      current: currentModel,
+      changing: modelChange.changing,
+      error: modelChange.error,
+      onChange: changeModel,
+    },
   }
 }

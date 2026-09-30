@@ -1200,16 +1200,22 @@ async function readOpenCodeHandoff(codexThreadId) {
   const link = state.links[codexThreadId]
   // The chosen model is a property of the conversation, not of the OpenCode
   // session, so it is reported even before a session exists for this thread.
-  const model = state.threads[codexThreadId]?.openCodeModel ?? defaultOpenCodeModel
+  const chosen = state.threads[codexThreadId]?.openCodeModel ?? defaultOpenCodeModel
   if (!link?.opencodeSessionId) {
-    return { link: null, model, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
+    return { link: null, model: chosen, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
   }
 
+  let session
   try {
-    await requireScopedSession(link.opencodeSessionId)
+    session = await requireScopedSession(link.opencodeSessionId)
   } catch {
-    return { link: null, model, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
+    return { link: null, model: chosen, messages: [], forms: [], inbox: [], active: false, activity: describeOpenCodeActivity([], false) }
   }
+
+  // A session can be pointed elsewhere from outside Relay Room, so the rail
+  // reports what the session is really running, and falls back to the choice
+  // only when OpenCode does not say.
+  const model = modelPayloadToSelector(session?.model) || chosen
 
   const sessionId = link.opencodeSessionId
   const [messagesResponse, formsResponse, inboxResponse, activeResponse] = await Promise.all([
