@@ -67,6 +67,13 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
         <StatusPill tone="openCode"><Bot className="h-3 w-3" aria-hidden="true" /> {modelLabel}</StatusPill>
       </div>
       <p className="mt-2 text-[11px] leading-5 text-ink-soft">ما يرسله Codex إلى OpenCode، وما يرد به، يظهر هنا كما هو.</p>
+      {/* The model belongs to the conversation, not to the OpenCode session, so
+          it is choosable before the first handoff — the choice is applied when
+          that handoff creates the session. */}
+      <div className="mt-3">
+        <ModelPicker models={models} selected={model} onSelect={onModelChange} disabled={activity.active || changingModel} />
+        {modelError ? <ErrorNote>{modelError}</ErrorNote> : null}
+      </div>
     </div>
 
     {!thread ? <Empty>اختر جلسة Codex أولًا لرؤية أي تفويض مرتبط بها.</Empty>
@@ -85,10 +92,6 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
                 <code dir="ltr" className="ltr max-w-[7rem] truncate text-[10px] text-ink-soft" title={sessionId}>{sessionId}</code>
                 <CopyButton value={sessionId} label="معرّف" />
               </div>
-            </div>
-            <div className="mt-2.5">
-              <ModelPicker models={models} selected={model} onSelect={onModelChange} disabled={activity.active || changingModel} />
-              {modelError ? <ErrorNote>{modelError}</ErrorNote> : null}
             </div>
           </div>
 
@@ -153,6 +156,7 @@ function NoHandoff() {
       <h2 className="mt-4 text-sm font-bold text-ink">لم يُفوَّض OpenCode في هذه الجلسة</h2>
       <p className="mt-2 text-xs leading-6 text-ink-soft">
         في شات Codex اكتب <code className="rounded bg-paper px-1.5 py-0.5 font-mono text-relay-ink">$opencode</code> ثم طلب التنفيذ. لن يبدأ OpenCode بدون هذا الوسم.
+        اختر موديل التنفيذ من الأعلى الآن، وسيُستخدم عند أول تفويض.
       </p>
     </div>
   </Empty>

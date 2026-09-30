@@ -361,7 +361,7 @@ function resolveCodexExecutable() {
 const relayCodexInstructions = [
   'You are Codex inside Relay Room: the architect, reasoner, and reviewer.',
   'Do not write or edit implementation code in this thread. Explain the plan, reason about tradeoffs, and review work.',
-  'OpenCode / Big Pickle is the implementer. You may call relay.delegate_to_opencode only when the latest user message explicitly contains $opencode.',
+  'OpenCode is the implementer; it runs whichever model the operator selected for this conversation. You may call relay.delegate_to_opencode only when the latest user message explicitly contains $opencode.',
   'When it contains $opencode, call that tool immediately with the implementation request; do not inspect files or begin implementation yourself first.',
   'When the user asks to review linked OpenCode work, inspect git diff and run the most relevant existing tests, build, or lint command when the read-only environment permits it. Report evidence and delegate corrections through the same explicit $opencode route.',
   'Never claim a handoff, a test, or a code change unless the tool output or local command result confirmed it.',
@@ -376,7 +376,7 @@ const relayDynamicTools = [
       {
         type: 'function',
         name: 'delegate_to_opencode',
-        description: 'Queue the user\'s explicitly requested $opencode implementation task with OpenCode / Big Pickle.',
+        description: 'Queue the user\'s explicitly requested $opencode implementation task with OpenCode.',
         inputSchema: {
           type: 'object',
           properties: { task: { type: 'string', description: 'The implementation task from the user.' } },
@@ -977,7 +977,7 @@ async function handleCodexToolCall(params) {
       contentItems: [
         {
           type: 'inputText',
-          text: `OpenCode / Big Pickle confirmed the queued handoff in session ${link.opencodeSessionId}. Relay Room is showing its live messages in the handoff rail.`,
+          text: `OpenCode confirmed the queued handoff in session ${link.opencodeSessionId}. Relay Room is showing its live messages in the handoff rail.`,
         },
       ],
     }
@@ -1051,7 +1051,7 @@ function describeOpenCodeActivity(messages, active) {
     return { active: true, ...runningTools[runningTools.length - 1] }
   }
 
-  return { active: true, kind: 'thinking', label: 'Big Pickle يفكّر في الخطوة التالية' }
+  return { active: true, kind: 'thinking', label: 'OpenCode يفكّر في الخطوة التالية' }
 }
 
 function isOpenCodeSessionActive(activeResponse, sessionId) {
@@ -1115,23 +1115,42 @@ async function setThreadOpenCodeModel(codexThreadId, input) {
   const payload = modelSelectorToPayload(selector)
   if (!payload) throw new HttpError(400, 'Send a model as providerID/modelID.')
 
-  const models = await listOpenCodeModels()
+  const state = await readCodexState()
+  const link = state.links[id]
+  const linkedSessionId = link?.opencodeSessionId && safeSessionId(link.opencodeSessionId)
+    ? link.opencodeSessionId
+    : null
+
+  // Order matters for diagnosis. An out-of-scope session and an unknown model
+  // are different problems, and both used to surface to the operator as
+  // "that model is not available" — which sends them looking in the wrong place.
+  if (linkedSessionId) {
+    await requireScopedSession(linkedSessionId)
+    const activeResponse = await openCodeApi('GET', '/api/session/active')
+    if (isOpenCodeSessionActive(activeResponse, linkedSessionId)) {
+      throw new HttpError(409, 'OpenCode is working right now — switch the model when the current run ends.')
+    }
+  }
+
+  let models
+  try {
+    models = await listOpenCodeModels()
+  } catch (error) {
+    throw new HttpError(502, `Relay Room could not read the model list from OpenCode (${publicError(error)}).`)
+  }
+  if (models.length === 0) {
+    throw new HttpError(502, 'OpenCode returned an empty model list, so the model cannot be changed yet. Try again in a moment.')
+  }
+
   const chosen = models.find((model) => model.id === selector)
   if (!chosen) throw new HttpError(404, 'That model is not available in this OpenCode install.')
   if (!chosen.tools) throw new HttpError(409, 'That model cannot run tool loops, so it cannot implement work here.')
 
-  const state = await readCodexState()
-  const link = state.links[id]
-
-  if (link?.opencodeSessionId && safeSessionId(link.opencodeSessionId)) {
-    await requireScopedSession(link.opencodeSessionId)
-    const activeResponse = await openCodeApi('GET', '/api/session/active')
-    if (isOpenCodeSessionActive(activeResponse, link.opencodeSessionId)) {
-      throw new HttpError(409, 'OpenCode is working right now — switch the model when the current run ends.')
-    }
-
-    await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/model`, { model: payload })
-    const live = modelPayloadToSelector((await requireScopedSession(link.opencodeSessionId))?.model)
+  // A conversation with no OpenCode session yet can still choose: the choice is
+  // stored now and used when the first handoff creates that session.
+  if (linkedSessionId) {
+    await openCodeApi('POST', `/api/session/${linkedSessionId}/model`, { model: payload })
+    const live = modelPayloadToSelector((await requireScopedSession(linkedSessionId))?.model)
     if (live !== selector) throw new Error('OpenCode did not confirm the model change.')
   }
 
@@ -1494,7 +1513,7 @@ const server = createServer(async (request, response) => {
       await appendRelayEvent({
         role: 'system',
         kind: 'session-opened',
-        message: `Opened “${title}” with OpenCode / Big Pickle.`,
+        message: `Opened “${title}” with OpenCode.`,
         sessionId: session.id,
       })
       sendJson(response, 201, { data: session })
