@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+/*
+ * Relay Room — Arabic-first task desk.
+ * A calm, light "work desk" palette. No gradients, no neon, no dark control room.
+ */
+@theme {
+  /* Surfaces */
+  --color-paper: #f6f7fb;
+  --color-card: #ffffff;
+  --color-line: #dde3ef;
+  --color-line-strong: #8490ab;
+
+  /* Text */
+  --color-ink: #172033;
+  --color-ink-soft: #4c5a72;
+
+  /* Accents (the palette brief) */
+  --color-relay: #276ef1; /* Relay blue   */
+  --color-ready: #0b8f69; /* Ready green  */
+  --color-review: #c58519; /* Review amber */
+
+  /* Text-safe variants of the same hues, so small labels stay AA-legible on tints. */
+  --color-relay-ink: #1b54c4;
+  --color-ready-ink: #076b4e;
+  --color-review-ink: #8a5b10;
+
+  /* Tinted backgrounds */
+  --color-relay-tint: #e8f0fe;
+  --color-ready-tint: #e6f5f0;
+  --color-review-tint: #fdf3e2;
+
+  --font-sans: "Segoe UI", "Noto Sans Arabic", "Dubai", Tahoma, system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+
+  /* Latin-only payloads (code, paths, IDs) must never be reordered by the RTL shell. */
+  [dir="rtl"] code,
+  [dir="rtl"] pre,
+  [dir="rtl"] kbd,
+  [dir="rtl"] samp,
+  [dir="rtl"] .ltr {
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: start;
+  }
+
+  [dir="rtl"] .ltr {
+    text-align: left;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-relay);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: #d8e5fd;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
