@@ -1,4 +1,4 @@
-import { GitPullRequestArrow, RefreshCw, TriangleAlert, Wifi, WifiOff } from 'lucide-react'
+import { GitPullRequestArrow, RefreshCw, RotateCcw, TriangleAlert, Wifi, WifiOff } from 'lucide-react'
 import { config } from '../app/config'
 import { StateDot } from './ui/StateDot'
 import { StatusPill } from './ui/StatusPill'
@@ -10,10 +10,11 @@ export interface AppHeaderProps {
   /** A failure that happened in the shell itself (create session, open folder). */
   shellError: string | null
   onRefresh: () => void
+  onResetLayout: () => void
 }
 
 /** Fixed top bar: who we are, and whether each agent is reachable right now. */
-export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onRefresh }: AppHeaderProps) {
+export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onRefresh, onResetLayout }: AppHeaderProps) {
   return <header className="shrink-0 border-b border-line bg-card px-4 py-3.5 sm:px-6">
     <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div className="flex items-center gap-3">
@@ -35,6 +36,9 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
           <StateDot active={openCodeOnline} warning={!openCodeOnline} />
           {openCodeOnline ? 'OpenCode متاح' : 'OpenCode لا يرد'}
         </StatusPill>
+        <button type="button" onClick={onResetLayout} title="إعادة أعمدة الواجهة إلى المقاس الافتراضي" className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-bold text-ink-soft transition-colors hover:border-relay/40 hover:text-relay-ink">
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />إعادة ضبط العرض
+        </button>
         <button type="button" onClick={onRefresh} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-bold text-ink-soft transition-colors hover:border-relay/40 hover:text-relay-ink">
           <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />تحديث
         </button>

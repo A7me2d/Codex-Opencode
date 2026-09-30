@@ -19,6 +19,8 @@ export interface ConversationView {
 export interface ComposerState {
   draft: string
   queued: string | null
+  /** Files waiting to travel with the next message. */
+  queuedAttachments: string[]
   attachments: string[]
   sending: boolean
   attaching: boolean
@@ -72,7 +74,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const [stopping, setStopping] = useState(false)
   const [attaching, setAttaching] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [queued, setQueued] = useState<{ threadId: string; text: string } | null>(null)
+  const [queued, setQueued] = useState<{ threadId: string; text: string; attachments: string[] } | null>(null)
   const [modelChange, setModelChange] = useState<{ changing: boolean; error: string | null }>({ changing: false, error: null })
 
   const messages = usePolling(() => (threadId ? api.messages(threadId) : null), config.poll.codexMessagesMs, { resetKey: scope })
@@ -103,13 +105,19 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     await Promise.all([messages.refresh(), turnRequest.refresh(), handoff.refresh()])
   }, [handoff, messages, turnRequest])
 
-  const send = useCallback(async (override?: string) => {
-    const text = override ?? messageOf(draft, attachments)
+  // `files` defaults to whatever is in the box, so a parked message re-sends
+  // with exactly the files it was parked with.
+  const send = useCallback(async (override?: string, files?: string[]) => {
+    const attached = files ?? attachments
+    const text = override ?? messageOf(draft, attached)
     if (!threadId || !text || sending || turn.active) return false
     setSending(true)
     setError(null)
     try {
-      await api.sendMessage(threadId, text)
+      // The files are sent as paths as well as being part of the text: Codex
+      // reads the text, and the server uses the paths to tell OpenCode which
+      // files the work is about.
+      await api.sendMessage(threadId, text, attached)
       if (override === undefined) { setDraft(''); setAttachments([]) }
       await refreshAll()
       return true
@@ -126,7 +134,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const park = useCallback(() => {
     const text = messageOf(draft, attachments)
     if (!threadId || !text) return
-    setQueued({ threadId, text })
+    setQueued({ threadId, text, attachments })
     setDraft('')
     setAttachments([])
   }, [attachments, draft, threadId])
@@ -140,13 +148,20 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   // every keystroke.
   const parkedRef = useRef(parkedText)
   parkedRef.current = parkedText
+  const parkedFiles = queued?.threadId === scope ? queued.attachments : null
+  const parkedFilesRef = useRef(parkedFiles)
+  parkedFilesRef.current = parkedFiles
   useEffect(() => {
     if (!parkedRef.current || turn.active || sending) return
     const text = parkedRef.current
+    const files = parkedFilesRef.current ?? []
     setQueued(null)
-    void send(text).then((delivered) => {
+    void send(text, files).then((delivered) => {
       // Never swallow what was typed: a failed hand-off goes back to the box.
-      if (!delivered) setDraft((current) => (current.trim() ? current : text))
+      if (!delivered) {
+        setDraft((current) => (current.trim() ? current : text))
+        setAttachments((current) => (current.length > 0 ? current : files))
+      }
     })
   }, [send, sending, turn.active])
 
@@ -169,14 +184,15 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     setAttaching(true)
     setError(null)
     try {
-      const selection = await api.selectProjectFile()
+      // Open the picker in the project this conversation works in.
+      const selection = await api.selectProjectFile(thread?.directory)
       if (selection?.path) setAttachments((current) => (current.includes(selection.path) ? current : [...current, selection.path]))
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'تعذر اختيار ملف من المشروع.')
     } finally {
       setAttaching(false)
     }
-  }, [attaching, busy, threadId])
+  }, [attaching, busy, thread?.directory, threadId])
 
   const removeAttachment = useCallback((path: string) => {
     setAttachments((current) => current.filter((entry) => entry !== path))
@@ -223,6 +239,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       onSend: () => void send(),
       onSendText: (text: string) => void send(text),
       queued: parkedText,
+      queuedAttachments: parkedFiles ?? [],
       sending,
       onStop: () => void stop(),
     },

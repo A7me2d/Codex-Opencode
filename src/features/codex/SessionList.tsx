@@ -16,12 +16,14 @@ export interface SessionListProps {
   workRoot?: string
   onOpenProject: () => void
   onOpenWorkRoot: () => void
+  onChooseWorkRoot: () => void
   onOpenThreadFolder: (threadId: string) => void
   openingProject: boolean
+  choosingWorkRoot: boolean
 }
 
 /** Left column: the Codex conversations Relay Room owns, plus the project scope. */
-export function SessionList({ threads, selectedId, onSelect, onCreate, creating, connected, projectDirectory, workRoot, onOpenProject, onOpenWorkRoot, onOpenThreadFolder, openingProject }: SessionListProps) {
+export function SessionList({ threads, selectedId, onSelect, onCreate, creating, connected, projectDirectory, workRoot, onOpenProject, onOpenWorkRoot, onChooseWorkRoot, onOpenThreadFolder, openingProject, choosingWorkRoot }: SessionListProps) {
   const projectCount = threads.filter((thread) => thread.inProject).length
   const externalCount = threads.length - projectCount
   return (
@@ -46,6 +48,13 @@ export function SessionList({ threads, selectedId, onSelect, onCreate, creating,
       <div className="shrink-0 border-b border-line p-3">
         {/* Two different folders, both worth reaching: the project sessions
             run in, and the folder this app's own code lives in. */}
+        <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot} className="mb-2 flex w-full items-center gap-2 rounded-lg border border-ready/30 bg-ready-tint px-3 py-2.5 text-right text-xs text-ready-ink transition-colors hover:border-ready/50 hover:bg-ready-tint/80 disabled:cursor-not-allowed disabled:opacity-55" aria-label="اختر مجلد المشروع من جهازك">
+          {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-ready" aria-hidden="true" /> : <FolderTree className="h-4 w-4 shrink-0 text-ready" aria-hidden="true" />}
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">اختَر مجلد المشروع</span>
+            <span className="mt-0.5 block text-[10px] font-normal text-ready-ink/75">يفتح مستعرض Windows لاختيار مكان العمل</span>
+          </span>
+        </button>
         <button type="button" onClick={onOpenWorkRoot} disabled={openingProject} className="flex w-full items-center gap-2 rounded-lg border border-relay/30 bg-relay-tint/60 px-3 py-2.5 text-right text-xs text-ink transition-colors hover:border-relay/50 hover:bg-relay-tint disabled:cursor-not-allowed disabled:opacity-55" aria-label="فتح مجلد المشروع الذي تعمل عليه">
           {openingProject ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-relay" aria-hidden="true" /> : <FolderTree className="h-4 w-4 shrink-0 text-relay" aria-hidden="true" />}
           <span className="min-w-0 flex-1">

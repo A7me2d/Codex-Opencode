@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
@@ -12,6 +12,7 @@ const distDirectory = path.join(appDirectory, 'dist')
 const stateDirectory = path.join(appDirectory, '.relay-state')
 const eventsPath = path.join(stateDirectory, 'events.json')
 const codexStatePath = path.join(stateDirectory, 'codex.json')
+const workRootStatePath = path.join(stateDirectory, 'work-root.json')
 const maxBodyBytes = 256 * 1024
 const getTimeoutMs = 30_000
 const postTimeoutMs = 15 * 60_000
@@ -47,14 +48,37 @@ function option(name) {
 
 function resolveExistingDirectory(target) {
   const resolved = path.resolve(target)
-  if (!existsSync(resolved)) {
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
     throw new Error(`The project root does not exist: ${resolved}`)
   }
   return resolved
 }
 
 const defaultRoot = path.resolve(appDirectory, '..', '..')
-const watchRoot = resolveExistingDirectory(option('--root') ?? process.env.WATCH_ROOT ?? defaultRoot)
+
+/** A folder chosen from the UI survives a normal Relay Room restart. */
+function readSavedWorkRoot() {
+  try {
+    const saved = JSON.parse(readFileSync(workRootStatePath, 'utf8'))
+    const directory = typeof saved?.directory === 'string' ? saved.directory.trim() : ''
+    return directory && existsSync(directory) && statSync(directory).isDirectory()
+      ? path.resolve(directory)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// An explicit launch option still wins over a previously selected folder.
+let watchRoot = resolveExistingDirectory(option('--root') ?? process.env.WATCH_ROOT ?? readSavedWorkRoot() ?? defaultRoot)
+
+async function setWorkRoot(directory) {
+  const resolved = resolveExistingDirectory(directory)
+  watchRoot = resolved
+  await mkdir(stateDirectory, { recursive: true })
+  await writeFile(workRootStatePath, JSON.stringify({ directory: resolved, updatedAt: Date.now() }, null, 2), 'utf8')
+  return resolved
+}
 const requestedPort = Number(option('--port') ?? process.env.OPENCODE_OBSERVER_PORT ?? 4280)
 const port = Number.isInteger(requestedPort) && requestedPort > 0 ? requestedPort : 4280
 
@@ -92,10 +116,20 @@ function openDirectory(target) {
   })
 }
 
-function selectProjectFile() {
+/**
+ * The Windows file picker, started inside a folder that is actually useful.
+ *
+ * It used to open in the folder Relay Room's own code lives in, which is almost
+ * never where the work is, and it refused any file outside it. Now it opens in
+ * the project being worked on and accepts anything in there.
+ */
+function selectProjectFile(initialDirectoryOverride) {
   if (process.platform !== 'win32') throw new HttpError(501, 'Choosing a local project file is currently available on Windows only.')
 
-  const initialDirectory = powerShellSingleQuoted(projectDirectory)
+  const allowedRoot = initialDirectoryOverride && existsSync(initialDirectoryOverride)
+    ? path.resolve(initialDirectoryOverride)
+    : watchRoot
+  const initialDirectory = powerShellSingleQuoted(allowedRoot)
   const script = [
     'Add-Type -AssemblyName System.Windows.Forms',
     '$dialog = New-Object System.Windows.Forms.OpenFileDialog',
@@ -131,11 +165,68 @@ function selectProjectFile() {
         resolve(null)
         return
       }
-      if (!isInside(projectDirectory, selectedPath)) {
-        reject(new HttpError(400, 'Choose a file inside this Relay Room project.'))
+      const resolved = path.resolve(selectedPath)
+      // Anything under the project being worked on is fair game; the folder the
+      // app itself runs from stays allowed so its own files remain attachable.
+      if (!isInside(allowedRoot, resolved) && !isInside(projectDirectory, resolved)) {
+        reject(new HttpError(400, `Choose a file inside the project: ${allowedRoot}`))
         return
       }
-      resolve(path.resolve(selectedPath))
+      resolve(resolved)
+    })
+  })
+}
+
+/**
+ * Lets the operator change the folder Relay Room treats as the active project.
+ *
+ * This is deliberately a native folder picker rather than a text field. The
+ * path controls new Codex conversations, standalone OpenCode sessions, and the
+ * project-scoped session list, so a typo here would make the room misleading.
+ */
+function selectProjectFolder(initialDirectoryOverride = watchRoot) {
+  if (process.platform !== 'win32') throw new HttpError(501, 'Choosing a project folder is currently available on Windows only.')
+
+  const initialDirectory = powerShellSingleQuoted(resolveExistingDirectory(initialDirectoryOverride))
+  const script = [
+    'Add-Type -AssemblyName System.Windows.Forms',
+    '$dialog = New-Object System.Windows.Forms.FolderBrowserDialog',
+    `$dialog.SelectedPath = '${initialDirectory}'`,
+    '$dialog.Description = "Choose the folder Codex and OpenCode should work in"',
+    '$dialog.ShowNewFolderButton = $true',
+    '$result = $dialog.ShowDialog()',
+    'if ($result -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Write($dialog.SelectedPath) }',
+  ].join('; ')
+
+  return new Promise((resolve, reject) => {
+    let stdout = ''
+    let stderr = ''
+    const child = spawn('powershell.exe', ['-NoProfile', '-STA', '-Command', script], {
+      cwd: projectDirectory,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: false,
+    })
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.once('error', reject)
+    child.once('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || 'The Windows folder picker could not be opened.'))
+        return
+      }
+      const selectedPath = stdout.trim()
+      if (!selectedPath) {
+        resolve(null)
+        return
+      }
+      try {
+        resolve(resolveExistingDirectory(selectedPath))
+      } catch (error) {
+        reject(error)
+      }
     })
   })
 }
@@ -374,6 +465,7 @@ const relayCodexInstructions = [
   'Do not write or edit implementation code in this thread. Explain the plan, reason about tradeoffs, and review work.',
   'OpenCode is the implementer; it runs whichever model the operator selected for this conversation. You may call relay.delegate_to_opencode only when the latest user message explicitly contains $opencode.',
   'When it contains $opencode, call that tool immediately with the implementation request; do not inspect files or begin implementation yourself first.',
+  'The handoff already carries the project folder and any attached file paths, so do not restate them; give OpenCode the instruction itself.',
   'When the user asks to review linked OpenCode work, inspect git diff and run the most relevant existing tests, build, or lint command when the read-only environment permits it. Report evidence and delegate corrections through the same explicit $opencode route.',
   'Never claim a handoff, a test, or a code change unless the tool output or local command result confirmed it.',
 ].join('\n')
@@ -670,8 +762,8 @@ class CodexAppServerBridge {
     return resume
   }
 
-  allowDelegation(threadId, task) {
-    this.delegationGrants.set(threadId, { task, turnId: null, expiresAt: Date.now() + 10 * 60_000, used: false })
+  allowDelegation(threadId, task, attachments = []) {
+    this.delegationGrants.set(threadId, { task, attachments, turnId: null, expiresAt: Date.now() + 10 * 60_000, used: false })
   }
 
   bindDelegationTurn(threadId, turnId) {
@@ -866,7 +958,27 @@ async function listAllCodexThreads() {
   const remote = Array.isArray(response?.data) ? response.data : []
   adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
 
-  return remote
+  // Codex does not include a freshly started, empty app-server thread in
+  // `thread/list` until it has a rollout item. Relay Room owns that thread
+  // already, though, and the UI must be able to select it immediately. Merge
+  // only threads held active by this bridge: after a restart an empty thread
+  // cannot reliably be resumed, so a saved-state entry alone is not enough.
+  const remoteIds = new Set(remote.map((thread) => safeCodexThreadId(thread?.id)).filter(Boolean))
+  const activeLocalOnly = Object.values(state.threads)
+    .filter((saved) => {
+      const id = safeCodexThreadId(saved?.id)
+      return id && !remoteIds.has(id) && codexBridge.activeThreads.has(id)
+    })
+    .map((saved) => ({
+      id: saved.id,
+      name: saved.title,
+      title: saved.title,
+      cwd: saved.directory,
+      updatedAt: saved.updatedAt,
+      createdAt: saved.createdAt,
+    }))
+
+  return [...remote, ...activeLocalOnly]
     .filter((thread) => safeCodexThreadId(thread?.id))
     .map((thread) => {
       const saved = state.threads[thread.id]
@@ -964,7 +1076,8 @@ async function sendRelayCodexMessage(threadId, input) {
   if (delegation.hasExplicitTag && !delegation.task) {
     throw new HttpError(400, 'Write the OpenCode request after $opencode.')
   }
-  if (delegation.hasExplicitTag) codexBridge.allowDelegation(threadId, delegation.task)
+  const attachments = readableAttachments(input)
+  if (delegation.hasExplicitTag) codexBridge.allowDelegation(threadId, delegation.task, attachments)
 
   try {
     const response = await codexBridge.call('turn/start', {
@@ -984,6 +1097,52 @@ async function sendRelayCodexMessage(threadId, input) {
   }
 }
 
+/**
+ * The folder a delegated task is about.
+ *
+ * OpenCode cannot know which project the operator means: it is started from a
+ * root that may be a whole drive, so every handoff states the folder explicitly.
+ * The conversation's own recorded folder wins, because a session opened from
+ * another project must not be re-pointed at this one.
+ */
+async function handoffDirectory(codexThreadId) {
+  const state = await readCodexState()
+  const saved = state.threads[codexThreadId]?.directory
+  if (typeof saved === 'string' && saved && existsSync(saved)) return saved
+  return watchRoot
+}
+
+/** Only paths that exist are worth mentioning; a stale path wastes a turn. */
+function readableAttachments(input) {
+  const list = Array.isArray(input?.attachments) ? input.attachments : []
+  return [...new Set(list
+    .map((entry) => String(entry ?? '').replaceAll('\u0000', '').trim())
+    .filter((entry) => entry && entry.length <= 400))]
+}
+
+/**
+ * The task text OpenCode receives.
+ *
+ * The folder block is generated here rather than in the browser so it is always
+ * truthful, and it is prefixed to the task so the instruction stays the last
+ * thing OpenCode reads.
+ */
+function withHandoffContext(task, directory, attachments) {
+  const lines = [
+    '[Relay Room handoff]',
+    `- Project folder: ${directory}`,
+  ]
+  if (attachments.length > 0) {
+    lines.push('- Files in scope:')
+    for (const file of attachments) lines.push(`  - ${file}`)
+    lines.push('Treat these paths as relative to the project folder above unless they are absolute.')
+  } else {
+    lines.push('- No specific files were named; work inside the project folder above.')
+  }
+  lines.push('[End Relay Room handoff]')
+  return `${lines.join('\n')}\n\n${task}`
+}
+
 async function ensureOpenCodeLink(codexThreadId, task) {
   const state = await readCodexState()
   let link = state.links[codexThreadId]
@@ -999,14 +1158,18 @@ async function ensureOpenCodeLink(codexThreadId, task) {
 
   const title = shortThreadTitle(`Codex · ${task}`)
   const model = state.threads[codexThreadId]?.openCodeModel ?? defaultOpenCodeModel
+  // Create the session in the folder the work is about, not in whatever root
+  // this instance happens to watch. That is what makes OpenCode pick the right
+  // project without being told twice.
+  const directory = await handoffDirectory(codexThreadId)
   const created = await openCodeApi('POST', '/api/session', {
     title,
     model: modelSelectorToPayload(model) ?? modelSelectorToPayload(defaultOpenCodeModel),
-    location: { directory: watchRoot },
+    location: { directory },
   })
   const session = created?.data
-  if (!session?.id || !session?.location?.directory || !isInside(watchRoot, session.location.directory)) {
-    throw new Error('OpenCode returned a session outside the selected project scope.')
+  if (!session?.id || !session?.location?.directory) {
+    throw new Error('OpenCode did not report where it created the session.')
   }
 
   link = {
@@ -1014,6 +1177,7 @@ async function ensureOpenCodeLink(codexThreadId, task) {
     opencodeSessionId: session.id,
     title,
     model,
+    directory,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -1023,9 +1187,11 @@ async function ensureOpenCodeLink(codexThreadId, task) {
   return link
 }
 
-async function delegateToOpenCode(codexThreadId, task) {
+async function delegateToOpenCode(codexThreadId, task, attachments = []) {
   const link = await ensureOpenCodeLink(codexThreadId, task)
-  const response = await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/prompt`, { text: task, delivery: 'queue' })
+  const directory = link.directory ?? (await handoffDirectory(codexThreadId))
+  const prompt = withHandoffContext(task, directory, attachments)
+  const response = await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/prompt`, { text: prompt, delivery: 'queue' })
   const receipt = response?.data
   const delivery = receipt?.delivery ?? response?.delivery
   if (!receipt?.id || receipt.sessionID !== link.opencodeSessionId || delivery !== 'queue') {
@@ -1041,6 +1207,10 @@ async function delegateToOpenCode(codexThreadId, task) {
     message: task,
     sessionId: link.opencodeSessionId,
     codexThreadId,
+    // The folder and files travel with the handoff so the rail can show exactly
+    // what OpenCode was told, instead of leaving it to be inferred.
+    directory,
+    attachments,
   })
   return link
 }
@@ -1062,7 +1232,7 @@ async function handleCodexToolCall(params) {
   }
 
   try {
-    const link = await delegateToOpenCode(params.threadId, grant.task)
+    const link = await delegateToOpenCode(params.threadId, grant.task, grant.attachments ?? [])
     return {
       success: true,
       contentItems: [
@@ -1360,13 +1530,18 @@ function isFormAnswer(value) {
 }
 
 async function listScopedSessions() {
-  const params = new URLSearchParams({ directory: watchRoot, limit: '100', order: 'desc' })
-  const response = await openCodeApi('GET', `/api/session?${params.toString()}`)
-  const sessions = Array.isArray(response.data) ? response.data : []
+  const state = await readCodexState()
+  const linkedSessionIds = new Set(
+    Object.values(state.links)
+      .map((link) => safeSessionId(link?.opencodeSessionId))
+      .filter(Boolean),
+  )
+  const response = await openCodeApi('GET', '/api/session?limit=200&order=desc')
+  const sessions = Array.isArray(response?.data) ? response.data : []
 
   return sessions.filter((session) => {
     const directory = session?.location?.directory
-    return typeof directory === 'string' && isInside(watchRoot, directory)
+    return (typeof directory === 'string' && isInside(watchRoot, directory)) || linkedSessionIds.has(session?.id)
   })
 }
 
@@ -1375,7 +1550,7 @@ async function requireScopedSession(sessionId) {
   if (!id) throw new HttpError(400, 'Invalid session id.')
 
   const session = (await listScopedSessions()).find((candidate) => candidate.id === id)
-  if (!session) throw new HttpError(404, 'This session is not in the selected project scope.')
+  if (!session) throw new HttpError(404, 'This session is not in the selected project scope or linked to a Codex conversation.')
   return session
 }
 
@@ -1562,6 +1737,27 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/project/select-folder') {
+      const previous = watchRoot
+      const selected = await selectProjectFolder(previous)
+      if (!selected) {
+        sendJson(response, 200, { data: { directory: watchRoot, changed: false } })
+        return
+      }
+
+      const directory = await setWorkRoot(selected)
+      const changed = path.resolve(previous) !== directory
+      if (changed) {
+        await appendRelayEvent({
+          role: 'operator',
+          kind: 'project-folder-changed',
+          message: `Changed the Relay Room project folder to ${directory}.`,
+        })
+      }
+      sendJson(response, 200, { data: { directory, changed } })
+      return
+    }
+
     // Open the folder a specific session belongs to, which may be another project.
     const openThreadFolderMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/open-folder$/)
     if (openThreadFolderMatch) {
@@ -1575,7 +1771,9 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === 'POST' && url.pathname === '/api/project/select-file') {
-      const selectedPath = await selectProjectFile()
+      const body = await readJson(request)
+      const requestedDirectory = typeof body?.directory === 'string' && body.directory ? body.directory : undefined
+      const selectedPath = await selectProjectFile(requestedDirectory)
       sendJson(response, 200, { data: selectedPath ? { path: selectedPath } : null })
       return
     }
@@ -1712,6 +1910,50 @@ const server = createServer(async (request, response) => {
     if (openCodeSessionStopMatch) {
       if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported for stopping a session.')
       sendJson(response, 202, { data: await interruptOpenCodeSessionById(openCodeSessionStopMatch[1]) })
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/opencode/sessions') {
+      const input = await readJson(request)
+      const title = String(input?.title ?? 'Relay Room session').replaceAll('\u0000', '').trim().slice(0, 120) || 'Relay Room session'
+
+      // A standalone chat names its own folder and model, since there is no
+      // Codex conversation to inherit either from.
+      const requestedDirectory = String(input?.directory ?? '').trim()
+      const directory = requestedDirectory && existsSync(requestedDirectory)
+        ? path.resolve(requestedDirectory)
+        : watchRoot
+      if (!isInside(watchRoot, directory)) {
+        throw new HttpError(400, `Choose a folder inside the project: ${watchRoot}`)
+      }
+
+      const requestedModel = String(input?.model ?? '').trim()
+      let payload = modelSelectorToPayload(requestedModel)
+      if (payload) {
+        const models = await listOpenCodeModels().catch(() => [])
+        const chosen = models.find((model) => model.id === requestedModel)
+        if (!chosen) throw new HttpError(404, 'That model is not available in this OpenCode install.')
+        if (!chosen.tools) throw new HttpError(409, 'That model cannot run tool loops.')
+      } else {
+        payload = modelSelectorToPayload(defaultOpenCodeModel)
+      }
+
+      const created = await openCodeApi('POST', '/api/session', {
+        title,
+        model: payload,
+        location: { directory },
+      })
+      const session = created?.data
+      if (!session?.id || !session?.location?.directory) {
+        throw new Error('OpenCode did not report where it created the session.')
+      }
+      await appendRelayEvent({
+        role: 'operator',
+        kind: 'session-opened',
+        message: `Opened “${title}” in ${directory}.`,
+        sessionId: session.id,
+      })
+      sendJson(response, 201, { data: session })
       return
     }
 

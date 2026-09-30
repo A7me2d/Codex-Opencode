@@ -14,6 +14,7 @@ import { asArray } from '../../lib/guards'
 import { readForms } from '../../lib/forms'
 import type { CodexThread, HandoffData, OpenCodeSession, RelayEvent } from '../../lib/types'
 import { SessionBrowser } from './SessionBrowser'
+import { OpenCodeChat } from './OpenCodeChat'
 import { ModelPicker } from './ModelPicker'
 import type { ModelPickerProps } from './ModelPicker'
 import { OpenCodeControls } from './OpenCodeControls'
@@ -41,12 +42,15 @@ export interface HandoffRailProps {
   /** OpenCode sessions belonging to this project, so earlier work is reachable. */
   sessions: OpenCodeSession[]
   onRefreshSessions: () => void
+  /** Folders and models offered when starting a session without Codex. */
+  workRoot?: string
+  modelIds: string[]
 }
 
 const idleActivity = { active: false, kind: 'idle' as const, label: 'لا توجد عملية OpenCode نشطة' }
 
 /** Right column: what Codex delegated to OpenCode, and what OpenCode said back. */
-export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange, changingModel, modelError, sessions, onRefreshSessions }: HandoffRailProps) {
+export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange, changingModel, modelError, sessions, onRefreshSessions, workRoot, modelIds }: HandoffRailProps) {
   const messages = useMemo(() => readOpenCodeChat(handoff?.messages), [handoff?.messages])
   const forms = useMemo(() => readForms(handoff?.forms), [handoff?.forms])
   const activity = handoff?.activity ?? idleActivity
@@ -84,6 +88,14 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
       : loading && !handoff ? <Empty><Spinner />يتم فحص مسار التفويض…</Empty>
         : !handoff?.link ? <>
           <NoHandoff />
+          <OpenCodeChat
+            sessions={sessions}
+            model={model}
+            models={modelIds}
+            workRoot={workRoot}
+            onNotify={onNotify}
+            onRefreshSessions={onRefreshSessions}
+          />
           <SessionBrowser
             sessions={sessions}
             threadDirectory={thread.directory}
@@ -158,6 +170,18 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
             linkedSessionId={sessionId}
             onNotify={onNotify}
             onRefresh={onRefreshSessions}
+          />
+
+          {/* The same OpenCode session, in a direct chat: the handoff and the
+              conversation are two views of one thing, not two features. */}
+          <OpenCodeChat
+            sessions={sessions}
+            model={model}
+            models={modelIds}
+            workRoot={workRoot}
+            linkedSessionId={sessionId}
+            onNotify={onNotify}
+            onRefreshSessions={onRefreshSessions}
           />
         </>}
   </aside>

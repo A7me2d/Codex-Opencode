@@ -49,7 +49,10 @@ export const api = {
   project: () => requestJson<{ data: ProjectInfo }>('/api/project').then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),
   openWorkRoot: () => post<{ data: { directory: string } }>('/api/project/open-work-root'),
-  selectProjectFile: () => post<{ data: { path: string } | null }>('/api/project/select-file').then(unwrap),
+  selectProjectFolder: () =>
+    post<{ data: { directory: string; changed: boolean } }>('/api/project/select-folder').then(unwrap),
+  selectProjectFile: (directory?: string) =>
+    post<{ data: { path: string } | null }>('/api/project/select-file', { directory }).then(unwrap),
 
   // Health of the two agents
   codexStatus: () => requestJson<CodexStatus>('/api/codex/status'),
@@ -60,7 +63,8 @@ export const api = {
   threads: () => requestJson<{ data: CodexThread[] }>('/api/codex/threads').then(unwrap),
   createThread: (title: string) => post<{ data: CodexThread }>('/api/codex/threads', { title }).then(unwrap),
   messages: (threadId: string) => requestJson<{ data: CodexItem[] }>(`/api/codex/threads/${threadId}/messages`).then(unwrap),
-  sendMessage: (threadId: string, text: string) => post(`/api/codex/threads/${threadId}/messages`, { text }),
+  sendMessage: (threadId: string, text: string, attachments: string[] = []) =>
+    post(`/api/codex/threads/${threadId}/messages`, { text, attachments }),
   turnState: (threadId: string) => requestJson<{ data: CodexTurnState }>(`/api/codex/threads/${threadId}/status`).then(unwrap),
   stopTurn: (threadId: string) => post(`/api/codex/threads/${threadId}/stop`),
   openThreadFolder: (threadId: string) =>
@@ -73,6 +77,12 @@ export const api = {
 
   // OpenCode sessions belonging to this project (or already linked)
   openCodeSessions: () => requestJson<{ data: OpenCodeSession[] }>('/api/opencode/sessions').then(unwrap),
+  createOpenCodeSession: (input: { title?: string; directory?: string; model?: string }) =>
+    post<{ data: { id: string } }>('/api/opencode/sessions', input).then(unwrap),
+  sessionMessages: (sessionId: string) =>
+    requestJson<{ data: unknown[] }>(`/api/sessions/${sessionId}/messages`).then((body) => body?.data ?? null),
+  sendToOpenCodeSession: (sessionId: string, text: string) =>
+    post(`/api/sessions/${sessionId}/prompt`, { text }),
   stopOpenCodeSession: (sessionId: string) => post(`/api/opencode/sessions/${sessionId}/stop`),
   openSessionFolder: (sessionId: string) =>
     post<{ data: { sessionId: string; directory: string } }>(`/api/opencode/sessions/${sessionId}/open-folder`),

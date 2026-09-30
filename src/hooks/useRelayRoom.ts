@@ -30,6 +30,7 @@ export function useRelayRoom() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [openingProject, setOpeningProject] = useState(false)
+  const [choosingWorkRoot, setChoosingWorkRoot] = useState(false)
   /** Errors from the shell itself (create thread, open folder). */
   const [shellError, setShellError] = useState<string | null>(null)
 
@@ -96,6 +97,32 @@ export function useRelayRoom() {
     }
   }, [openingProject])
 
+  // Changing the work root is separate from opening it. The picker is native
+  // so Ahmed chooses a real folder instead of having to type a Windows path.
+  const chooseWorkRoot = useCallback(async () => {
+    if (choosingWorkRoot) return
+    setChoosingWorkRoot(true)
+    setShellError(null)
+    try {
+      const result = await api.selectProjectFolder()
+      if (result.changed) {
+        await Promise.all([
+          project.refresh(),
+          codexStatus.refresh(),
+          openCodeStatus.refresh(),
+          threadList.refresh(),
+          relayEvents.refresh(),
+          openCodeSessions.refresh(),
+        ])
+        alerts.notify('تم اختيار مجلد المشروع', result.directory, 'openCode')
+      }
+    } catch (failure) {
+      setShellError(failure instanceof Error ? failure.message : 'تعذر اختيار مجلد المشروع.')
+    } finally {
+      setChoosingWorkRoot(false)
+    }
+  }, [alerts.notify, choosingWorkRoot, codexStatus, openCodeSessions, openCodeStatus, project, relayEvents, threadList])
+
   const openThreadFolder = useCallback(async (threadId: string) => {
     setShellError(null)
     try {
@@ -129,6 +156,7 @@ export function useRelayRoom() {
     events,
     creating,
     openingProject,
+    choosingWorkRoot,
     shellError,
     models,
     openCodeSessions: asArray<OpenCodeSession>(openCodeSessions.data),
@@ -136,6 +164,7 @@ export function useRelayRoom() {
     onCreateThread: () => void createThread(),
     onOpenProjectFolder: () => void openProjectFolder(),
     onOpenWorkRoot: () => void openWorkRootFolder(),
+    onChooseWorkRoot: () => void chooseWorkRoot(),
     onOpenThreadFolder: openThreadFolder,
     onRefreshAll: refreshEverything,
     onSelectThread: setSelectedId,

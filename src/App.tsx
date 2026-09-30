@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
+import { GripVertical } from 'lucide-react'
 import { AppHeader } from './components/AppHeader'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { AlertStack } from './features/alerts/AlertStack'
@@ -5,6 +7,32 @@ import { CodexConversation } from './features/codex/CodexConversation'
 import { SessionList } from './features/codex/SessionList'
 import { HandoffRail } from './features/opencode/HandoffRail'
 import { useRelayRoom } from './hooks/useRelayRoom'
+
+type PanelName = 'sessions' | 'handoff'
+type PanelSizes = Record<PanelName, number>
+
+const PANEL_SIZES_KEY = 'relay-room.panel-sizes'
+const DEFAULT_PANEL_SIZES: PanelSizes = { sessions: 272, handoff: 368 }
+const MIN_PANEL_SIZES: PanelSizes = { sessions: 224, handoff: 280 }
+const MAX_PANEL_SIZES: PanelSizes = { sessions: 420, handoff: 520 }
+const MIN_CONVERSATION_WIDTH = 352
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function loadPanelSizes(): PanelSizes {
+  if (typeof window === 'undefined') return DEFAULT_PANEL_SIZES
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(PANEL_SIZES_KEY) ?? '') as Partial<PanelSizes>
+    return {
+      sessions: clamp(Number(saved.sessions) || DEFAULT_PANEL_SIZES.sessions, MIN_PANEL_SIZES.sessions, MAX_PANEL_SIZES.sessions),
+      handoff: clamp(Number(saved.handoff) || DEFAULT_PANEL_SIZES.handoff, MIN_PANEL_SIZES.handoff, MAX_PANEL_SIZES.handoff),
+    }
+  } catch {
+    return DEFAULT_PANEL_SIZES
+  }
+}
 
 /**
  * Relay Room — layout only.
@@ -16,6 +44,68 @@ import { useRelayRoom } from './hooks/useRelayRoom'
 export default function App() {
   const room = useRelayRoom()
   const { conversation } = room
+  const layoutRef = useRef<HTMLElement>(null)
+  const [panelSizes, setPanelSizes] = useState<PanelSizes>(loadPanelSizes)
+
+  useEffect(() => {
+    window.localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(panelSizes))
+  }, [panelSizes])
+
+  const updatePanelSize = useCallback((panel: PanelName, nextSize: number) => {
+    setPanelSizes((current) => {
+      const layoutWidth = layoutRef.current?.getBoundingClientRect().width ?? window.innerWidth
+      const otherPanel = panel === 'sessions' ? 'handoff' : 'sessions'
+      const available = layoutWidth - current[otherPanel] - MIN_CONVERSATION_WIDTH
+      const maximum = Math.max(MIN_PANEL_SIZES[panel], Math.min(MAX_PANEL_SIZES[panel], available))
+      return { ...current, [panel]: clamp(nextSize, MIN_PANEL_SIZES[panel], maximum) }
+    })
+  }, [])
+
+  const startResize = useCallback((panel: PanelName, event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const startX = event.clientX
+    const startSize = panelSizes[panel]
+    const target = event.currentTarget
+    target.setPointerCapture(event.pointerId)
+
+    const finish = () => {
+      target.removeEventListener('pointermove', move)
+      target.removeEventListener('pointerup', finish)
+      target.removeEventListener('pointercancel', finish)
+    }
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      const movement = moveEvent.clientX - startX
+      updatePanelSize(panel, startSize + (panel === 'sessions' ? movement : -movement))
+    }
+
+    target.addEventListener('pointermove', move)
+    target.addEventListener('pointerup', finish)
+    target.addEventListener('pointercancel', finish)
+  }, [panelSizes, updatePanelSize])
+
+  const handleResizeKey = useCallback((panel: PanelName, event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 48 : 16
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      updatePanelSize(panel, panelSizes[panel] + step)
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      updatePanelSize(panel, panelSizes[panel] - step)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      updatePanelSize(panel, MIN_PANEL_SIZES[panel])
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      updatePanelSize(panel, MAX_PANEL_SIZES[panel])
+    }
+  }, [panelSizes, updatePanelSize])
+
+  const resetPanelSizes = useCallback(() => setPanelSizes(DEFAULT_PANEL_SIZES), [])
+  const layoutStyle = {
+    '--relay-sessions-width': `${panelSizes.sessions}px`,
+    '--relay-handoff-width': `${panelSizes.handoff}px`,
+  } as CSSProperties
 
   return <div dir="rtl" className="flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
     <AlertStack alerts={room.alerts.list} onDismiss={room.alerts.onDismiss} />
@@ -26,13 +116,19 @@ export default function App() {
       codexError={room.codexError}
       shellError={room.shellError}
       onRefresh={room.onRefreshAll}
+      onResetLayout={resetPanelSizes}
     />
 
     {/*
       Three columns, one scroll region each. `dir="ltr"` keeps the source order
       left-to-right (sessions · chat · handoff) while every column renders RTL.
     */}
-    <main dir="ltr" className="mx-auto grid w-full max-w-[1800px] flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[17rem_minmax(0,1fr)_23rem] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+    <main
+      ref={layoutRef}
+      dir="ltr"
+      style={layoutStyle}
+      className="relative mx-auto grid w-full max-w-[1800px] flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[var(--relay-sessions-width)_minmax(22rem,1fr)_var(--relay-handoff-width)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
+    >
       <ErrorBoundary label="قائمة الجلسات مش معروضة صح دلوقتي.">
         <SessionList
           threads={room.threads}
@@ -45,8 +141,10 @@ export default function App() {
           workRoot={room.workRoot}
           onOpenProject={room.onOpenProjectFolder}
           onOpenWorkRoot={room.onOpenWorkRoot}
+        onChooseWorkRoot={room.onChooseWorkRoot}
           onOpenThreadFolder={room.onOpenThreadFolder}
           openingProject={room.openingProject}
+        choosingWorkRoot={room.choosingWorkRoot}
         />
       </ErrorBoundary>
 
@@ -90,8 +188,50 @@ export default function App() {
           modelError={conversation.model.error}
           sessions={room.openCodeSessions}
           onRefreshSessions={room.onRefreshSessions}
+          workRoot={room.workRoot}
+          modelIds={(room.models.data ?? []).filter((entry) => entry.tools).map((entry) => entry.id)}
         />
       </ErrorBoundary>
+
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label="تغيير عرض قائمة جلسات Codex"
+        aria-orientation="horizontal"
+        aria-valuemin={MIN_PANEL_SIZES.sessions}
+        aria-valuemax={MAX_PANEL_SIZES.sessions}
+        aria-valuenow={panelSizes.sessions}
+        title="اسحب لتغيير عرض قائمة الجلسات. الأسهم للتغيير، وShift لتغيير أسرع. نقرتان لإعادة الضبط."
+        onPointerDown={(event) => startResize('sessions', event)}
+        onKeyDown={(event) => handleResizeKey('sessions', event)}
+        onDoubleClick={resetPanelSizes}
+        style={{ left: `${panelSizes.sessions - 6}px` }}
+        className="group absolute inset-y-0 z-20 hidden w-3 touch-none cursor-col-resize items-center justify-center outline-none lg:flex focus-visible:bg-relay/10"
+      >
+        <span className="flex h-9 w-4 items-center justify-center rounded-full border border-line bg-card text-ink-soft opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      </div>
+
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label="تغيير عرض مسار التفويض"
+        aria-orientation="horizontal"
+        aria-valuemin={MIN_PANEL_SIZES.handoff}
+        aria-valuemax={MAX_PANEL_SIZES.handoff}
+        aria-valuenow={panelSizes.handoff}
+        title="اسحب لتغيير عرض مسار التفويض. الأسهم للتغيير، وShift لتغيير أسرع. نقرتان لإعادة الضبط."
+        onPointerDown={(event) => startResize('handoff', event)}
+        onKeyDown={(event) => handleResizeKey('handoff', event)}
+        onDoubleClick={resetPanelSizes}
+        style={{ right: `${panelSizes.handoff - 6}px` }}
+        className="group absolute inset-y-0 z-20 hidden w-3 touch-none cursor-col-resize items-center justify-center outline-none lg:flex focus-visible:bg-relay/10"
+      >
+        <span className="flex h-9 w-4 items-center justify-center rounded-full border border-line bg-card text-ink-soft opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      </div>
     </main>
   </div>
 }
