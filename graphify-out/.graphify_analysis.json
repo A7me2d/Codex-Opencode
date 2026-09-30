@@ -1,0 +1,346 @@
+{
+  "communities": {
+    "0": [
+      "package",
+      "package_dependencies",
+      "package_dependencies_lucide_react",
+      "package_dependencies_react",
+      "package_dependencies_react_dom",
+      "package_devdependencies",
+      "package_devdependencies_tailwindcss",
+      "package_devdependencies_tailwindcss_vite",
+      "package_devdependencies_types_react",
+      "package_devdependencies_types_react_dom",
+      "package_devdependencies_typescript",
+      "package_devdependencies_vite",
+      "package_devdependencies_vitejs_plugin_react",
+      "package_name",
+      "package_private",
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_dev",
+      "package_scripts_start",
+      "package_type",
+      "package_version",
+      "ref_lucide_react",
+      "ref_react",
+      "ref_react_dom",
+      "ref_tailwindcss",
+      "ref_tailwindcss_vite",
+      "ref_types_react",
+      "ref_types_react_dom",
+      "ref_typescript",
+      "ref_vite",
+      "ref_vitejs_plugin_react",
+      "src_index",
+      "src_main",
+      "vite_config"
+    ],
+    "1": [
+      "ref_node_child_process",
+      "ref_node_crypto",
+      "ref_node_fs",
+      "ref_node_http",
+      "ref_node_path",
+      "ref_node_url",
+      "server",
+      "server_appdirectory",
+      "server_appendrelayevent",
+      "server_defaultroot",
+      "server_distdirectory",
+      "server_eventspath",
+      "server_httperror",
+      "server_httperror_constructor",
+      "server_invokeopencode",
+      "server_isinside",
+      "server_listscopedsessions",
+      "server_mimetype",
+      "server_opencodeapi",
+      "server_opencodeexecutablecandidates",
+      "server_option",
+      "server_publicerror",
+      "server_readjson",
+      "server_readrelayevents",
+      "server_requestedport",
+      "server_requirescopedsession",
+      "server_resolveexistingdirectory",
+      "server_resolveopencodeexecutable",
+      "server_safesessionid",
+      "server_sendjson",
+      "server_server",
+      "server_servestatic",
+      "server_statedirectory",
+      "server_watchroot"
+    ],
+    "2": [
+      "src_app",
+      "src_app_ar_months",
+      "src_app_block",
+      "src_app_category_label",
+      "src_app_command_keys",
+      "src_app_composer",
+      "src_app_diffhunk",
+      "src_app_diffline",
+      "src_app_emptynote",
+      "src_app_errornote",
+      "src_app_event_kind_label",
+      "src_app_event_role_label",
+      "src_app_filediff",
+      "src_app_healthpayload",
+      "src_app_normalmessage",
+      "src_app_panelkey",
+      "src_app_panels",
+      "src_app_path_keys",
+      "src_app_pollstate",
+      "src_app_pollstatus",
+      "src_app_relayevent",
+      "src_app_session",
+      "src_app_steps",
+      "src_app_synthetic_roles",
+      "src_app_tone",
+      "src_app_tone_dot",
+      "src_app_tone_pill",
+      "src_app_toolcategory",
+      "src_app_write_tools"
+    ],
+    "3": [
+      "src_app_api",
+      "src_app_apierror",
+      "src_app_apierror_constructor",
+      "src_app_app",
+      "src_app_asarray",
+      "src_app_asnumber",
+      "src_app_asstring",
+      "src_app_collecttooloutput",
+      "src_app_errormessage",
+      "src_app_firststring",
+      "src_app_inferwrittenpaths",
+      "src_app_isrecord",
+      "src_app_isshellrecord",
+      "src_app_normalizeblock",
+      "src_app_normalizediffs",
+      "src_app_normalizemessage",
+      "src_app_normalizemessages",
+      "src_app_stringifyoutput",
+      "src_app_summarizeinput",
+      "src_app_taskstateof",
+      "src_app_unwraplist",
+      "src_app_usepoller"
+    ],
+    "4": [
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_allowjs",
+      "tsconfig_compileroptions_allowsyntheticdefaultimports",
+      "tsconfig_compileroptions_esmoduleinterop",
+      "tsconfig_compileroptions_isolatedmodules",
+      "tsconfig_compileroptions_jsx",
+      "tsconfig_compileroptions_lib",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_noemit",
+      "tsconfig_compileroptions_resolvejsonmodule",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_compileroptions_usedefineforclassfields",
+      "tsconfig_include"
+    ],
+    "5": [
+      "src_app_arcountof",
+      "src_app_arnoun",
+      "src_app_clamp",
+      "src_app_compacttokens",
+      "src_app_conversation",
+      "src_app_formatdate",
+      "src_app_formatrelative",
+      "src_app_resultsummary",
+      "src_app_taskheader",
+      "src_app_tasksidebar"
+    ],
+    "6": [
+      "src_app_changedfiles",
+      "src_app_cx",
+      "src_app_diffrow",
+      "src_app_metarow",
+      "src_app_paneltabs",
+      "src_app_pill",
+      "src_app_spinner",
+      "src_app_stepreceipt",
+      "src_app_summarytile"
+    ],
+    "7": [
+      "src_app_codexnotes",
+      "src_app_formatclock",
+      "src_app_messagerow",
+      "src_app_shortid"
+    ],
+    "8": [
+      "src_app_snippet",
+      "src_app_splitlines",
+      "src_app_technicalblock",
+      "src_app_toolblock"
+    ],
+    "9": [
+      "scripts_opencode_request"
+    ]
+  },
+  "cohesion": {
+    "0": 0.06417112299465241,
+    "1": 0.10695187165775401,
+    "2": 0.06896551724137931,
+    "3": 0.1645021645021645,
+    "4": 0.11764705882352941,
+    "5": 0.3111111111111111,
+    "6": 0.2222222222222222,
+    "7": 0.5,
+    "8": 0.5,
+    "9": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_app_cx",
+      "label": "cx()",
+      "degree": 15
+    },
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 15
+    },
+    {
+      "id": "src_app_app",
+      "label": "App()",
+      "degree": 14
+    },
+    {
+      "id": "server_server",
+      "label": "server",
+      "degree": 13
+    },
+    {
+      "id": "src_app_arcountof",
+      "label": "arCountOf()",
+      "degree": 10
+    },
+    {
+      "id": "src_app_isrecord",
+      "label": "isRecord()",
+      "degree": 8
+    },
+    {
+      "id": "src_app_normalizeblock",
+      "label": "normalizeBlock()",
+      "degree": 8
+    },
+    {
+      "id": "src_app_asstring",
+      "label": "asString()",
+      "degree": 7
+    },
+    {
+      "id": "src_app_normalizediffs",
+      "label": "normalizeDiffs()",
+      "degree": 7
+    },
+    {
+      "id": "src_app_normalizemessage",
+      "label": "normalizeMessage()",
+      "degree": 7
+    }
+  ],
+  "surprises": [
+    {
+      "source": "App()",
+      "target": "arCountOf()",
+      "source_files": [
+        "src/App.tsx",
+        "src/App.tsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "note": "Bridges community 3 → community 5"
+    },
+    {
+      "source": "App()",
+      "target": "cx()",
+      "source_files": [
+        "src/App.tsx",
+        "src/App.tsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "note": "Bridges community 3 → community 6"
+    },
+    {
+      "source": "CodexNotes()",
+      "target": "asNumber()",
+      "source_files": [
+        "src/App.tsx",
+        "src/App.tsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "note": "Bridges community 3 → community 7"
+    },
+    {
+      "source": "ChangedFiles()",
+      "target": "arCountOf()",
+      "source_files": [
+        "src/App.tsx",
+        "src/App.tsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "note": "Bridges community 5 → community 6"
+    },
+    {
+      "source": "ToolBlock()",
+      "target": "arCountOf()",
+      "source_files": [
+        "src/App.tsx",
+        "src/App.tsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "note": "Bridges community 5 → community 8"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `react` connect `package.json` to `App.tsx`?",
+      "why": "High betweenness centrality (0.088) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `lucide-react` connect `package.json` to `App.tsx`?",
+      "why": "High betweenness centrality (0.085) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `Block`, `DiffHunk`, `DiffLine` to the rest of the system?",
+      "why": "68 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `package.json` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.06417112299465241 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `server.mjs` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.10695187165775401 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `App.tsx` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.06896551724137931 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `compilerOptions` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.11764705882352941 - nodes in this community are weakly interconnected."
+    }
+  ]
+}
