@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
-    "start": "node server.mjs"
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "dev:api": "node --env-file-if-exists=.env server.mjs",
+    "dev:all": "node --env-file-if-exists=.env scripts/dev-all.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.545.0",
