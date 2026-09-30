@@ -12,7 +12,8 @@ import type { Notify } from '../../hooks/useAgentAlerts'
 import { readOpenCodeChat } from '../../lib/chat'
 import { asArray } from '../../lib/guards'
 import { readForms } from '../../lib/forms'
-import type { CodexThread, HandoffData, RelayEvent } from '../../lib/types'
+import type { CodexThread, HandoffData, OpenCodeSession, RelayEvent } from '../../lib/types'
+import { SessionBrowser } from './SessionBrowser'
 import { ModelPicker } from './ModelPicker'
 import type { ModelPickerProps } from './ModelPicker'
 import { OpenCodeControls } from './OpenCodeControls'
@@ -37,12 +38,15 @@ export interface HandoffRailProps {
   changingModel: boolean
   /** Why the last model change did not stick, if it did not. */
   modelError: string | null
+  /** OpenCode sessions belonging to this project, so earlier work is reachable. */
+  sessions: OpenCodeSession[]
+  onRefreshSessions: () => void
 }
 
 const idleActivity = { active: false, kind: 'idle' as const, label: 'لا توجد عملية OpenCode نشطة' }
 
 /** Right column: what Codex delegated to OpenCode, and what OpenCode said back. */
-export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange, changingModel, modelError }: HandoffRailProps) {
+export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange, changingModel, modelError, sessions, onRefreshSessions }: HandoffRailProps) {
   const messages = useMemo(() => readOpenCodeChat(handoff?.messages), [handoff?.messages])
   const forms = useMemo(() => readForms(handoff?.forms), [handoff?.forms])
   const activity = handoff?.activity ?? idleActivity
@@ -78,7 +82,15 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
 
     {!thread ? <Empty>اختر جلسة Codex أولًا لرؤية أي تفويض مرتبط بها.</Empty>
       : loading && !handoff ? <Empty><Spinner />يتم فحص مسار التفويض…</Empty>
-        : !handoff?.link ? <NoHandoff />
+        : !handoff?.link ? <>
+          <NoHandoff />
+          <SessionBrowser
+            sessions={sessions}
+            threadDirectory={thread.directory}
+            onNotify={onNotify}
+            onRefresh={onRefreshSessions}
+          />
+        </>
         : <>
 
           {/* Current status, the session, and which model new work runs on. */}
@@ -139,6 +151,14 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
           </div>
 
           <OpenCodeControls threadId={thread.id} sessionId={sessionId} active={handoff.active} onNotify={onNotify} />
+
+          <SessionBrowser
+            sessions={sessions}
+            threadDirectory={thread.directory}
+            linkedSessionId={sessionId}
+            onNotify={onNotify}
+            onRefresh={onRefreshSessions}
+          />
         </>}
   </aside>
 }

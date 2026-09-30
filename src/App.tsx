@@ -42,7 +42,10 @@ export default function App() {
           creating={room.creating}
           connected={room.codexConnected}
           projectDirectory={room.projectDirectory}
+          workRoot={room.workRoot}
           onOpenProject={room.onOpenProjectFolder}
+          onOpenWorkRoot={room.onOpenWorkRoot}
+          onOpenThreadFolder={room.onOpenThreadFolder}
           openingProject={room.openingProject}
         />
       </ErrorBoundary>
@@ -85,6 +88,8 @@ export default function App() {
           onModelChange={conversation.model.onChange}
           changingModel={conversation.model.changing}
           modelError={conversation.model.error}
+          sessions={room.openCodeSessions}
+          onRefreshSessions={room.onRefreshSessions}
         />
       </ErrorBoundary>
     </main>

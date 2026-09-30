@@ -62,12 +62,23 @@ function powerShellSingleQuoted(value) {
   return String(value).replaceAll("'", "''")
 }
 
-function openProjectDirectory() {
-  if (process.platform !== 'win32') throw new HttpError(501, 'Opening the project folder is currently available on Windows only.')
+/**
+ * Opens a folder in the OS file manager.
+ *
+ * Relay Room has two folders that are easy to confuse: the code it runs from
+ * (`projectDirectory`) and the project the session actually works in
+ * (`watchRoot`). Callers name which one they mean, and any session's own folder
+ * can be opened too.
+ */
+function openDirectory(target) {
+  if (process.platform !== 'win32') throw new HttpError(501, 'Opening a folder is currently available on Windows only.')
+
+  const resolved = path.resolve(target)
+  if (!existsSync(resolved)) throw new HttpError(404, `That folder does not exist: ${resolved}`)
 
   return new Promise((resolve, reject) => {
-    const child = spawn('explorer.exe', [projectDirectory], {
-      cwd: projectDirectory,
+    const child = spawn('explorer.exe', [resolved], {
+      cwd: resolved,
       detached: true,
       shell: false,
       stdio: 'ignore',
@@ -735,7 +746,7 @@ function shortThreadTitle(value) {
   return title.slice(0, 120) || 'محادثة جديدة'
 }
 
-async function registerRelayCodexThread(thread, title) {
+async function registerRelayCodexThread(thread, title, directory) {
   const id = safeCodexThreadId(thread?.id)
   if (!id) throw new Error('Codex app-server did not return a usable thread id.')
   const saved = {
@@ -743,6 +754,7 @@ async function registerRelayCodexThread(thread, title) {
     title: shortThreadTitle(title ?? thread?.name ?? thread?.title),
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    directory: typeof directory === 'string' ? directory : undefined,
   }
   await updateCodexState((state) => {
     state.threads[id] = { ...state.threads[id], ...saved }
@@ -750,19 +762,68 @@ async function registerRelayCodexThread(thread, title) {
   return saved
 }
 
+/**
+ * Every session on the machine, indexed by id, for adoption lookups.
+ *
+ * Reading the list is one call but adoption can happen for several routes in a
+ * row (status, messages, handoff), so the result is cached briefly to avoid a
+ * burst of identical calls from one screen opening.
+ */
+let adoptedLookupCache
+const adoptedLookupMaxAgeMs = 5_000
+
+async function sessionLookup() {
+  if (adoptedLookupCache && Date.now() - adoptedLookupCache.at < adoptedLookupMaxAgeMs) {
+    return adoptedLookupCache.byId
+  }
+  const response = await codexBridge.call('thread/list', { limit: 200, sortKey: 'updated_at', sortDirection: 'desc' })
+  const remote = Array.isArray(response?.data) ? response.data : []
+  const byId = new Map(remote.filter((thread) => safeCodexThreadId(thread?.id)).map((thread) => [thread.id, thread]))
+  adoptedLookupCache = { at: Date.now(), byId }
+  return byId
+}
+
+/**
+ * The thread record, adopting it first if Relay Room has not seen it yet.
+ *
+ * Sessions started outside Relay Room are openable on purpose: rather than
+ * refusing them, the first touch records the session and the folder it lives
+ * in, so the rail can show it and the folder button can reach it.
+ */
 async function requireRelayCodexThread(threadId) {
   const id = safeCodexThreadId(threadId)
   if (!id) throw new HttpError(400, 'Invalid Codex thread id.')
   const state = await readCodexState()
-  if (!state.threads[id]) throw new HttpError(404, 'This Codex session does not belong to Relay Room.')
-  return { id, saved: state.threads[id] }
+  if (state.threads[id]) {
+    // Backfill the folder for sessions recorded before folders were stored.
+    if (!state.threads[id].directory) {
+      const live = (await sessionLookup()).get(id)
+      if (live?.cwd) {
+        const directory = String(live.cwd)
+        await updateCodexState((next) => {
+          if (next.threads[id]) next.threads[id].directory = directory
+        })
+        return { id, saved: { ...state.threads[id], directory } }
+      }
+    }
+    return { id, saved: state.threads[id] }
+  }
+
+  const live = (await sessionLookup()).get(id)
+  if (!live) throw new HttpError(404, 'This Codex session does not belong to Relay Room.')
+
+  const saved = await registerRelayCodexThread(live, live.name ?? live.title, live.cwd)
+  return { id, saved }
 }
 
 async function ensureRelayCodexThreadLoaded(threadId) {
-  await requireRelayCodexThread(threadId)
+  const { saved } = await requireRelayCodexThread(threadId)
+  // Resume in the folder the session belongs to. A session opened from another
+  // project must not be re-rooted into this one.
+  const cwd = typeof saved.directory === 'string' && saved.directory ? saved.directory : watchRoot
   try {
     await codexBridge.resumeThread(threadId, {
-      cwd: watchRoot,
+      cwd,
       sandbox: 'read-only',
       approvalPolicy: 'never',
       developerInstructions: relayCodexInstructions,
@@ -776,36 +837,66 @@ async function ensureRelayCodexThreadLoaded(threadId) {
   }
 }
 
-async function listRelayCodexThreads() {
+/** True when `directory` is the project this Relay Room instance works in. */
+function isWorkRoot(directory) {
+  try {
+    return path.resolve(String(directory)) === path.resolve(watchRoot)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Every Codex session on this machine, not only the ones Relay Room created.
+ *
+ * `thread/list` used to be called with `cwd: watchRoot`, which hid every
+ * conversation started elsewhere. Listing without a scope returns them all, and
+ * each one carries the folder it belongs to so the reader can tell projects
+ * apart. Sessions Relay Room does not own yet are still openable: resuming one
+ * registers it here, which is why `needsRegistration` is reported.
+ */
+async function listAllCodexThreads() {
   const state = await readCodexState()
-  const saved = Object.values(state.threads).filter((thread) => safeCodexThreadId(thread?.id))
-  if (saved.length === 0) return []
 
   const response = await codexBridge.call('thread/list', {
-    cwd: watchRoot,
-    limit: 100,
+    limit: 200,
     sortKey: 'updated_at',
     sortDirection: 'desc',
   })
   const remote = Array.isArray(response?.data) ? response.data : []
-  const byId = new Map(remote.map((thread) => [thread?.id, thread]))
+  adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
 
-  return saved
+  return remote
+    .filter((thread) => safeCodexThreadId(thread?.id))
     .map((thread) => {
-      const live = byId.get(thread.id)
-      if (live?.path && !existsSync(live.path) && !codexBridge.activeThreads.has(thread.id)) return null
+      const saved = state.threads[thread.id]
+      // A rollout that has been moved or deleted cannot be opened; keep it out
+      // unless the bridge is holding it open right now.
+      if (thread?.path && !existsSync(thread.path) && !codexBridge.activeThreads.has(thread.id)) return null
+      const directory = typeof thread.cwd === 'string' && thread.cwd ? thread.cwd : (saved?.directory ?? '')
       return {
-        ...thread,
-        ...(live && typeof live === 'object' ? live : {}),
         id: thread.id,
-        // Keep the title entered in Relay Room. The app-server's derived title
-        // may lag behind a just-created session or contain a console code-page fallback.
-        title: thread.title ?? live?.name ?? live?.title,
-        updatedAt: live?.updatedAt ?? live?.updated_at ?? thread.updatedAt,
+        // Prefer the name given in Relay Room; the app-server's derived title
+        // can lag behind or fall back to a console code-page.
+        title: saved?.title ?? thread.name ?? thread.title ?? 'محادثة جديدة',
+        directory,
+        updatedAt: thread.updatedAt ?? thread.updated_at ?? saved?.updatedAt,
+        createdAt: saved?.createdAt ?? thread.createdAt ?? thread.created_at,
+        /** The folder this instance works in. */
+        inProject: isWorkRoot(directory),
+        /** Still running here, so its state is live rather than read from disk. */
+        active: codexBridge.activeThreads.has(thread.id),
+        /** Relay Room has not recorded this session yet; opening it will. */
+        needsRegistration: !saved,
+        openCodeModel: saved?.openCodeModel,
       }
     })
     .filter(Boolean)
-    .sort((left, right) => Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0))
+    .sort((left, right) => {
+      // The project at hand first, then newest activity.
+      if (left.inProject !== right.inProject) return left.inProject ? -1 : 1
+      return Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0)
+    })
 }
 
 async function createRelayCodexThread(input) {
@@ -819,7 +910,7 @@ async function createRelayCodexThread(input) {
     threadSource: 'appServer',
   })
   const thread = response?.thread ?? response?.data ?? response
-  const saved = await registerRelayCodexThread(thread, title)
+  const saved = await registerRelayCodexThread(thread, title, thread?.cwd ?? watchRoot)
   codexBridge.markThreadActive(saved.id)
 
   try {
@@ -1288,6 +1379,90 @@ async function requireScopedSession(sessionId) {
   return session
 }
 
+/**
+ * The OpenCode sessions that belong to this project, plus any session a
+ * conversation is already linked to.
+ *
+ * Both halves matter. Filtering strictly by folder would hide the sessions
+ * currently in use whenever a conversation was linked while Relay Room watched
+ * a different root, and that looks exactly like losing work.
+ */
+async function listProjectOpenCodeSessions() {
+  const state = await readCodexState()
+  const linkedBy = new Map()
+  for (const [codexThreadId, link] of Object.entries(state.links)) {
+    if (link?.opencodeSessionId) linkedBy.set(link.opencodeSessionId, codexThreadId)
+  }
+  const chosenModels = new Map(
+    Object.entries(state.threads).map(([threadId, thread]) => [threadId, thread?.openCodeModel]),
+  )
+
+  const response = await openCodeApi('GET', '/api/session?limit=200&order=desc')
+  const sessions = Array.isArray(response?.data) ? response.data : []
+
+  let activeIds = new Set()
+  try {
+    const activeResponse = await openCodeApi('GET', '/api/session/active')
+    const activeData = activeResponse?.data
+    if (activeData && typeof activeData === 'object') activeIds = new Set(Object.keys(activeData))
+  } catch {
+    // Liveness is a bonus detail; the list is still useful without it.
+  }
+
+  return sessions
+    .filter((session) => {
+      const directory = session?.location?.directory
+      const inScope = typeof directory === 'string' && isInside(watchRoot, directory)
+      return inScope || linkedBy.has(session.id)
+    })
+    .map((session) => {
+      const directory = typeof session?.location?.directory === 'string' ? session.location.directory : ''
+      const codexThreadId = linkedBy.get(session.id) ?? null
+      return {
+        id: session.id,
+        title: typeof session.title === 'string' && session.title.trim() ? session.title : session.id,
+        directory,
+        model: modelPayloadToSelector(session?.model),
+        updatedAt: session?.time?.updated ?? session?.time?.created,
+        createdAt: session?.time?.created,
+        active: activeIds.has(session.id),
+        inProject: directory ? isInside(watchRoot, directory) : false,
+        /** The conversation this session is doing work for, if any. */
+        codexThreadId,
+        /** Kept so the rail can show which model this conversation settled on. */
+        codexThreadModel: codexThreadId ? (chosenModels.get(codexThreadId) ?? null) : null,
+      }
+    })
+    .sort((left, right) => {
+      if (left.active !== right.active) return left.active ? -1 : 1
+      return Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0)
+    })
+}
+
+/** Stop a running OpenCode session by its own id, linked or not. */
+async function interruptOpenCodeSessionById(sessionId) {
+  const id = safeSessionId(sessionId)
+  if (!id) throw new HttpError(400, 'Invalid session id.')
+
+  const known = (await listProjectOpenCodeSessions()).find((session) => session.id === id)
+  if (!known) throw new HttpError(404, 'This session is not in the selected project scope.')
+
+  const activeResponse = await openCodeApi('GET', '/api/session/active')
+  if (!isOpenCodeSessionActive(activeResponse, id)) {
+    throw new HttpError(409, 'That OpenCode session is not running right now.')
+  }
+
+  await openCodeApi('POST', `/api/session/${id}/interrupt`)
+  await appendRelayEvent({
+    role: 'operator',
+    kind: 'opencode-stop-requested',
+    message: 'Requested an immediate OpenCode stop.',
+    sessionId: id,
+    ...(known.codexThreadId ? { codexThreadId: known.codexThreadId } : {}),
+  })
+  return { sessionId: id }
+}
+
 async function readRelayEvents() {
   try {
     const parsed = JSON.parse(await readFile(eventsPath, 'utf8'))
@@ -1371,13 +1546,31 @@ const server = createServer(async (request, response) => {
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/project') {
-      sendJson(response, 200, { data: { directory: projectDirectory } })
+      sendJson(response, 200, { data: { directory: projectDirectory, workRoot: watchRoot } })
       return
     }
 
     if (request.method === 'POST' && url.pathname === '/api/project/open') {
-      await openProjectDirectory()
+      await openDirectory(projectDirectory)
       sendJson(response, 202, { data: { directory: projectDirectory } })
+      return
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/project/open-work-root') {
+      await openDirectory(watchRoot)
+      sendJson(response, 202, { data: { directory: watchRoot } })
+      return
+    }
+
+    // Open the folder a specific session belongs to, which may be another project.
+    const openThreadFolderMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/open-folder$/)
+    if (openThreadFolderMatch) {
+      if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported for opening a session folder.')
+      const { id, saved } = await requireRelayCodexThread(openThreadFolderMatch[1])
+      const directory = String(saved.directory ?? '')
+      if (!directory) throw new HttpError(409, 'This session has no folder recorded, so there is nothing to open.')
+      await openDirectory(directory)
+      sendJson(response, 202, { data: { threadId: id, directory } })
       return
     }
 
@@ -1398,7 +1591,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/codex/threads') {
-      sendJson(response, 200, { data: await listRelayCodexThreads() })
+      sendJson(response, 200, { data: await listAllCodexThreads() })
       return
     }
 
@@ -1495,6 +1688,30 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'GET' && url.pathname === '/api/sessions') {
       sendJson(response, 200, { data: await listScopedSessions() })
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/opencode/sessions') {
+      sendJson(response, 200, { data: await listProjectOpenCodeSessions() })
+      return
+    }
+
+    const openCodeSessionFolderMatch = url.pathname.match(/^\/api\/opencode\/sessions\/(ses_[A-Za-z0-9]+)\/open-folder$/)
+    if (openCodeSessionFolderMatch) {
+      if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported for opening a session folder.')
+      const sessionId = openCodeSessionFolderMatch[1]
+      const known = (await listProjectOpenCodeSessions()).find((session) => session.id === sessionId)
+      if (!known) throw new HttpError(404, 'This session is not in the selected project scope.')
+      if (!known.directory) throw new HttpError(409, 'This session has no folder recorded.')
+      await openDirectory(known.directory)
+      sendJson(response, 202, { data: { sessionId, directory: known.directory } })
+      return
+    }
+
+    const openCodeSessionStopMatch = url.pathname.match(/^\/api\/opencode\/sessions\/(ses_[A-Za-z0-9]+)\/stop$/)
+    if (openCodeSessionStopMatch) {
+      if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported for stopping a session.')
+      sendJson(response, 202, { data: await interruptOpenCodeSessionById(openCodeSessionStopMatch[1]) })
       return
     }
 

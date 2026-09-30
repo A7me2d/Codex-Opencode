@@ -25,6 +25,7 @@ interface Config {
     turnStateMs: number
     relayEventsMs: number
     modelsMs: number
+    sessionsMs: number
   }
   /** How close to the bottom still counts as "following the newest message". */
   stickyScrollThresholdPx: number
@@ -64,6 +65,7 @@ export function readConfig(env: Env): Config {
       openCodeStatusMs: count(env.VITE_POLL_OPENCODE_STATUS_MS, 10_000, 1_000, 600_000),
       projectMs: count(env.VITE_POLL_PROJECT_MS, 60_000, 5_000, 3_600_000),
       modelsMs: count(env.VITE_POLL_MODELS_MS, 60_000, 5_000, 3_600_000),
+      sessionsMs: count(env.VITE_POLL_SESSIONS_MS, 15_000, 2_000, 3_600_000),
     },
     stickyScrollThresholdPx: count(env.VITE_STICKY_SCROLL_PX, 72, 0, 1_000),
     minimumTurnMs: count(env.VITE_MIN_TURN_MS, 4_000, 0, 600_000),

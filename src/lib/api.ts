@@ -6,7 +6,7 @@
  * the same `apiBase` prefix.
  */
 import { config } from '../app/config'
-import type { CodexItem, CodexStatus, CodexThread, CodexTurnState, HandoffData, ModelInfo, OpenCodeModelChange, OpenCodeStatus, ProjectInfo, RelayEvent } from './types'
+import type { CodexItem, CodexStatus, CodexThread, CodexTurnState, HandoffData, ModelInfo, OpenCodeModelChange, OpenCodeSession, OpenCodeStatus, ProjectInfo, RelayEvent } from './types'
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${config.apiBase}${url}`, {
@@ -48,6 +48,7 @@ export const api = {
   // Project scope
   project: () => requestJson<{ data: ProjectInfo }>('/api/project').then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),
+  openWorkRoot: () => post<{ data: { directory: string } }>('/api/project/open-work-root'),
   selectProjectFile: () => post<{ data: { path: string } | null }>('/api/project/select-file').then(unwrap),
 
   // Health of the two agents
@@ -62,11 +63,19 @@ export const api = {
   sendMessage: (threadId: string, text: string) => post(`/api/codex/threads/${threadId}/messages`, { text }),
   turnState: (threadId: string) => requestJson<{ data: CodexTurnState }>(`/api/codex/threads/${threadId}/status`).then(unwrap),
   stopTurn: (threadId: string) => post(`/api/codex/threads/${threadId}/stop`),
+  openThreadFolder: (threadId: string) =>
+    post<{ data: { threadId: string; directory: string } }>(`/api/codex/threads/${threadId}/open-folder`),
 
   // The OpenCode side of one Codex conversation
   handoff: (threadId: string) => requestJson<{ data: HandoffData }>(`/api/codex/threads/${threadId}/handoff`).then(unwrap),
   sendOpenCodeMessage: (threadId: string, text: string) => post(`/api/codex/threads/${threadId}/opencode/messages`, { text }),
   stopOpenCode: (threadId: string) => post(`/api/codex/threads/${threadId}/opencode/stop`),
+
+  // OpenCode sessions belonging to this project (or already linked)
+  openCodeSessions: () => requestJson<{ data: OpenCodeSession[] }>('/api/opencode/sessions').then(unwrap),
+  stopOpenCodeSession: (sessionId: string) => post(`/api/opencode/sessions/${sessionId}/stop`),
+  openSessionFolder: (sessionId: string) =>
+    post<{ data: { sessionId: string; directory: string } }>(`/api/opencode/sessions/${sessionId}/open-folder`),
 
   // Models: what the local OpenCode install can run
   models: () => requestJson<{ data: ModelInfo[] }>('/api/models').then(unwrap),

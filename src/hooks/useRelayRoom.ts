@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { config } from '../app/config'
 import { api } from '../lib/api'
 import { asArray } from '../lib/guards'
-import type { CodexThread, CodexStatus, OpenCodeStatus, ProjectInfo, RelayEvent } from '../lib/types'
+import type { CodexThread, CodexStatus, OpenCodeSession, OpenCodeStatus, ProjectInfo, RelayEvent } from '../lib/types'
 import { useAgentAlerts } from './useAgentAlerts'
 import type { Notify } from './useAgentAlerts'
 import { useConversation } from './useConversation'
@@ -25,6 +25,7 @@ export function useRelayRoom() {
   const threadList = usePolling(api.threads, config.poll.threadsMs)
   const relayEvents = usePolling(api.relayEvents, config.poll.relayEventsMs)
   const models = usePolling(api.models, config.poll.modelsMs)
+  const openCodeSessions = usePolling(api.openCodeSessions, config.poll.sessionsMs)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -80,13 +81,37 @@ export function useRelayRoom() {
     }
   }, [openingProject])
 
+  // The project sessions actually work in, which is often not where this app
+  // is installed. Opening the wrong one was a real source of confusion.
+  const openWorkRootFolder = useCallback(async () => {
+    if (openingProject) return
+    setOpeningProject(true)
+    setShellError(null)
+    try {
+      await api.openWorkRoot()
+    } catch (failure) {
+      setShellError(failure instanceof Error ? failure.message : 'تعذر فتح مجلد المشروع.')
+    } finally {
+      setOpeningProject(false)
+    }
+  }, [openingProject])
+
+  const openThreadFolder = useCallback(async (threadId: string) => {
+    setShellError(null)
+    try {
+      await api.openThreadFolder(threadId)
+    } catch (failure) {
+      setShellError(failure instanceof Error ? failure.message : 'تعذر فتح مجلد الجلسة.')
+    }
+  }, [])
+
   const reviewImplementation = useCallback(() => {
     conversation.composer.onSendText(reviewPrompt)
   }, [conversation.composer])
 
   const refreshEverything = useCallback(() => {
-    void Promise.all([codexStatus.refresh(), openCodeStatus.refresh(), project.refresh(), threadList.refresh(), relayEvents.refresh()])
-  }, [codexStatus, openCodeStatus, project, relayEvents, threadList])
+    void Promise.all([codexStatus.refresh(), openCodeStatus.refresh(), project.refresh(), threadList.refresh(), relayEvents.refresh(), openCodeSessions.refresh()])
+  }, [codexStatus, openCodeStatus, project, relayEvents, threadList, openCodeSessions])
 
   const codex = codexStatus.data as CodexStatus | null
   const openCode = openCodeStatus.data as OpenCodeStatus | null
@@ -98,6 +123,7 @@ export function useRelayRoom() {
     codexError: codex?.error,
     openCodeOnline: Boolean(openCode?.online),
     projectDirectory: (project.data as ProjectInfo | null)?.directory,
+    workRoot: (project.data as ProjectInfo | null)?.workRoot,
     threads,
     selectedId,
     events,
@@ -105,8 +131,12 @@ export function useRelayRoom() {
     openingProject,
     shellError,
     models,
+    openCodeSessions: asArray<OpenCodeSession>(openCodeSessions.data),
+    onRefreshSessions: () => void openCodeSessions.refresh(),
     onCreateThread: () => void createThread(),
     onOpenProjectFolder: () => void openProjectFolder(),
+    onOpenWorkRoot: () => void openWorkRootFolder(),
+    onOpenThreadFolder: openThreadFolder,
     onRefreshAll: refreshEverything,
     onSelectThread: setSelectedId,
     onReview: reviewImplementation,
