@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -826,16 +826,23 @@ async function readCodexState() {
     }
   } catch (error) {
     if (error?.code === 'ENOENT') return emptyCodexState()
-    return emptyCodexState()
+    throw error
   }
 }
 
-async function updateCodexState(change) {
-  const state = await readCodexState()
-  const result = await change(state)
-  await mkdir(stateDirectory, { recursive: true })
-  await writeFile(codexStatePath, JSON.stringify(state, null, 2), 'utf8')
-  return result
+let codexStateWrites = Promise.resolve()
+function updateCodexState(change) {
+  const update = codexStateWrites.then(async () => {
+    const state = await readCodexState()
+    const result = await change(state)
+    await mkdir(stateDirectory, { recursive: true })
+    const temporaryPath = `${codexStatePath}.${randomUUID()}.tmp`
+    await writeFile(temporaryPath, JSON.stringify(state, null, 2), 'utf8')
+    await rename(temporaryPath, codexStatePath)
+    return result
+  })
+  codexStateWrites = update.catch(() => {})
+  return update
 }
 
 function shortThreadTitle(value) {
@@ -1541,7 +1548,21 @@ async function interruptOpenCodeSession(codexThreadId) {
 async function readOpenCodeHandoff(codexThreadId) {
   await requireRelayCodexThread(codexThreadId)
   const state = await readCodexState()
-  const link = state.links[codexThreadId]
+  let link = state.links[codexThreadId]
+  // Recover links lost by older versions that wrote the state concurrently.
+  // The recorded receipt identifies the exact session; never create a new one.
+  if (!link?.opencodeSessionId) {
+    const receipt = (await readRelayEvents()).filter((event) =>
+      event.kind === 'handoff-sent' && event.codexThreadId === codexThreadId && safeSessionId(event.sessionId))
+      .sort((left, right) => right.timestamp - left.timestamp)[0]
+    if (receipt) {
+      link = { codexThreadId, opencodeSessionId: receipt.sessionId, directory: receipt.directory ?? state.threads[codexThreadId]?.directory, createdAt: receipt.timestamp, updatedAt: receipt.timestamp }
+      await updateCodexState((next) => {
+        next.links[codexThreadId] ??= link
+        link = next.links[codexThreadId]
+      })
+    }
+  }
   // The chosen model is a property of the conversation, not of the OpenCode
   // session, so it is reported even before a session exists for this thread.
   const chosen = state.threads[codexThreadId]?.openCodeModel ?? defaultOpenCodeModel
