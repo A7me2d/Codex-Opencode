@@ -47,3 +47,28 @@ assert.deepEqual(dispatches[1][2], ['src/App.tsx'])
 const attached = context.withHandoffContext(task, 'D:/project', ['src/App.tsx'])
 assert.ok(attached.includes('D:/project') && attached.includes('src/App.tsx') && attached.endsWith(task))
 console.log('Passed: clean intended payload, validation, authorization, concurrent/replayed dispatch prevention, coding tasks and attachment scope.')
+
+// Follow the production dispatcher through to the outgoing API request.
+const requests = []
+const events = []
+const state = { links: { thread: { opencodeSessionId: 'ses_target', directory: 'D:/project' } } }
+const deliveryContext = vm.createContext({
+  ensureOpenCodeLink: async () => state.links.thread,
+  handoffDirectory: async () => 'D:/project',
+  openCodeApi: async (method, path, body) => {
+    requests.push({ method, path, body })
+    return { data: { id: 'message', sessionID: 'ses_target', delivery: 'queue' } }
+  },
+  updateCodexState: async (update) => update(state),
+  appendRelayEvent: async (event) => events.push(event),
+})
+vm.runInContext(between('function withHandoffContext(', '\nasync function ensureOpenCodeLink('), deliveryContext)
+vm.runInContext(between('async function delegateToOpenCode(', '\nasync function handleCodexToolCall('), deliveryContext)
+await deliveryContext.delegateToOpenCode('thread', 'hi')
+assert.equal(requests.length, 1)
+assert.equal(requests[0].method, 'POST')
+assert.equal(requests[0].path, '/api/session/ses_target/prompt')
+assert.equal(requests[0].body.text, 'hi')
+assert.equal(events.length, 1)
+assert.equal(events[0].sessionId, 'ses_target')
+console.log('Passed: production dispatcher sends one prompt to exactly one linked OpenCode session and records one matching event.')

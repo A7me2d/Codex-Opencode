@@ -9,7 +9,11 @@ import { randomUUID } from 'node:crypto'
 const appDirectory = path.dirname(fileURLToPath(import.meta.url))
 const projectDirectory = appDirectory
 const distDirectory = path.join(appDirectory, 'dist')
-const stateDirectory = path.join(appDirectory, '.relay-state')
+// Overridable so the regression tests get a clean slate instead of reading and
+// rewriting the state of a Relay Room that may be running right now.
+const stateDirectory = process.env.RELAY_STATE_DIR
+  ? path.resolve(process.env.RELAY_STATE_DIR)
+  : path.join(appDirectory, '.relay-state')
 const eventsPath = path.join(stateDirectory, 'events.json')
 const codexStatePath = path.join(stateDirectory, 'codex.json')
 const workRootStatePath = path.join(stateDirectory, 'work-root.json')
