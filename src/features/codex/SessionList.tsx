@@ -5,6 +5,8 @@ import { clip, relativeTime } from '../../lib/format'
 import type { CodexThread } from '../../lib/types'
 
 export interface SessionListProps {
+  collapsed: boolean
+  onToggle: () => void
   threads: CodexThread[]
   selectedId: string | null
   onSelect: (id: string) => void
@@ -19,14 +21,20 @@ export interface SessionListProps {
 }
 
 /** Left column: the Codex conversations Relay Room owns, plus the project scope. */
-export function SessionList({ threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot }: SessionListProps) {
+export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot }: SessionListProps) {
   const projectCount = threads.filter((thread) => thread.inProject).length
   const externalCount = threads.length - projectCount
+  const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? 'إظهار جلسات Codex' : 'إخفاء جلسات Codex'} title={collapsed ? 'إظهار جلسات Codex' : 'إخفاء جلسات Codex'} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+    <PanelLeft className="h-4 w-4" aria-hidden="true" />
+  </button>
+  if (collapsed) return <aside dir="rtl" className="flex items-start justify-center border-b border-line bg-card py-2 lg:border-b-0 lg:border-r">
+    {toggle}
+  </aside>
   return (
     <aside dir="rtl" className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
       <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-4">
         <div className="flex items-center gap-2 text-sm font-bold text-ink">
-          <PanelLeft className="h-4 w-4 text-relay" aria-hidden="true" /> جلسات Codex
+          {toggle} جلسات Codex
         </div>
         <button type="button" onClick={onCreate} disabled={!connected || creating} className="inline-flex items-center gap-1.5 rounded-lg bg-relay px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-45">
           {creating ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}

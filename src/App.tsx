@@ -46,6 +46,7 @@ export default function App() {
   const { conversation } = room
   const layoutRef = useRef<HTMLElement>(null)
   const [panelSizes, setPanelSizes] = useState<PanelSizes>(loadPanelSizes)
+  const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
 
   useEffect(() => {
     window.localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(panelSizes))
@@ -55,11 +56,11 @@ export default function App() {
     setPanelSizes((current) => {
       const layoutWidth = layoutRef.current?.getBoundingClientRect().width ?? window.innerWidth
       const otherPanel = panel === 'sessions' ? 'handoff' : 'sessions'
-      const available = layoutWidth - current[otherPanel] - MIN_CONVERSATION_WIDTH
+      const available = layoutWidth - (otherPanel === 'sessions' && sessionsCollapsed ? 52 : current[otherPanel]) - MIN_CONVERSATION_WIDTH
       const maximum = Math.max(MIN_PANEL_SIZES[panel], Math.min(MAX_PANEL_SIZES[panel], available))
       return { ...current, [panel]: clamp(nextSize, MIN_PANEL_SIZES[panel], maximum) }
     })
-  }, [])
+  }, [sessionsCollapsed])
 
   const startResize = useCallback((panel: PanelName, event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
@@ -101,9 +102,9 @@ export default function App() {
     }
   }, [panelSizes, updatePanelSize])
 
-  const resetPanelSizes = useCallback(() => setPanelSizes(DEFAULT_PANEL_SIZES), [])
+  const resetPanelSizes = useCallback(() => { setPanelSizes(DEFAULT_PANEL_SIZES); setSessionsCollapsed(false) }, [])
   const layoutStyle = {
-    '--relay-sessions-width': `${panelSizes.sessions}px`,
+    '--relay-sessions-width': `${sessionsCollapsed ? 52 : panelSizes.sessions}px`,
     '--relay-handoff-width': `${panelSizes.handoff}px`,
   } as CSSProperties
 
@@ -131,6 +132,8 @@ export default function App() {
     >
       <ErrorBoundary label="قائمة الجلسات مش معروضة صح دلوقتي.">
         <SessionList
+          collapsed={sessionsCollapsed}
+          onToggle={() => setSessionsCollapsed((value) => !value)}
           threads={room.threads}
           selectedId={room.selectedId}
           onSelect={room.onSelectThread}
@@ -202,8 +205,9 @@ export default function App() {
         onPointerDown={(event) => startResize('sessions', event)}
         onKeyDown={(event) => handleResizeKey('sessions', event)}
         onDoubleClick={resetPanelSizes}
+        aria-hidden={sessionsCollapsed}
         style={{ left: `${panelSizes.sessions - 6}px` }}
-        className="group absolute inset-y-0 z-20 hidden w-3 touch-none cursor-col-resize items-center justify-center outline-none lg:flex focus-visible:bg-relay/10"
+        className={`group absolute inset-y-0 z-20 hidden w-3 touch-none cursor-col-resize items-center justify-center outline-none ${sessionsCollapsed ? '' : 'lg:flex'} focus-visible:bg-relay/10`}
       >
         <span className="flex h-9 w-4 items-center justify-center rounded-full border border-line bg-card text-ink-soft opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />
