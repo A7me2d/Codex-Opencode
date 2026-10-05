@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { config } from '../app/config'
 import { api } from '../lib/api'
 import { asArray } from '../lib/guards'
+import { openCodeReviewPrompt } from '../lib/review'
 import type { CodexThread, CodexStatus, OpenCodeSession, OpenCodeStatus, ProjectInfo, RelayEvent } from '../lib/types'
 import { useAgentAlerts } from './useAgentAlerts'
 import type { Notify } from './useAgentAlerts'
 import { useConversation } from './useConversation'
 import { usePolling } from './usePolling'
-
-/** The canned request behind "اطلب من Codex مراجعة التنفيذ". */
-const reviewPrompt = 'راجع الآن آخر تنفيذ من OpenCode: افحص git diff، وشغّل الاختبار أو build أو lint المناسب إن أمكن، ثم اذكر النتيجة وما يحتاج تصحيحًا بدليل واضح.'
 
 /**
  * The desk's top-level state: which conversations exist, which one is open,
@@ -142,8 +140,8 @@ export function useRelayRoom() {
   }, [])
 
   const reviewImplementation = useCallback(() => {
-    conversation.composer.onSendText(reviewPrompt)
-  }, [conversation.composer])
+    conversation.composer.onSendText(openCodeReviewPrompt(conversation.view.handoff))
+  }, [conversation.composer, conversation.view.handoff])
 
   const refreshEverything = useCallback(() => {
     void Promise.all([codexStatus.refresh(), openCodeStatus.refresh(), project.refresh(), threadList.refresh(), relayEvents.refresh(), openCodeSessions.refresh()])

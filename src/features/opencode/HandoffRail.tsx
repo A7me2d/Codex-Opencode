@@ -153,7 +153,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
                 {!handoff.active && forms.length === 0 && messages.length > 0 ? (
                   <button type="button" onClick={onReview} disabled={reviewing} className="flex w-full items-center justify-center gap-2 rounded-lg border border-relay/30 bg-card px-3 py-2.5 text-xs font-bold text-relay-ink transition-colors hover:bg-relay-tint disabled:cursor-not-allowed disabled:opacity-45">
                     {reviewing ? <Spinner className="h-3.5 w-3.5" /> : <FileSearch className="h-3.5 w-3.5" aria-hidden="true" />}
-                    اطلب من Codex مراجعة التنفيذ
+                    اطلب من Codex مراجعة الرد
                   </button>
                 ) : null}
               </div>
