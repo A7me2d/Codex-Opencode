@@ -11,19 +11,15 @@ export interface SessionListProps {
   onCreate: () => void
   creating: boolean
   connected: boolean
-  projectDirectory?: string
   /** The project sessions work in; often not where this app is installed. */
   workRoot?: string
-  onOpenProject: () => void
-  onOpenWorkRoot: () => void
   onChooseWorkRoot: () => void
   onOpenThreadFolder: (threadId: string) => void
-  openingProject: boolean
   choosingWorkRoot: boolean
 }
 
 /** Left column: the Codex conversations Relay Room owns, plus the project scope. */
-export function SessionList({ threads, selectedId, onSelect, onCreate, creating, connected, projectDirectory, workRoot, onOpenProject, onOpenWorkRoot, onChooseWorkRoot, onOpenThreadFolder, openingProject, choosingWorkRoot }: SessionListProps) {
+export function SessionList({ threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot }: SessionListProps) {
   const projectCount = threads.filter((thread) => thread.inProject).length
   const externalCount = threads.length - projectCount
   return (
@@ -38,42 +34,26 @@ export function SessionList({ threads, selectedId, onSelect, onCreate, creating,
         </button>
       </div>
 
-      <div className="shrink-0 border-b border-line px-4 py-3 text-xs text-ink-soft">
-        <div className="flex items-center gap-2">
+      <div className="shrink-0 border-b border-line px-4 py-3">
+        <div className="mb-3 flex items-center gap-2 text-[10px] text-ink-soft">
           <StateDot active={connected} warning={!connected} />
-          {connected ? 'مرتبطة بـ Codex Desktop المحلي' : 'تعذر الاتصال بـ Codex Desktop'}
+          <span>{connected ? 'Codex Desktop متصل' : 'Codex Desktop غير متصل'}</span>
         </div>
-      </div>
-
-      <div className="shrink-0 border-b border-line p-3">
-        {/* Two different folders, both worth reaching: the project sessions
-            run in, and the folder this app's own code lives in. */}
-        <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot} className="mb-2 flex w-full items-center gap-2 rounded-lg border border-ready/30 bg-ready-tint px-3 py-2.5 text-right text-xs text-ready-ink transition-colors hover:border-ready/50 hover:bg-ready-tint/80 disabled:cursor-not-allowed disabled:opacity-55" aria-label="اختر مجلد المشروع من جهازك">
-          {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-ready" aria-hidden="true" /> : <FolderTree className="h-4 w-4 shrink-0 text-ready" aria-hidden="true" />}
-          <span className="min-w-0 flex-1">
-            <span className="block font-bold">اختَر مجلد المشروع</span>
-            <span className="mt-0.5 block text-[10px] font-normal text-ready-ink/75">يفتح مستعرض Windows لاختيار مكان العمل</span>
-          </span>
+        <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
+          className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-relay/25 bg-relay-tint/60 px-3 py-2 text-xs font-bold text-relay-ink transition-colors hover:border-relay/50 hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-55">
+          {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
+          {choosingWorkRoot ? 'جارٍ اختيار المشروع…' : 'فتح مجلد مشروع جديد'}
         </button>
-        <button type="button" onClick={onOpenWorkRoot} disabled={openingProject} className="flex w-full items-center gap-2 rounded-lg border border-relay/30 bg-relay-tint/60 px-3 py-2.5 text-right text-xs text-ink transition-colors hover:border-relay/50 hover:bg-relay-tint disabled:cursor-not-allowed disabled:opacity-55" aria-label="فتح مجلد المشروع الذي تعمل عليه">
-          {openingProject ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-relay" aria-hidden="true" /> : <FolderTree className="h-4 w-4 shrink-0 text-relay" aria-hidden="true" />}
-          <span className="min-w-0 flex-1">
-            <span className="block font-bold">افتح مجلد المشروع</span>
-            {workRoot
-              ? <code dir="ltr" className="ltr mt-0.5 block truncate text-[10px] font-normal text-ink-soft" title={workRoot}>{workRoot}</code>
-              : <span className="mt-0.5 block text-[10px] text-ink-soft">يتم تحديد المسار…</span>}
-          </span>
-        </button>
-
-        <button type="button" onClick={onOpenProject} disabled={openingProject} className="mt-2 flex w-full items-center gap-2 rounded-lg border border-line bg-paper px-3 py-2 text-right text-[11px] text-ink-soft transition-colors hover:border-line/70 hover:bg-paper disabled:cursor-not-allowed disabled:opacity-55" aria-label="فتح مجلد كود Relay Room في مستكشف الملفات">
-          <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate">مجلد كود Relay Room</span>
-            {projectDirectory
-              ? <code dir="ltr" className="ltr block truncate text-[10px]" title={projectDirectory}>{projectDirectory}</code>
-              : null}
-          </span>
-        </button>
+        <div className="mt-3 flex items-start gap-2 px-1">
+          <FolderTree className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <span className="block text-[10px] text-ink-soft">المشروع الحالي</span>
+            {workRoot ? <>
+              <span dir="auto" className="mt-0.5 block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
+              <code dir="ltr" className="ltr mt-1 block truncate text-[10px] text-ink-soft" title={workRoot}>{workRoot}</code>
+            </> : <span className="mt-1 block text-[11px] text-ink-soft">جارٍ تحديد المجلد…</span>}
+          </div>
+        </div>
       </div>
 
       <nav aria-label="جلسات Codex" className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">

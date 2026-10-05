@@ -137,14 +137,10 @@ export default function App() {
           onCreate={room.onCreateThread}
           creating={room.creating}
           connected={room.codexConnected}
-          projectDirectory={room.projectDirectory}
           workRoot={room.workRoot}
-          onOpenProject={room.onOpenProjectFolder}
-          onOpenWorkRoot={room.onOpenWorkRoot}
-        onChooseWorkRoot={room.onChooseWorkRoot}
+          onChooseWorkRoot={room.onChooseWorkRoot}
           onOpenThreadFolder={room.onOpenThreadFolder}
-          openingProject={room.openingProject}
-        choosingWorkRoot={room.choosingWorkRoot}
+          choosingWorkRoot={room.choosingWorkRoot}
         />
       </ErrorBoundary>
 
