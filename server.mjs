@@ -648,19 +648,18 @@ class CodexAppServerBridge {
 
   handleNotification(packet) {
     const params = packet.params ?? {}
-    if (packet.method === 'thread/realtime/item/started' || packet.method === 'thread/realtime/itemAdded') {
+    if (packet.method === 'item/started' || packet.method === 'thread/realtime/item/started' || packet.method === 'thread/realtime/itemAdded') {
       this.recordLiveItem(params.threadId, params.item)
       return
     }
 
-    if (packet.method === 'thread/realtime/item/transcript/delta') {
+    if (packet.method === 'item/agentMessage/delta' || packet.method === 'thread/realtime/item/transcript/delta') {
       this.appendLiveDelta(params.threadId, params.itemId, params.delta)
       return
     }
 
-    if (packet.method === 'thread/realtime/item/completed') {
-      this.recordLiveItem(params.threadId, params.item)
-      this.removeLiveItem(params.threadId, params.item?.id)
+    if (packet.method === 'item/completed' || packet.method === 'thread/realtime/item/completed') {
+      this.recordLiveItem(params.threadId, params.item, false)
       return
     }
 
@@ -671,10 +670,10 @@ class CodexAppServerBridge {
     }
   }
 
-  recordLiveItem(threadId, item) {
-    if (!safeCodexThreadId(threadId) || !item?.id || item.type !== 'agentMessage') return
+  recordLiveItem(threadId, item, live = true) {
+    if (!safeCodexThreadId(threadId) || !item?.id || !['agentMessage', 'userMessage', 'fileChange'].includes(item.type)) return
     const messages = this.liveMessages.get(threadId) ?? new Map()
-    messages.set(item.id, { id: item.id, type: 'agentMessage', text: String(item.text ?? ''), live: true })
+    messages.set(item.id, { ...item, live })
     this.liveMessages.set(threadId, messages)
   }
 
@@ -1075,20 +1074,27 @@ function textFromCodexInput(content) {
 
 async function listRelayCodexMessages(threadId) {
   await ensureRelayCodexThreadLoaded(threadId)
-  let response
+  const items = []
+  let cursor
+  const seenCursors = new Set()
   try {
-    response = await codexBridge.call('thread/items/list', { threadId, limit: 200, sortDirection: 'asc' })
+    do {
+      const response = await codexBridge.call('thread/items/list', { threadId, limit: 200, sortDirection: 'asc', ...(cursor ? { cursor } : {}) })
+      items.push(...(Array.isArray(response?.data) ? response.data : []).map((entry) => entry?.item).filter(Boolean))
+      cursor = response?.nextCursor
+      if (cursor && seenCursors.has(cursor)) throw new Error('Codex returned a repeated message cursor.')
+      if (cursor) seenCursors.add(cursor)
+    } while (cursor)
   } catch (error) {
     // Fresh empty app-server threads do not have a rollout file yet. The current
     // Codex app-server reports that condition as an error instead of an empty list.
     if (publicError(error).includes('missing source rollout')) return []
     throw error
   }
-  const entries = Array.isArray(response?.data) ? response.data : []
-  const items = entries.map((entry) => entry?.item).filter(Boolean)
   const knownIds = new Set(items.map((item) => item.id))
+  for (const id of knownIds) codexBridge.removeLiveItem(threadId, id)
   const live = codexBridge.getLiveMessages(threadId).filter((item) => !knownIds.has(item.id))
-  return [...items, ...live]
+  return [...new Map([...items, ...live].map((item) => [item.id, item])).values()]
 }
 
 function extractOpenCodeTask(text) {
