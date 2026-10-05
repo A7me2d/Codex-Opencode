@@ -99,3 +99,5 @@ When running the development servers separately with a custom API port, set `OPE
 | Port already in use | Stop the previous Relay Room terminal, or change `OPENCODE_OBSERVER_PORT` and restart. |
 
 Settings are documented in [.env.example](.env.example). Local session links and the selected project are saved in `.relay-state/`. Keep that folder to retain the links after restarting. `.env`, `.relay-state/`, and `dist/` are ignored by Git. Do not put secrets in `VITE_` variables; they are exposed to the browser.
+
+Network polling slows down when agents are idle: turn status checks every 5 seconds, transcripts and handoffs every 15 seconds, and file diffs every 60 seconds. Active conversations use faster updates. Session lists and health checks have a minimum interval of 30 seconds; model catalogs have a minimum interval of 5 minutes. Requests wait for the previous response before scheduling the next poll, and automatic polling pauses in hidden tabs. Codex file changes reuse the transcript response instead of fetching it separately. The **تحديث** button refreshes the session lists and health information immediately.

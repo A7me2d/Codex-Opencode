@@ -57,7 +57,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     setSelected((value) => (value && sessions.some((entry) => entry.id === value) ? value : ''))
   }, [linkedSessionId, sessions])
 
-  const transcript = usePolling(selected ? () => api.sessionMessages(selected) : null, 2_500, { resetKey: selected })
+  const transcript = usePolling(selected ? () => api.sessionMessages(selected) : null, running ? 2_500 : 15_000, { resetKey: selected })
   const messages = useMemo(() => readOpenCodeChat(transcript.data), [transcript.data])
   const loading = transcript.status === 'loading'
   const read = transcript.refresh

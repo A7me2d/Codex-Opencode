@@ -113,6 +113,14 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     turnRequest.data?.active || sending ? config.poll.codexMessagesMs : 15_000, { resetKey: scope })
   const handoff = usePolling(threadId ? () => api.handoff(threadId) : null,
     (data) => data?.active || sending || turnRequest.data?.active ? config.poll.handoffMs : 15_000, { resetKey: scope })
+  const lastActivity = useRef({ scope, active: false })
+  useEffect(() => {
+    const active = Boolean(turnRequest.data?.active)
+    if (lastActivity.current.scope === scope && lastActivity.current.active !== active) {
+      void Promise.all([messages.refresh(), handoff.refresh()])
+    }
+    lastActivity.current = { scope, active }
+  }, [scope, turnRequest.data?.active, messages.refresh, handoff.refresh])
 
   // The model is a property of the conversation: the server reports the one
   // the live OpenCode session really runs, and remembers it per thread.
