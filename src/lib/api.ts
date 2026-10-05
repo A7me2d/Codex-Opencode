@@ -6,6 +6,7 @@
  * the same `apiBase` prefix.
  */
 import { config } from '../app/config'
+import type { CodexModelInfo, CodexSettings } from './types'
 import type { CodexItem, CodexStatus, CodexThread, CodexTurnState, HandoffData, ModelInfo, OpenCodeModelChange, OpenCodeSession, OpenCodeStatus, ProjectInfo, RelayEvent } from './types'
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -63,8 +64,10 @@ export const api = {
   threads: () => requestJson<{ data: CodexThread[] }>('/api/codex/threads').then(unwrap),
   createThread: (title: string) => post<{ data: CodexThread }>('/api/codex/threads', { title }).then(unwrap),
   messages: (threadId: string) => requestJson<{ data: CodexItem[] }>(`/api/codex/threads/${threadId}/messages`).then(unwrap),
-  sendMessage: (threadId: string, text: string, attachments: string[] = []) =>
-    post(`/api/codex/threads/${threadId}/messages`, { text, attachments }),
+  codexModels: () => requestJson<{ data: CodexModelInfo[] }>('/api/codex/models').then(unwrap),
+  codexSettings: (threadId: string) => requestJson<{ data: CodexSettings }>(`/api/codex/threads/${threadId}/settings`).then(unwrap),
+  sendMessage: (threadId: string, text: string, attachments: string[] = [], settings?: CodexSettings) =>
+    post(`/api/codex/threads/${threadId}/messages`, { text, attachments, ...settings }),
   turnState: (threadId: string) => requestJson<{ data: CodexTurnState }>(`/api/codex/threads/${threadId}/status`).then(unwrap),
   stopTurn: (threadId: string) => post(`/api/codex/threads/${threadId}/stop`),
   openThreadFolder: (threadId: string) =>

@@ -5,6 +5,15 @@ import { readCodexChat } from '../lib/chat'
 import { readForms } from '../lib/forms'
 import type { ChatMessage, CodexThread, CodexTurnState, HandoffData } from '../lib/types'
 import { usePolling } from './usePolling'
+import type { CodexModelInfo, CodexSettings } from '../lib/types'
+export interface CodexSelection {
+ models: CodexModelInfo[]
+ current: CodexSettings
+ loading: boolean
+ error: string | null
+ onModelChange: (model: string) => void
+ onEffortChange: (effort: string) => void
+}
 
 /** What the panes need to render one conversation. */
 export interface ConversationView {
@@ -37,6 +46,7 @@ export interface ComposerState {
 }
 
 export interface ConversationController {
+  codexSelection: CodexSelection
   view: ConversationView
   composer: ComposerState
   turn: CodexTurnState
@@ -67,6 +77,18 @@ function messageOf(draft: string, attachments: string[]) {
 export function useConversation(thread: CodexThread | null): ConversationController {
   const threadId = thread?.id ?? null
   const scope = threadId ?? 'none'
+  const catalog = usePolling(api.codexModels, 60_000)
+  const savedSettings = usePolling(() => threadId ? api.codexSettings(threadId) : null, 60_000, { resetKey: scope })
+  const [selection, setSelection] = useState<{ scope: string; settings: CodexSettings } | null>(null)
+  const availableModels = catalog.data ?? []
+  const requested = selection?.scope === scope ? selection.settings : savedSettings.data
+  const selectedModel = availableModels.find((entry) => entry.model === requested?.model)
+    ?? availableModels.find((entry) => entry.isDefault) ?? availableModels[0]
+  const codexSettings: CodexSettings = {
+    model: selectedModel?.model ?? '',
+    effort: selectedModel?.supportedReasoningEfforts.some((entry) => entry.reasoningEffort === requested?.effort)
+      ? requested!.effort : selectedModel?.defaultReasoningEffort ?? '',
+  }
 
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<string[]>([])
@@ -117,7 +139,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       // The files are sent as paths as well as being part of the text: Codex
       // reads the text, and the server uses the paths to tell OpenCode which
       // files the work is about.
-      await api.sendMessage(threadId, text, attached)
+      await api.sendMessage(threadId, text, attached, codexSettings.model ? codexSettings : undefined)
       if (override === undefined) { setDraft(''); setAttachments([]) }
       await refreshAll()
       return true
@@ -127,7 +149,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     } finally {
       setSending(false)
     }
-  }, [attachments, draft, refreshAll, sending, threadId, turn.active])
+  }, [attachments, draft, refreshAll, sending, threadId, turn.active, codexSettings.model, codexSettings.effort])
 
   // While Codex works, the operator keeps typing and the send button parks the
   // text instead of dropping it.
@@ -218,6 +240,20 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   }, [currentModel, refreshAll, threadId])
 
   return {
+    codexSelection: {
+      models: availableModels, current: codexSettings,
+      loading: catalog.status === 'loading' || savedSettings.status === 'loading',
+      error: catalog.error ?? savedSettings.error,
+      onModelChange: (model) => {
+        if (busy || queued) return
+        const entry = availableModels.find((item) => item.model === model)
+        if (entry) setSelection({ scope, settings: { model, effort: entry.defaultReasoningEffort } })
+      },
+      onEffortChange: (effort) => {
+        if (busy || queued) return
+        setSelection({ scope, settings: { ...codexSettings, effort } })
+      },
+    },
     view: {
       busy,
       handoff: handoff.data,

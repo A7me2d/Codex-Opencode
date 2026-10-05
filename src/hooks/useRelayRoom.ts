@@ -34,7 +34,16 @@ export function useRelayRoom() {
   /** Errors from the shell itself (create thread, open folder). */
   const [shellError, setShellError] = useState<string | null>(null)
 
-  const threads = useMemo(() => asArray<CodexThread>(threadList.data), [threadList.data])
+  const threads = useMemo(() => {
+    // Preserve the API's order while tolerating duplicate rollout records
+    // from an older server that is still running during a frontend update.
+    const seen = new Set<string>()
+    return asArray<CodexThread>(threadList.data).filter((thread) => {
+      if (seen.has(thread.id)) return false
+      seen.add(thread.id)
+      return true
+    })
+  }, [threadList.data])
   const events = useMemo(() => asArray<RelayEvent>(relayEvents.data), [relayEvents.data])
 
   // Open the most recent conversation on first load, then leave the choice alone.

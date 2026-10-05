@@ -4,7 +4,11 @@ import { ErrorNote } from '../../components/ui/ErrorNote'
 import { Spinner } from '../../components/ui/Spinner'
 import type { CodexTurnState } from '../../lib/types'
 
+import type { CodexSelection } from '../../hooks/useConversation'
+import { CodexSettingsPicker } from './CodexSettingsPicker'
+
 export interface ComposerProps {
+  codexSelection: CodexSelection
   draft: string
   onChange: (value: string) => void
   onSubmit: () => void
@@ -30,7 +34,7 @@ export interface ComposerProps {
  * and the send button parks the text instead of dropping it, so the message
  * leaves the second the agent goes idle.
  */
-export function Composer({ draft, onChange, onSubmit, onQueue, onCancelQueue, queued, sending, error, attachments, onAttach, onRemoveAttachment, attaching, turn, onStop }: ComposerProps) {
+export function Composer({ codexSelection, draft, onChange, onSubmit, onQueue, onCancelQueue, queued, sending, error, attachments, onAttach, onRemoveAttachment, attaching, turn, onStop }: ComposerProps) {
   const busy = sending || turn.active
   const isDelegation = /(?:^|\s)\$opencode\b/i.test(draft)
   const starting = sending && !turn.active
@@ -43,6 +47,8 @@ export function Composer({ draft, onChange, onSubmit, onQueue, onCancelQueue, qu
   }
 
   return <form onSubmit={submit} className="shrink-0 border-t border-line bg-card p-3 sm:p-4">
+    <CodexSettingsPicker selection={codexSelection} disabled={busy || Boolean(queued)} />
+    {codexSelection.error ? <ErrorNote>{codexSelection.error}</ErrorNote> : null}
     {queued ? (
       <div className="mb-2 flex items-center gap-2 rounded-lg border border-review/25 bg-review-tint px-3 py-2.5">
         <Spinner className="h-3.5 w-3.5 shrink-0 text-review" />

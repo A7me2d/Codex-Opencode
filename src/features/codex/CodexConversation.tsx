@@ -7,7 +7,10 @@ import { useStickyScroll } from '../../hooks/useStickyScroll'
 import type { ChatMessage, CodexThread, CodexTurnState } from '../../lib/types'
 import { Composer } from './Composer'
 
+import type { CodexSelection } from '../../hooks/useConversation'
+
 export interface CodexConversationProps {
+  codexSelection: CodexSelection
   thread: CodexThread | null
   messages: ChatMessage[]
   loading: boolean
@@ -101,6 +104,7 @@ export function CodexConversation(props: CodexConversationProps) {
         </div>
 
         <Composer
+          codexSelection={props.codexSelection}
           draft={draft}
           onChange={onDraftChange}
           onSubmit={onSend}

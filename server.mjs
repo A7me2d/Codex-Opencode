@@ -869,7 +869,18 @@ async function sessionLookup() {
     return adoptedLookupCache.byId
   }
   const response = await codexBridge.call('thread/list', { limit: 200, sortKey: 'updated_at', sortDirection: 'desc' })
-  const remote = Array.isArray(response?.data) ? response.data : []
+  // A thread can have multiple rollout records. Keep its newest record so
+  // session identity and adoption metadata both refer to the same version.
+  const remoteById = new Map()
+  for (const thread of Array.isArray(response?.data) ? response.data : []) {
+    const id = safeCodexThreadId(thread?.id)
+    if (!id) continue
+    const previous = remoteById.get(id)
+    if (!previous || Number(thread.updatedAt ?? thread.updated_at ?? 0) > Number(previous.updatedAt ?? previous.updated_at ?? 0)) {
+      remoteById.set(id, thread)
+    }
+  }
+  const remote = [...remoteById.values()]
   const byId = new Map(remote.filter((thread) => safeCodexThreadId(thread?.id)).map((thread) => [thread.id, thread]))
   adoptedLookupCache = { at: Date.now(), byId }
   return byId
@@ -914,13 +925,21 @@ async function ensureRelayCodexThreadLoaded(threadId) {
   // project must not be re-rooted into this one.
   const cwd = typeof saved.directory === 'string' && saved.directory ? saved.directory : watchRoot
   try {
-    await codexBridge.resumeThread(threadId, {
+    const resumed = await codexBridge.resumeThread(threadId, {
       cwd,
       sandbox: 'read-only',
       approvalPolicy: 'never',
       developerInstructions: relayCodexInstructions,
       excludeTurns: true,
     })
+    if (resumed?.model) {
+      await updateCodexState((state) => {
+        if (state.threads[threadId]) {
+          state.threads[threadId].codexModel = resumed.model
+          state.threads[threadId].codexEffort = resumed.reasoningEffort ?? ''
+        }
+      })
+    }
   } catch (error) {
     if (publicError(error).includes('no rollout found')) {
       throw new HttpError(409, 'This empty Codex session was not persisted before Relay Room restarted. Start a new conversation.')
@@ -1066,11 +1085,34 @@ function extractOpenCodeTask(text) {
   return { hasExplicitTag: true, task: text.replace(/\$opencode\b/gi, '').trim() }
 }
 
+async function listCodexModels() {
+  const models = []
+  let cursor
+  do {
+    const page = await codexBridge.call('model/list', { limit: 100, ...(cursor ? { cursor } : {}) })
+    models.push(...(Array.isArray(page?.data) ? page.data : []))
+    cursor = page?.nextCursor
+  } while (cursor)
+  return [...new Map(models.filter((model) => !model.hidden).map((model) => [model.model, model])).values()]
+}
+
 async function sendRelayCodexMessage(threadId, input) {
   await ensureRelayCodexThreadLoaded(threadId)
   const text = String(input?.text ?? '').replaceAll('\u0000', '').trim()
   if (!text) throw new HttpError(400, 'Write a message to Codex first.')
   if (text.length > 100_000) throw new HttpError(413, 'The Codex message is too long.')
+  const settings = {}
+  if (input?.model || input?.effort) {
+    const models = await listCodexModels()
+    const model = models.find((entry) => entry.model === input.model)
+    if (!model) throw new HttpError(400, 'Choose an available Codex model.')
+    const effort = input.effort || model.defaultReasoningEffort
+    if (!model.supportedReasoningEfforts.some((entry) => entry.reasoningEffort === effort)) {
+      throw new HttpError(400, 'This reasoning effort is not supported by the selected model.')
+    }
+    settings.model = model.model
+    settings.effort = effort
+  }
 
   const delegation = extractOpenCodeTask(text)
   if (delegation.hasExplicitTag && !delegation.task) {
@@ -1083,12 +1125,19 @@ async function sendRelayCodexMessage(threadId, input) {
     const response = await codexBridge.call('turn/start', {
       threadId,
       input: [{ type: 'text', text }],
+      ...settings,
     })
     const turnId = response?.turn?.id ?? response?.id
     if (response?.turn?.status !== 'completed') codexBridge.markTurnRunning(threadId, turnId)
     if (delegation.hasExplicitTag) codexBridge.bindDelegationTurn(threadId, turnId)
     await updateCodexState((state) => {
-      if (state.threads[threadId]) state.threads[threadId].updatedAt = Date.now()
+      if (state.threads[threadId]) {
+        state.threads[threadId].updatedAt = Date.now()
+        if (settings.model) {
+          state.threads[threadId].codexModel = settings.model
+          state.threads[threadId].codexEffort = settings.effort
+        }
+      }
     })
     return response
   } catch (error) {
@@ -1785,6 +1834,19 @@ const server = createServer(async (request, response) => {
       } catch (error) {
         sendJson(response, 200, { connected: false, root: watchRoot, error: publicError(error) })
       }
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/codex/models') {
+      sendJson(response, 200, { data: await listCodexModels() })
+      return
+    }
+
+    const codexSettingsMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/settings$/)
+    if (request.method === 'GET' && codexSettingsMatch) {
+      await ensureRelayCodexThreadLoaded(codexSettingsMatch[1])
+      const { saved } = await requireRelayCodexThread(codexSettingsMatch[1])
+      sendJson(response, 200, { data: { model: saved.codexModel ?? '', effort: saved.codexEffort ?? '' } })
       return
     }
 

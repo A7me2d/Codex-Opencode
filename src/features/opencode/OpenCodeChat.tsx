@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, CircleStop, Plus, Send } from 'lucide-react'
 import { Spinner } from '../../components/ui/Spinner'
 import { MessageBubble } from '../../components/MessageBubble'
@@ -41,6 +41,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
   const [error, setError] = useState<string | null>(null)
   const [newModel, setNewModel] = useState('')
   const [minimized, setMinimized] = useState(false)
+  const panelId = useId()
   const box = useRef<HTMLTextAreaElement>(null)
 
   const current = useMemo(() => sessions.find((entry) => entry.id === selected) ?? null, [selected, sessions])
@@ -144,25 +145,27 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     }
   }
 
-  return <section aria-label="شات مباشر مع OpenCode" className={cx('min-h-0 border-t border-line', minimized ? 'shrink-0' : 'flex flex-1 flex-col')}>
+  return <section aria-label="شات مباشر مع OpenCode" className={cx('min-h-0 border-t border-line', minimized ? 'mt-auto shrink-0' : 'flex flex-1 flex-col')}>
     <div className={cx('shrink-0 bg-paper px-3 py-2.5', minimized ? '' : 'space-y-2 border-b border-line')}>
-      <div className="flex items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={() => setMinimized((value) => !value)}
+        aria-expanded={!minimized}
+        aria-controls={panelId}
+        className="flex min-h-9 w-full items-center justify-between gap-2 rounded-md text-start transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/35"
+      >
         <span className="text-[11px] font-bold text-ink">شات مباشر مع OpenCode</span>
-        <div className="flex items-center gap-2">
+        <span className="flex items-center gap-2">
           <span className="text-[10px] text-ink-soft">{sessions.length} جلسات متاحة</span>
-          <button
-            type="button"
-            onClick={() => setMinimized((value) => !value)}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-card hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/35"
-            aria-label={minimized ? 'توسيع شات OpenCode' : 'تصغير شات OpenCode'}
-            aria-expanded={!minimized}
-            title={minimized ? 'توسيع' : 'تصغير'}
-          >
-            <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200', minimized ? '' : 'rotate-180')} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-      {!minimized ? <>
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ready-ink">
+            {minimized ? 'إظهار' : 'إخفاء'}
+            <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none', minimized ? '' : 'rotate-180')} aria-hidden="true" />
+          </span>
+        </span>
+      </button>
+    </div>
+    <div id={panelId} hidden={minimized} className={minimized ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
+      <div className="shrink-0 space-y-2 border-b border-line bg-paper px-3 pb-2.5">
       <div className="flex items-center gap-2">
         <select
           value={selected}
@@ -213,10 +216,9 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
           {current.updatedAt ? <span>· {relativeTime(current.updatedAt)}</span> : null}
         </p>
       ) : null}
-      </> : null}
     </div>
 
-    {!minimized && (!selected ? (
+    {!selected ? (
       <p className="flex flex-1 items-center justify-center px-6 text-center text-xs leading-6 text-ink-soft">
         اختر جلسة من القائمة، أو ابدأ جلسة جديدة، لتتحدث مع OpenCode مباشرة بدون Codex.
       </p>
@@ -255,6 +257,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
           <p className="mt-2 px-1 text-[10px] text-ink-soft">Enter للإرسال · Shift + Enter لسطر جديد · هذا الشات لا يمرّ على Codex.</p>
         </div>
       </>
-    ))}
+    )}
+    </div>
   </section>
 }

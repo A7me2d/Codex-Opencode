@@ -26,6 +26,19 @@ export interface CodexStatus {
   error?: string
 }
 
+export interface CodexModelInfo {
+  model: string
+  displayName: string
+  isDefault: boolean
+  defaultReasoningEffort: string
+  supportedReasoningEfforts: { reasoningEffort: string; description: string }[]
+}
+
+export interface CodexSettings {
+  model: string
+  effort: string
+}
+
 export interface OpenCodeStatus {
   online: boolean
   root?: string
