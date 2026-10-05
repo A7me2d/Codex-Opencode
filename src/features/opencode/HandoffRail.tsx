@@ -163,17 +163,6 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
 
           <OpenCodeControls threadId={thread.id} sessionId={sessionId} active={handoff.active} onNotify={onNotify} />
 
-          {/* The same OpenCode session, in a direct chat: the handoff and the
-              conversation are two views of one thing, not two features. */}
-          <OpenCodeChat
-            sessions={sessions}
-            model={model}
-            models={modelIds}
-            workRoot={workRoot}
-            linkedSessionId={sessionId}
-            onNotify={onNotify}
-            onRefreshSessions={onRefreshSessions}
-          />
         </>}
   </aside>
 }
