@@ -464,8 +464,9 @@ const relayCodexInstructions = [
   'You are Codex inside Relay Room: the architect, reasoner, and reviewer.',
   'Do not write or edit implementation code in this thread. Explain the plan, reason about tradeoffs, and review work.',
   'OpenCode is the implementer; it runs whichever model the operator selected for this conversation. You may call relay.delegate_to_opencode only when the latest user message explicitly contains $opencode.',
-  'When it contains $opencode, call that tool immediately with the implementation request; do not inspect files or begin implementation yourself first.',
-  'The handoff already carries the project folder and any attached file paths, so do not restate them; give OpenCode the instruction itself.',
+  'When it contains $opencode, first reason about what the user wants OpenCode to receive. Resolve the intended content using the conversation context before calling the tool; do not forward the full user text mechanically. Do not inspect files or begin implementation yourself.',
+  'Call relay.delegate_to_opencode exactly once for each explicit request. Interpret the user intent and pass only the intended message or actionable task, not the meta-instruction asking you to send it. For example, a request to send hi to the other chat means task: "hi".',
+  'The OpenCode session already has the project folder and the handoff carries any attached file paths. Do not add routing instructions, $opencode, or a handoff wrapper to the task.',
   'When the user asks to review linked OpenCode work, inspect git diff and run the most relevant existing tests, build, or lint command when the read-only environment permits it. Report evidence and delegate corrections through the same explicit $opencode route.',
   'Never claim a handoff, a test, or a code change unless the tool output or local command result confirmed it.',
 ].join('\n')
@@ -482,7 +483,7 @@ const relayDynamicTools = [
         description: 'Queue the user\'s explicitly requested $opencode implementation task with OpenCode.',
         inputSchema: {
           type: 'object',
-          properties: { task: { type: 'string', description: 'The implementation task from the user.' } },
+          properties: { task: { type: 'string', minLength: 1, maxLength: 100000, description: 'The intended message or actionable task for OpenCode. A request to send hi means exactly hi, not the user instruction asking to send it.' } },
           required: ['task'],
           additionalProperties: false,
         },
@@ -1177,6 +1178,7 @@ function readableAttachments(input) {
  * thing OpenCode reads.
  */
 function withHandoffContext(task, directory, attachments) {
+  if (attachments.length === 0) return task
   const lines = [
     '[Relay Room handoff]',
     `- Project folder: ${directory}`,
@@ -1272,6 +1274,15 @@ async function handleCodexToolCall(params) {
     }
   }
 
+  // Validate the model's intended payload before consuming its single-use
+  // authorization. Never replace it with the original routing instruction.
+  const task = typeof params.arguments?.task === 'string' ? params.arguments.task.trim() : ''
+  if (!task || task.length > 100_000 || task.includes('\u0000')) {
+    return {
+      success: false,
+      contentItems: [{ type: 'inputText', text: 'Provide a nonempty OpenCode task of at most 100000 characters.' }],
+    }
+  }
   const grant = codexBridge.consumeDelegationGrant(params.threadId, params.turnId)
   if (!grant) {
     return {
@@ -1281,7 +1292,7 @@ async function handleCodexToolCall(params) {
   }
 
   try {
-    const link = await delegateToOpenCode(params.threadId, grant.task, grant.attachments ?? [])
+    const link = await delegateToOpenCode(params.threadId, task, grant.attachments ?? [])
     return {
       success: true,
       contentItems: [

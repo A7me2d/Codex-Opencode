@@ -7,7 +7,7 @@
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
     "start": "node --env-file-if-exists=.env server.mjs",
-    "dev:api": "node --env-file-if-exists=.env server.mjs",
+    "dev:api": "node --watch --env-file-if-exists=.env server.mjs",
     "dev:all": "node --env-file-if-exists=.env scripts/dev-all.mjs"
   },
   "dependencies": {

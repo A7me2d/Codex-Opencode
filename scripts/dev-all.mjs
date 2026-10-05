@@ -92,5 +92,5 @@ if (!viteEntry) {
   process.exit(1)
 }
 
-run('api', { command: process.execPath, args: ['server.mjs'] }, [])
+run('api', { command: process.execPath, args: ['--watch', 'server.mjs'] }, [])
 run('web', { command: process.execPath, args: [viteEntry] }, [])
