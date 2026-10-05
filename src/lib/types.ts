@@ -35,6 +35,8 @@ export interface CodexModelInfo {
 }
 
 export interface CodexSettings {
+  permissionsPending?: boolean
+  sandbox?: string
   model: string
   effort: string
 }

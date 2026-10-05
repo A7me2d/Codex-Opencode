@@ -149,6 +149,7 @@ export default function App() {
 
       <ErrorBoundary label="محادثة Codex مش معروضة صح دلوقتي.">
         <CodexConversation
+          workRoot={room.workRoot}
           codexSelection={conversation.codexSelection}
           thread={conversation.view.thread}
           messages={conversation.view.messages}

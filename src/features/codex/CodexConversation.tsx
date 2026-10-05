@@ -11,6 +11,7 @@ import { ChangedFiles } from '../opencode/ChangedFiles'
 import type { CodexSelection } from '../../hooks/useConversation'
 
 export interface CodexConversationProps {
+  workRoot?: string
   codexSelection: CodexSelection
   thread: CodexThread | null
   messages: ChatMessage[]
@@ -81,6 +82,10 @@ export function CodexConversation(props: CodexConversationProps) {
               <span className="truncate">{thread.title ?? thread.name ?? 'محادثة جديدة'}</span>
             </div>
             <p className="mt-1 text-[11px] text-ink-soft">هنا تتحدث مع Codex — التخطيط، المنطق، والمراجعة.</p>
+            {thread.directory ? <div className="mt-2 text-[10px] text-ink-soft">
+              <span>مجلد هذه الجلسة: </span><code dir="ltr" className="ltr inline-block max-w-full truncate align-bottom" title={thread.directory}>{thread.directory}</code>
+              {props.workRoot && thread.directory.replace(/[\\/]+$/, '').toLowerCase() !== props.workRoot.replace(/[\\/]+$/, '').toLowerCase() ? <p className="mt-1 text-review-ink">هذه جلسة لمشروع مختلف. لإنشاء جلسة في المجلد المختار، اضغط «+ محادثة».</p> : null}
+            </div> : null}
           </div>
           <TurnPill turn={turn} sending={sending} />
         </header>

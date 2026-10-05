@@ -430,9 +430,25 @@ function codexExecutableCandidates() {
 
   if (desktopBin) {
     try {
-      for (const entry of readdirSync(desktopBin, { withFileTypes: true })) {
-        if (entry.isDirectory()) candidates.push(path.join(desktopBin, entry.name, 'codex.exe'))
-      }
+      const installations = readdirSync(desktopBin, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => {
+          const executable = path.join(desktopBin, entry.name, 'codex.exe')
+          try {
+            const executableStat = statSync(executable)
+            const complete = statSync(path.join(desktopBin, entry.name, 'codex-code-mode-host.exe')).isFile()
+            return { executable, complete, modified: executableStat.mtimeMs }
+          } catch {
+            try {
+              return { executable, complete: false, modified: statSync(executable).mtimeMs }
+            } catch {
+              return null
+            }
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => Number(b.complete) - Number(a.complete) || b.modified - a.modified)
+      candidates.push(...installations.map((installation) => installation.executable))
     } catch {
       // The desktop installation is optional. Keep looking for an explicit CLI.
     }
@@ -468,6 +484,8 @@ const relayCodexInstructions = [
   'You are Codex inside Relay Room: the architect, reasoner, and reviewer.',
   'Do not write or edit implementation code in this thread. Explain the plan, reason about tradeoffs, and review work.',
   'OpenCode is the implementer; it runs whichever model the operator selected for this conversation. You may call relay.delegate_to_opencode only when the latest user message explicitly contains $opencode.',
+  'The relay.delegate_to_opencode client tool dispatches through Relay Room outside your filesystem sandbox. Read-only filesystem access does not block this tool. Never ask the user to change Codex permissions before calling it; report only an actual tool error. If the latest message has no $opencode tag, ask the user to include that tag rather than to change permissions.',
+  'Never use shell commands, code-mode tools, the opencode CLI, or an attached delegation skill as a substitute for relay.delegate_to_opencode. If that client tool is absent from the available tools in an older conversation, explain that this conversation lacks the Relay Room integration and ask the user to create a new conversation inside Relay Room with the task context. Do not claim that changing permissions or restarting Codex will install the missing tool.',
   'When it contains $opencode, first reason about what the user wants OpenCode to receive. Resolve the intended content using the conversation context before calling the tool; do not forward the full user text mechanically. Do not inspect files or begin implementation yourself.',
   'Call relay.delegate_to_opencode exactly once for each explicit request. Interpret the user intent and pass only the intended message or actionable task, not the meta-instruction asking you to send it. For example, a request to send hi to the other chat means task: "hi".',
   'The OpenCode session already has the project folder and the handoff carries any attached file paths. Do not add routing instructions, $opencode, or a handoff wrapper to the task.',
@@ -811,6 +829,10 @@ class CodexAppServerBridge {
 
 const codexBridge = new CodexAppServerBridge()
 
+function codexSandboxMode(value) {
+  return ({ readOnly: 'read-only', workspaceWrite: 'workspace-write', dangerFullAccess: 'danger-full-access' })[value] ?? value ?? ''
+}
+
 function emptyCodexState() {
   return { threads: {}, links: {} }
 }
@@ -938,8 +960,8 @@ async function ensureRelayCodexThreadLoaded(threadId) {
   try {
     const resumed = await codexBridge.resumeThread(threadId, {
       cwd,
-      sandbox: 'read-only',
-      approvalPolicy: 'never',
+      // Preserve the existing thread's permissions and approval policy.
+      // Opening a conversation in Relay Room must not downgrade its sandbox.
       developerInstructions: relayCodexInstructions,
       excludeTurns: true,
     })
@@ -948,6 +970,7 @@ async function ensureRelayCodexThreadLoaded(threadId) {
         if (state.threads[threadId]) {
           state.threads[threadId].codexModel = resumed.model
           state.threads[threadId].codexEffort = resumed.reasoningEffort ?? ''
+          state.threads[threadId].codexSandbox = codexSandboxMode(resumed.sandbox?.type)
         }
       })
     }
@@ -1053,6 +1076,7 @@ async function createRelayCodexThread(input) {
   })
   const thread = response?.thread ?? response?.data ?? response
   const saved = await registerRelayCodexThread(thread, title, thread?.cwd ?? watchRoot)
+  await updateCodexState((state) => { state.threads[saved.id].codexSandbox = codexSandboxMode(response?.sandbox?.type) })
   codexBridge.markThreadActive(saved.id)
 
   try {
@@ -1116,6 +1140,7 @@ async function listCodexModels() {
 
 async function sendRelayCodexMessage(threadId, input) {
   await ensureRelayCodexThreadLoaded(threadId)
+  const { saved } = await requireRelayCodexThread(threadId)
   const text = String(input?.text ?? '').replaceAll('\u0000', '').trim()
   if (!text) throw new HttpError(400, 'Write a message to Codex first.')
   if (text.length > 100_000) throw new HttpError(413, 'The Codex message is too long.')
@@ -1140,16 +1165,26 @@ async function sendRelayCodexMessage(threadId, input) {
   if (delegation.hasExplicitTag) codexBridge.allowDelegation(threadId, delegation.task, attachments)
 
   try {
+    const requestedSandbox = saved.pendingCodexSandbox
+    const sandboxPolicy = requestedSandbox === 'workspace-write'
+      ? { type: 'workspaceWrite', writableRoots: [saved.directory ?? watchRoot], networkAccess: false }
+      : requestedSandbox === 'read-only' ? { type: 'readOnly' }
+        : requestedSandbox === 'danger-full-access' ? { type: 'dangerFullAccess' } : undefined
     const response = await codexBridge.call('turn/start', {
       threadId,
       input: [{ type: 'text', text }],
       ...settings,
+      ...(sandboxPolicy ? { sandboxPolicy } : {}),
     })
     const turnId = response?.turn?.id ?? response?.id
     if (response?.turn?.status !== 'completed') codexBridge.markTurnRunning(threadId, turnId)
     if (delegation.hasExplicitTag) codexBridge.bindDelegationTurn(threadId, turnId)
     await updateCodexState((state) => {
       if (state.threads[threadId]) {
+        if (requestedSandbox) {
+          state.threads[threadId].codexSandbox = requestedSandbox
+          delete state.threads[threadId].pendingCodexSandbox
+        }
         state.threads[threadId].updatedAt = Date.now()
         if (settings.model) {
           state.threads[threadId].codexModel = settings.model
@@ -1888,7 +1923,19 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && codexSettingsMatch) {
       await ensureRelayCodexThreadLoaded(codexSettingsMatch[1])
       const { saved } = await requireRelayCodexThread(codexSettingsMatch[1])
-      sendJson(response, 200, { data: { model: saved.codexModel ?? '', effort: saved.codexEffort ?? '' } })
+      sendJson(response, 200, { data: { model: saved.codexModel ?? '', effort: saved.codexEffort ?? '', sandbox: codexSandboxMode(saved.pendingCodexSandbox ?? saved.codexSandbox), permissionsPending: Boolean(saved.pendingCodexSandbox) } })
+      return
+    }
+
+    if (request.method === 'POST' && codexSettingsMatch) {
+      const threadId = codexSettingsMatch[1]
+      const input = await readJson(request)
+      if (!['read-only', 'workspace-write', 'danger-full-access'].includes(input?.sandbox)) throw new HttpError(400, 'Invalid Codex permission mode.')
+      await ensureRelayCodexThreadLoaded(threadId)
+      if (codexBridge.getTurnState(threadId).active) throw new HttpError(409, 'Wait until the current Codex turn finishes before changing permissions.')
+      // Apply on turn/start: fresh threads have no rollout to resume yet.
+      await updateCodexState((state) => { state.threads[threadId].pendingCodexSandbox = input.sandbox })
+      sendJson(response, 200, { data: { sandbox: input.sandbox, permissionsPending: true } })
       return
     }
 

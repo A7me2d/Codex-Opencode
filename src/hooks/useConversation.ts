@@ -7,6 +7,10 @@ import type { ChatMessage, CodexThread, CodexTurnState, HandoffData } from '../l
 import { usePolling } from './usePolling'
 import type { CodexModelInfo, CodexSettings } from '../lib/types'
 export interface CodexSelection {
+ permissionsPending: boolean
+ permissions: string
+ changingPermissions: boolean
+ onPermissionsChange: (sandbox: string) => void
  models: CodexModelInfo[]
  current: CodexSettings
  loading: boolean
@@ -79,6 +83,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const scope = threadId ?? 'none'
   const catalog = usePolling(api.codexModels, 60_000)
   const savedSettings = usePolling(() => threadId ? api.codexSettings(threadId) : null, 60_000, { resetKey: scope })
+  const [permissionChange, setPermissionChange] = useState<{ scope: string; changing: boolean; error: string | null }>({ scope, changing: false, error: null })
   const [selection, setSelection] = useState<{ scope: string; settings: CodexSettings } | null>(null)
   const availableModels = catalog.data ?? []
   const requested = selection?.scope === scope ? selection.settings : savedSettings.data
@@ -124,8 +129,8 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   }, [scope])
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([messages.refresh(), turnRequest.refresh(), handoff.refresh()])
-  }, [handoff, messages, turnRequest])
+    await Promise.all([messages.refresh(), turnRequest.refresh(), handoff.refresh(), savedSettings.refresh()])
+  }, [handoff, messages, turnRequest, savedSettings])
 
   // `files` defaults to whatever is in the box, so a parked message re-sends
   // with exactly the files it was parked with.
@@ -241,9 +246,20 @@ export function useConversation(thread: CodexThread | null): ConversationControl
 
   return {
     codexSelection: {
+      permissionsPending: Boolean(savedSettings.data?.permissionsPending),
+      permissions: savedSettings.data?.sandbox ?? '',
+      changingPermissions: permissionChange.scope === scope && permissionChange.changing,
+      onPermissionsChange: (sandbox) => {
+        if (!threadId || busy || queued || permissionChange.changing) return
+        setPermissionChange({ scope, changing: true, error: null })
+        void api.setCodexPermissions(threadId, sandbox).then(async () => {
+          await savedSettings.refresh()
+          setPermissionChange({ scope, changing: false, error: null })
+        }).catch((failure: unknown) => setPermissionChange({ scope, changing: false, error: failure instanceof Error ? failure.message : 'تعذّر تغيير الصلاحيات.' }))
+      },
       models: availableModels, current: codexSettings,
       loading: catalog.status === 'loading' || savedSettings.status === 'loading',
-      error: catalog.error ?? savedSettings.error,
+      error: catalog.error ?? savedSettings.error ?? (permissionChange.scope === scope ? permissionChange.error : null),
       onModelChange: (model) => {
         if (busy || queued) return
         const entry = availableModels.find((item) => item.model === model)

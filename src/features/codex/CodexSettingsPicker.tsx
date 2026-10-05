@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Bot, Brain, Check, ChevronDown } from 'lucide-react'
+import { Bot, Brain, Check, ChevronDown, Shield } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { CodexSelection } from '../../hooks/useConversation'
 import { cx } from '../../lib/cx'
@@ -88,5 +88,13 @@ export function CodexSettingsPicker({ selection, disabled }: { selection: CodexS
       options={(model?.supportedReasoningEfforts ?? []).map((entry) => ({ value: entry.reasoningEffort, label: effortLabels[entry.reasoningEffort] ?? entry.reasoningEffort, detail: entry.reasoningEffort }))}
       disabled={disabled || selection.loading} onChange={selection.onEffortChange} />
     {selection.loading ? <span role="status" className="text-[10px] text-ink-soft">تحميل الخيارات…</span> : null}
+    <Picker label="صلاحيات Codex" icon={Shield} value={selection.permissions}
+      options={[
+        { value: 'read-only', label: 'قراءة فقط', detail: 'عرض الملفات بدون تعديل' },
+        { value: 'workspace-write', label: 'تعديل المشروع', detail: 'القراءة والكتابة داخل مجلد المشروع' },
+        { value: 'danger-full-access', label: 'وصول كامل', detail: 'القراءة والكتابة خارج مجلد المشروع أيضًا' },
+      ]}
+      disabled={disabled || selection.loading || selection.changingPermissions} onChange={selection.onPermissionsChange} />
+    {selection.permissionsPending ? <span className="text-[10px] text-ink-soft">تُطبّق الصلاحيات مع الرسالة التالية</span> : null}
   </div>
 }

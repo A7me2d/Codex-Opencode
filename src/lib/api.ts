@@ -69,6 +69,7 @@ export const api = {
   codexModels: () => requestJson<{ data: CodexModelInfo[] }>('/api/codex/models').then(unwrap),
   codexDiff: (threadId: string) => requestJson<{ data: CodexItem[] }>(`/api/codex/threads/${threadId}/messages`).then(unwrap).then(readCodexFileChanges),
   codexSettings: (threadId: string) => requestJson<{ data: CodexSettings }>(`/api/codex/threads/${threadId}/settings`).then(unwrap),
+  setCodexPermissions: (threadId: string, sandbox: string) => post<{ data: { sandbox: string } }>(`/api/codex/threads/${threadId}/settings`, { sandbox }).then(unwrap),
   sendMessage: (threadId: string, text: string, attachments: string[] = [], settings?: CodexSettings) =>
     post(`/api/codex/threads/${threadId}/messages`, { text, attachments, ...settings }),
   turnState: (threadId: string) => requestJson<{ data: CodexTurnState }>(`/api/codex/threads/${threadId}/status`).then(unwrap),
