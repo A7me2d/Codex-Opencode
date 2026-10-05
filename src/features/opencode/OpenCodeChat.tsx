@@ -6,6 +6,7 @@ import { api } from '../../lib/api'
 import { cx } from '../../lib/cx'
 import { readOpenCodeChat } from '../../lib/chat'
 import { clip, relativeTime } from '../../lib/format'
+import { ChangedFiles } from './ChangedFiles'
 import type { Notify } from '../../hooks/useAgentAlerts'
 import type { ChatMessage, OpenCodeSession } from '../../lib/types'
 
@@ -225,6 +226,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     ) : (
       <>
         <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <ChangedFiles key={selected} sessionId={selected} active={running} />
           {loading && messages.length === 0 ? (
             <p className="flex items-center justify-center gap-2 py-6 text-xs text-ink-soft"><Spinner />يتم قراءة الرسائل…</p>
           ) : messages.length === 0 ? (

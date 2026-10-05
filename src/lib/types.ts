@@ -66,6 +66,8 @@ export interface CodexThread {
 
 /** A Codex transcript entry. Only `userMessage` and `agentMessage` are rendered. */
 export interface CodexItem {
+  status?: string
+  changes?: { path: string; diff: string; kind?: { type: string } }[]
   id: string
   type: string
   text?: string
@@ -139,6 +141,14 @@ export interface ChatMessage {
 }
 
 export type Speaker = 'codex' | 'opencode'
+
+export interface SessionFileDiff {
+  file: string
+  patch: string
+  additions: number
+  deletions: number
+  status: string
+}
 
 /** One selectable OpenCode model, e.g. Big Pickle, G5.3, or a free router model. */
 export interface ModelInfo {

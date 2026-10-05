@@ -14,6 +14,7 @@ import { asArray } from '../../lib/guards'
 import { readForms } from '../../lib/forms'
 import type { CodexThread, HandoffData, OpenCodeSession, RelayEvent } from '../../lib/types'
 import { OpenCodeChat } from './OpenCodeChat'
+import { ChangedFiles } from './ChangedFiles'
 import { ModelPicker } from './ModelPicker'
 import type { ModelPickerProps } from './ModelPicker'
 import { OpenCodeControls } from './OpenCodeControls'
@@ -130,6 +131,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto">
               <div className="space-y-4 px-4 py-4">
+                <ChangedFiles key={sessionId} sessionId={sessionId} active={handoff.active} />
                 {handoffs.length > 0 ? (
                   <section className="border-b border-line pb-4">
                     <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-relay-ink">Codex ←→ OpenCode</p>
