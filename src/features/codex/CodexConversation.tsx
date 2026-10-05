@@ -5,12 +5,14 @@ import { Spinner } from '../../components/ui/Spinner'
 import { StatusPill } from '../../components/ui/StatusPill'
 import { useStickyScroll } from '../../hooks/useStickyScroll'
 import type { ChatMessage, CodexThread, CodexTurnState } from '../../lib/types'
+import type { SessionFileDiff } from '../../lib/types'
 import { Composer } from './Composer'
 import { ChangedFiles } from '../opencode/ChangedFiles'
 
 import type { CodexSelection } from '../../hooks/useConversation'
 
 export interface CodexConversationProps {
+  fileChanges: SessionFileDiff[]
   workRoot?: string
   codexSelection: CodexSelection
   thread: CodexThread | null
@@ -92,7 +94,7 @@ export function CodexConversation(props: CodexConversationProps) {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-            <div className="mx-auto mb-4 max-w-3xl"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} /></div>
+            <div className="mx-auto mb-4 max-w-3xl"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} files={props.fileChanges} /></div>
             {loading && messages.length === 0 ? (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-ink-soft">
                 <Spinner />يتم تحميل المحادثة…

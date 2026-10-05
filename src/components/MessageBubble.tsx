@@ -1,11 +1,12 @@
 import { Bot, Sparkles, UserRound } from 'lucide-react'
+import { memo } from 'react'
 import { cx } from '../lib/cx'
 import type { ChatMessage, Speaker } from '../lib/types'
 
 const agentName: Record<Speaker, string> = { codex: 'Codex', opencode: 'OpenCode' }
 
 /** One chat line. The two agents stay visually distinct without splitting the flow. */
-export function MessageBubble({ message, speaker }: { message: ChatMessage; speaker: Speaker }) {
+export const MessageBubble = memo(function MessageBubble({ message, speaker }: { message: ChatMessage; speaker: Speaker }) {
   const isUser = message.role === 'user'
 
   return <article className={cx('flex gap-2.5', isUser ? 'flex-row-reverse' : 'flex-row')}>
@@ -29,4 +30,8 @@ export function MessageBubble({ message, speaker }: { message: ChatMessage; spea
       </div>
     </div>
   </article>
-}
+}, (previous, next) => previous.speaker === next.speaker
+  && previous.message.id === next.message.id
+  && previous.message.role === next.message.role
+  && previous.message.text === next.message.text
+  && previous.message.live === next.message.live)

@@ -17,13 +17,13 @@ import { usePolling } from './usePolling'
  * *which* conversation is current and keeps the shell honest.
  */
 export function useRelayRoom() {
-  const codexStatus = usePolling(api.codexStatus, config.poll.codexStatusMs)
-  const openCodeStatus = usePolling(api.openCodeStatus, config.poll.openCodeStatusMs)
+  const codexStatus = usePolling(api.codexStatus, Math.max(config.poll.codexStatusMs, 30_000))
+  const openCodeStatus = usePolling(api.openCodeStatus, Math.max(config.poll.openCodeStatusMs, 30_000))
   const project = usePolling(api.project, config.poll.projectMs)
-  const threadList = usePolling(api.threads, config.poll.threadsMs)
-  const relayEvents = usePolling(api.relayEvents, config.poll.relayEventsMs)
-  const models = usePolling(api.models, config.poll.modelsMs)
-  const openCodeSessions = usePolling(api.openCodeSessions, config.poll.sessionsMs)
+  const threadList = usePolling(api.threads, Math.max(config.poll.threadsMs, 30_000))
+  const relayEvents = usePolling(api.relayEvents, Math.max(config.poll.relayEventsMs, 30_000))
+  const models = usePolling(api.models, Math.max(config.poll.modelsMs, 300_000))
+  const openCodeSessions = usePolling(api.openCodeSessions, Math.max(config.poll.sessionsMs, 30_000))
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)

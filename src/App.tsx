@@ -153,6 +153,7 @@ export default function App() {
           codexSelection={conversation.codexSelection}
           thread={conversation.view.thread}
           messages={conversation.view.messages}
+          fileChanges={conversation.view.fileChanges}
           loading={conversation.view.loading}
           turn={conversation.turn}
           onNewThread={room.onCreateThread}

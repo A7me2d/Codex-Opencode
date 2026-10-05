@@ -19,7 +19,7 @@ export interface PollingOptions {
  * stops polling, which is how per-conversation endpoints switch off when no
  * session is selected.
  */
-export function usePolling<T>(load: (() => Promise<T> | null) | null, intervalMs: number, options: PollingOptions = {}): Request<T> {
+export function usePolling<T>(load: (() => Promise<T> | null) | null, intervalMs: number | ((data: T | null) => number), options: PollingOptions = {}): Request<T> {
   const { resetKey, pauseWhenHidden = true } = options
   const [state, setState] = useState<{ data: T | null; error: string | null; status: Request<T>['status'] }>({ data: null, error: null, status: 'idle' })
 
@@ -27,50 +27,83 @@ export function usePolling<T>(load: (() => Promise<T> | null) | null, intervalMs
   // inline arrow would otherwise re-run the effect on every render.
   const loader = useRef(load)
   loader.current = load
+  const cadence = useRef(intervalMs)
+  cadence.current = intervalMs
+  const generation = useRef(0)
+  const resource = useRef({ enabled: load !== null, resetKey })
+  const inFlight = useRef<{ generation: number; promise: Promise<T | null> } | null>(null)
+  const lastResult = useRef<{ generation: number; signature: string | undefined; data: T } | null>(null)
+  if (resource.current.enabled !== (load !== null) || resource.current.resetKey !== resetKey) {
+    resource.current = { enabled: load !== null, resetKey }
+    generation.current += 1
+  }
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback((): Promise<T | null> => {
     const load = loader.current
     if (!load) {
-      setState({ data: null, error: null, status: 'idle' })
-      return null
+      setState((previous) => previous.status === 'idle' && previous.data === null && previous.error === null
+        ? previous : { data: null, error: null, status: 'idle' })
+      return Promise.resolve(null)
     }
-    setState((previous) => ({ ...previous, status: previous.data ? 'ready' : 'loading', error: null }))
-    try {
-      const data = await load()
-      if (data === null) return null
-      setState({ data, error: null, status: 'ready' })
-      return data
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'تعذر تحميل البيانات.'
-      setState((previous) => ({ ...previous, error: message, status: previous.data ? 'ready' : 'error' }))
-      return null
-    }
+    const requestGeneration = generation.current
+    if (inFlight.current?.generation === requestGeneration) return inFlight.current.promise
+    setState((previous) => {
+      const status = previous.data !== null ? 'ready' : 'loading'
+      return previous.status === status && previous.error === null ? previous : { ...previous, status, error: null }
+    })
+    const promise = (async () => {
+      try {
+        const data = await load()
+        if (data === null || generation.current !== requestGeneration) return null
+        const signature = JSON.stringify(data)
+        const previous = lastResult.current
+        const stableData = previous?.generation === requestGeneration && previous.signature === signature ? previous.data : data
+        lastResult.current = { generation: requestGeneration, signature, data: stableData }
+        setState((previous) => previous.data === stableData && previous.error === null && previous.status === 'ready'
+          ? previous : { data: stableData, error: null, status: 'ready' })
+        return stableData
+      } catch (error) {
+        if (generation.current !== requestGeneration) return null
+        const message = error instanceof Error ? error.message : 'تعذر تحميل البيانات.'
+        setState((previous) => previous.error === message ? previous
+          : { ...previous, error: message, status: previous.data !== null ? 'ready' : 'error' })
+        return null
+      }
+    })()
+    inFlight.current = { generation: requestGeneration, promise }
+    void promise.finally(() => {
+      if (inFlight.current?.promise === promise) inFlight.current = null
+    })
+    return promise
   }, [])
 
   const enabled = load !== null
 
   useEffect(() => {
     if (resetKey !== undefined) setState({ data: null, error: null, status: enabled ? 'loading' : 'idle' })
-    if (!enabled) return undefined
-    void refresh()
-
+    if (!enabled) { void refresh(); return undefined }
     let timer = 0
-    const start = () => { if (!timer) timer = window.setInterval(() => void refresh(), intervalMs) }
-    const stop = () => { if (timer) { window.clearInterval(timer); timer = 0 } }
+    let stopped = false
+    const start = () => {
+      if (stopped || timer || (pauseWhenHidden && document.hidden)) return
+      const interval = typeof cadence.current === 'function' ? cadence.current(lastResult.current?.data ?? null) : cadence.current
+      if (interval > 0) timer = window.setTimeout(() => { timer = 0; void poll() }, interval)
+    }
+    const stop = () => { if (timer) { window.clearTimeout(timer); timer = 0 } }
+    const poll = async () => { await refresh(); start() }
+    if (!pauseWhenHidden || !document.hidden) void poll()
 
     if (pauseWhenHidden) {
       const onVisibility = () => {
         if (document.hidden) stop()
-        else { start(); void refresh() }
+        else { void poll() }
       }
-      start()
       document.addEventListener('visibilitychange', onVisibility)
-      return () => { stop(); document.removeEventListener('visibilitychange', onVisibility) }
+      return () => { stopped = true; generation.current += 1; stop(); document.removeEventListener('visibilitychange', onVisibility) }
     }
 
-    start()
-    return stop
-  }, [enabled, intervalMs, pauseWhenHidden, refresh, resetKey])
+    return () => { stopped = true; generation.current += 1; stop() }
+  }, [enabled, pauseWhenHidden, refresh, resetKey])
 
   return { ...state, refresh }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, CircleStop, Plus, Send } from 'lucide-react'
 import { Spinner } from '../../components/ui/Spinner'
 import { MessageBubble } from '../../components/MessageBubble'
@@ -7,8 +7,9 @@ import { cx } from '../../lib/cx'
 import { readOpenCodeChat } from '../../lib/chat'
 import { clip, relativeTime } from '../../lib/format'
 import { ChangedFiles } from './ChangedFiles'
+import { usePolling } from '../../hooks/usePolling'
 import type { Notify } from '../../hooks/useAgentAlerts'
-import type { ChatMessage, OpenCodeSession } from '../../lib/types'
+import type { OpenCodeSession } from '../../lib/types'
 
 export interface OpenCodeChatProps {
   sessions: OpenCodeSession[]
@@ -34,8 +35,6 @@ export interface OpenCodeChatProps {
 export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionId, onNotify, onRefreshSessions }: OpenCodeChatProps) {
   const [selected, setSelected] = useState<string>('')
   const [draft, setDraft] = useState('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
@@ -58,35 +57,10 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     setSelected((value) => (value && sessions.some((entry) => entry.id === value) ? value : ''))
   }, [linkedSessionId, sessions])
 
-  const read = useCallback(async () => {
-    if (!selected) {
-      setMessages([])
-      return
-    }
-    setLoading(true)
-    try {
-      const payload = await api.sessionMessages(selected)
-      setMessages(readOpenCodeChat(payload))
-      setError(null)
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذّر قراءة رسائل الجلسة.')
-    } finally {
-      setLoading(false)
-    }
-  }, [selected])
-
-  // Poll only while something is selected, and pause in a hidden tab.
-  useEffect(() => {
-    void read()
-    if (!selected) return undefined
-    let timer = 0
-    const start = () => { if (!timer) timer = window.setInterval(() => void read(), 2_500) }
-    const stop = () => { if (timer) { window.clearInterval(timer); timer = 0 } }
-    const onVisibility = () => { if (document.hidden) stop(); else { start(); void read() } }
-    start()
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility) }
-  }, [read, selected])
+  const transcript = usePolling(selected ? () => api.sessionMessages(selected) : null, 2_500, { resetKey: selected })
+  const messages = useMemo(() => readOpenCodeChat(transcript.data), [transcript.data])
+  const loading = transcript.status === 'loading'
+  const read = transcript.refresh
 
   async function startSession() {
     if (starting) return
@@ -255,7 +229,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
               {sending ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" aria-hidden="true" />}
             </button>
           </div>
-          {error ? <p className="mt-2 text-[11px] leading-5 text-review-ink">{error}</p> : null}
+          {(error || transcript.error) ? <p className="mt-2 text-[11px] leading-5 text-review-ink">{error || transcript.error}</p> : null}
           <p className="mt-2 px-1 text-[10px] text-ink-soft">Enter للإرسال · Shift + Enter لسطر جديد · هذا الشات لا يمرّ على Codex.</p>
         </div>
       </>

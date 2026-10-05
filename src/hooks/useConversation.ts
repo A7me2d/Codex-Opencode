@@ -3,6 +3,8 @@ import { config } from '../app/config'
 import { api } from '../lib/api'
 import { readCodexChat } from '../lib/chat'
 import { readForms } from '../lib/forms'
+import { readCodexFileChanges } from '../lib/diff'
+import type { SessionFileDiff } from '../lib/types'
 import type { ChatMessage, CodexThread, CodexTurnState, HandoffData } from '../lib/types'
 import { usePolling } from './usePolling'
 import type { CodexModelInfo, CodexSettings } from '../lib/types'
@@ -21,6 +23,7 @@ export interface CodexSelection {
 
 /** What the panes need to render one conversation. */
 export interface ConversationView {
+  fileChanges: SessionFileDiff[]
   thread: CodexThread | null
   messages: ChatMessage[]
   handoff: HandoffData | null
@@ -81,8 +84,8 @@ function messageOf(draft: string, attachments: string[]) {
 export function useConversation(thread: CodexThread | null): ConversationController {
   const threadId = thread?.id ?? null
   const scope = threadId ?? 'none'
-  const catalog = usePolling(api.codexModels, 60_000)
-  const savedSettings = usePolling(() => threadId ? api.codexSettings(threadId) : null, 60_000, { resetKey: scope })
+  const catalog = usePolling(api.codexModels, 300_000)
+  const savedSettings = usePolling(threadId ? () => api.codexSettings(threadId) : null, 0, { resetKey: scope })
   const [permissionChange, setPermissionChange] = useState<{ scope: string; changing: boolean; error: string | null }>({ scope, changing: false, error: null })
   const [selection, setSelection] = useState<{ scope: string; settings: CodexSettings } | null>(null)
   const availableModels = catalog.data ?? []
@@ -104,9 +107,12 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const [queued, setQueued] = useState<{ threadId: string; text: string; attachments: string[] } | null>(null)
   const [modelChange, setModelChange] = useState<{ changing: boolean; error: string | null }>({ changing: false, error: null })
 
-  const messages = usePolling(() => (threadId ? api.messages(threadId) : null), config.poll.codexMessagesMs, { resetKey: scope })
-  const turnRequest = usePolling(() => (threadId ? api.turnState(threadId) : null), config.poll.turnStateMs, { resetKey: scope })
-  const handoff = usePolling(() => (threadId ? api.handoff(threadId) : null), config.poll.handoffMs, { resetKey: scope })
+  const turnRequest = usePolling(threadId ? () => api.turnState(threadId) : null,
+    (data) => data?.active || sending ? config.poll.turnStateMs : 5_000, { resetKey: scope })
+  const messages = usePolling(threadId ? () => api.messages(threadId) : null,
+    turnRequest.data?.active || sending ? config.poll.codexMessagesMs : 15_000, { resetKey: scope })
+  const handoff = usePolling(threadId ? () => api.handoff(threadId) : null,
+    (data) => data?.active || sending || turnRequest.data?.active ? config.poll.handoffMs : 15_000, { resetKey: scope })
 
   // The model is a property of the conversation: the server reports the one
   // the live OpenCode session really runs, and remembers it per thread.
@@ -271,6 +277,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       },
     },
     view: {
+      fileChanges: useMemo(() => readCodexFileChanges(messages.data ?? []), [messages.data]),
       busy,
       handoff: handoff.data,
       loading: messages.status === 'loading',
