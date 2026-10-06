@@ -24,6 +24,12 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Verify Electron runtime was installed
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'node_modules/electron/dist/electron.exe')) {
+            throw 'Electron runtime is missing. Check that electron install scripts are allowed in package.json.'
+          }
       - name: Assign a unique release version
         shell: pwsh
         run: npm version "1.0.${{ github.run_number }}" --no-git-tag-version

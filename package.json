@@ -84,6 +84,7 @@
     }
   },
   "allowScripts": {
-    "node-pty@1.1.0": true
+    "node-pty@1.1.0": true,
+    "electron@44.5.1": true
   }
 }
