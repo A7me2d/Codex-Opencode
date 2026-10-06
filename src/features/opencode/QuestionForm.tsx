@@ -103,7 +103,7 @@ export function QuestionForm({ form, sessionId, onAnswered, onNotify }: Question
       </div>
     ) : null}
 
-    <button type="submit" disabled={sending} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-review px-3 py-2 text-[12px] font-bold text-white transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55">
+    <button type="submit" disabled={sending} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-review px-3 py-2 text-[12px] font-bold text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55">
       {sending ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Send className="h-3.5 w-3.5" aria-hidden="true" />}
       أرسل الإجابة وأكمل
     </button>

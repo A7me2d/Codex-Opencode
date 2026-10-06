@@ -42,14 +42,13 @@ function EmptyThread({ onNewThread }: { onNewThread: () => void }) {
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-relay-tint text-relay-ink">
         <Sparkles className="h-6 w-6" aria-hidden="true" />
       </div>
-      <h1 className="mt-5 text-xl font-bold text-ink">ابدأ من شات Codex</h1>
+      <h1 className="mt-5 text-xl font-bold text-ink">ابدأ محادثة جديدة</h1>
       <p className="mt-3 text-sm leading-7 text-ink-soft">
-        اكتب طلبك هنا. إذا أردت أن ينفّذ OpenCode، أضف
-        <code className="rounded bg-card px-1.5 py-0.5 font-mono text-relay-ink">$opencode</code>
-        داخل الرسالة، وسترى التسليم والرد في المساحة الجانبية.
+        اختَر المفكّر والمنفّذ من الإعدادات، ثم افتح محادثة.
+        ستظهر مساحة التخطيط والتنفيذ حسب الأدوار التي اخترتها.
       </p>
-      <button type="button" onClick={onNewThread} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-relay px-4 py-2.5 text-sm font-bold text-white hover:bg-relay-ink">
-        <Plus className="h-4 w-4" aria-hidden="true" />محادثة Codex جديدة
+      <button type="button" onClick={onNewThread} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-relay px-4 py-2.5 text-sm font-bold text-on-accent hover:bg-relay-ink">
+        <Plus className="h-4 w-4" aria-hidden="true" />محادثة جديدة
       </button>
     </div>
   </div>
@@ -84,7 +83,7 @@ export function CodexConversation(props: CodexConversationProps) {
               <Sparkles className="h-4 w-4 shrink-0 text-relay" aria-hidden="true" />
               <span className="truncate">{thread.title ?? thread.name ?? 'محادثة جديدة'}</span>
             </div>
-            <p className="mt-1 text-[11px] text-ink-soft">هنا تتحدث مع Codex — التخطيط، المنطق، والمراجعة.</p>
+            <p className="mt-1 text-[11px] text-ink-soft">{thread.workflow?.executor === 'codex' ? 'Codex · المنفّذ — تعديل الملفات والتحقق من النتيجة.' : 'هنا تتحدث مع Codex — التخطيط، المنطق، والمراجعة.'}</p>
             {thread.directory ? <div className="mt-2 text-[10px] text-ink-soft">
               <span>مجلد هذه الجلسة: </span><code dir="ltr" className="ltr inline-block max-w-full truncate align-bottom" title={thread.directory}>{thread.directory}</code>
               {props.workRoot && thread.directory.replace(/[\\/]+$/, '').toLowerCase() !== props.workRoot.replace(/[\\/]+$/, '').toLowerCase() ? <p className="mt-1 text-review-ink">هذه جلسة لمشروع مختلف. لإنشاء جلسة في المجلد المختار، اضغط «+ محادثة».</p> : null}
@@ -103,7 +102,7 @@ export function CodexConversation(props: CodexConversationProps) {
               </div>
             ) : messages.length === 0 ? (
               <div className="flex h-full items-center justify-center text-center">
-                <p className="max-w-sm text-sm leading-7 text-ink-soft">هذه جلسة جديدة. اكتب ما تريد من Codex أن يفهمه أو يخطط له.</p>
+                <p className="max-w-sm text-sm leading-7 text-ink-soft">{thread.workflow?.executor === 'codex' ? 'خطة OpenCode تظهر هنا عند إرسالها للتنفيذ. يمكنك أيضًا توجيه Codex مباشرة.' : 'هذه جلسة جديدة. اكتب ما تريد من Codex أن يفهمه أو يخطط له.'}</p>
               </div>
             ) : (
               <ol className="mx-auto flex max-w-3xl flex-col gap-5">
@@ -115,6 +114,7 @@ export function CodexConversation(props: CodexConversationProps) {
         </div>
 
         <Composer
+          implementer={thread.workflow?.executor === 'codex'}
           codexSelection={props.codexSelection}
           draft={draft}
           onChange={onDraftChange}

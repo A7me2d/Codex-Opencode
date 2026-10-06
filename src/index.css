@@ -2,7 +2,7 @@
 
 /*
  * Relay Room — Arabic-first task desk.
- * A calm, light "work desk" palette. No gradients, no neon, no dark control room.
+ * The original light palette is the default; alternate themes override tokens.
  */
 @theme {
   /* Surfaces */
@@ -29,9 +29,198 @@
   --color-relay-tint: #eeedff;
   --color-ready-tint: #e4f5ef;
   --color-review-tint: #fff4df;
+  --color-on-accent: #ffffff;
+  --color-user-surface: #1b2735;
+  --color-user-ink: #ffffff;
+  --color-selection: #d8e5fd;
+  --color-overlay: #1b2735;
 
   --font-sans: "Segoe UI", "Noto Sans Arabic", "Dubai", Tahoma, system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Palette reference: github.com/tokyo-night/tokyo-night-vscode-theme.
+ * Apply to the document and to isolated theme previews. */
+[data-theme="default"] {
+  color-scheme: light;
+  --color-paper: #f5f6f8;
+  --color-card: #fcfcfd;
+  --color-line: #d9e0e8;
+  --color-line-strong: #7c8998;
+  --color-ink: #1b2735;
+  --color-ink-soft: #596575;
+  --color-relay: #635bff;
+  --color-ready: #0c8e70;
+  --color-review: #b77916;
+  --color-relay-ink: #4b43d3;
+  --color-ready-ink: #08745b;
+  --color-review-ink: #865607;
+  --color-relay-tint: #eeedff;
+  --color-ready-tint: #e4f5ef;
+  --color-review-tint: #fff4df;
+  --color-on-accent: #ffffff;
+  --color-user-surface: #1b2735;
+  --color-user-ink: #ffffff;
+  --color-selection: #d8e5fd;
+  --color-overlay: #1b2735;
+}
+
+[data-theme="tokyo-night"],
+[data-theme="tokyo-storm"] {
+  color-scheme: dark;
+  --color-paper: #1a1b26;
+  --color-card: #202230;
+  --color-line: #3b4261;
+  --color-line-strong: #737caa;
+  --color-ink: #c0caf5;
+  --color-ink-soft: #a9b1d6;
+  --color-relay: #7aa2f7;
+  --color-ready: #73daca;
+  --color-review: #e0af68;
+  --color-relay-ink: #a6c0ff;
+  --color-ready-ink: #8ae6d6;
+  --color-review-ink: #f0c88b;
+  --color-relay-tint: #293451;
+  --color-ready-tint: #233c3d;
+  --color-review-tint: #403628;
+  --color-on-accent: #1a1b26;
+  --color-user-surface: #2f3a59;
+  --color-user-ink: #c0caf5;
+  --color-selection: #3d59a1;
+  --color-overlay: #101018;
+}
+
+[data-theme="tokyo-storm"] {
+  --color-paper: #24283b;
+  --color-card: #292e42;
+  --color-line: #444b6a;
+  --color-relay: #bb9af7;
+  --color-relay-ink: #cbb0ff;
+  --color-relay-tint: #3b3558;
+  --color-ready-tint: #294447;
+  --color-review-tint: #453e35;
+  --color-user-surface: #3b4261;
+}
+
+/* Adapted from the matching vscodethemes.com listings; source links live in themes.ts. */
+[data-theme="laserwave"] {
+  color-scheme: dark;
+  --color-paper: #27212e;
+  --color-card: #302938;
+  --color-line: #50435c;
+  --color-line-strong: #91889b;
+  --color-ink: #f4eff7;
+  --color-ink-soft: #bdb2c9;
+  --color-relay: #eb64b9;
+  --color-ready: #74dfc4;
+  --color-review: #ffe261;
+  --color-relay-ink: #f58ecd;
+  --color-ready-ink: #8be8d1;
+  --color-review-ink: #ffe88c;
+  --color-relay-tint: #4c2c47;
+  --color-ready-tint: #25403e;
+  --color-review-tint: #453e29;
+  --color-on-accent: #27212e;
+  --color-user-surface: #4b3556;
+  --color-user-ink: #f4eff7;
+  --color-selection: #703c6a;
+  --color-overlay: #151019;
+}
+
+[data-theme="sea-green"] {
+  color-scheme: dark;
+  --color-paper: #0a1018;
+  --color-card: #151b24;
+  --color-line: #2b424c;
+  --color-line-strong: #6c9299;
+  --color-ink: #c5e5e7;
+  --color-ink-soft: #8fb6bf;
+  --color-relay: #25a2a6;
+  --color-ready: #69d6b2;
+  --color-review: #d8c569;
+  --color-relay-ink: #6fd3d6;
+  --color-ready-ink: #8be3c6;
+  --color-review-ink: #e4d58f;
+  --color-relay-tint: #17373e;
+  --color-ready-tint: #193830;
+  --color-review-tint: #373326;
+  --color-on-accent: #0a1018;
+  --color-user-surface: #1b5159;
+  --color-user-ink: #e2f3f4;
+  --color-selection: #21636b;
+  --color-overlay: #070b11;
+}
+
+[data-theme="pro-hacker"] {
+  color-scheme: dark;
+  --color-paper: #000000;
+  --color-card: #0b100b;
+  --color-line: #244324;
+  --color-line-strong: #5c8e59;
+  --color-ink: #14ff00;
+  --color-ink-soft: #93c58c;
+  --color-relay: #11c700;
+  --color-ready: #63e68d;
+  --color-review: #e6d45e;
+  --color-relay-ink: #14ff00;
+  --color-ready-ink: #8cf5ad;
+  --color-review-ink: #f1e28b;
+  --color-relay-tint: #0d290a;
+  --color-ready-tint: #10291b;
+  --color-review-tint: #302b13;
+  --color-on-accent: #071007;
+  --color-user-surface: #103510;
+  --color-user-ink: #b6ffaf;
+  --color-selection: #205420;
+  --color-overlay: #000000;
+}
+
+[data-theme="huacat-pink"] {
+  color-scheme: light;
+  --color-paper: #f5eaf5;
+  --color-card: #fff8fd;
+  --color-line: #dec9dc;
+  --color-line-strong: #9f7695;
+  --color-ink: #53364c;
+  --color-ink-soft: #72696f;
+  --color-relay: #dd71b9;
+  --color-ready: #d49cc1;
+  --color-review: #ddb879;
+  --color-relay-ink: #9a3278;
+  --color-ready-ink: #843c73;
+  --color-review-ink: #86551c;
+  --color-relay-tint: #f9dced;
+  --color-ready-tint: #f3e0f0;
+  --color-review-tint: #faecd9;
+  --color-on-accent: #35112c;
+  --color-user-surface: #eab2d8;
+  --color-user-ink: #53364c;
+  --color-selection: #e6bddb;
+  --color-overlay: #3d173d;
+}
+
+[data-theme="cyberpunk-2077"] {
+  color-scheme: dark;
+  --color-paper: #272932;
+  --color-card: #1b1c22;
+  --color-line: #4b4e59;
+  --color-line-strong: #929168;
+  --color-ink: #fcf500;
+  --color-ink-soft: #d7d68c;
+  --color-relay: #fcf500;
+  --color-ready: #2cf6b3;
+  --color-review: #ff83a7;
+  --color-relay-ink: #fcf500;
+  --color-ready-ink: #69f8c8;
+  --color-review-ink: #ffa5be;
+  --color-relay-tint: #3b3b20;
+  --color-ready-tint: #1c3d39;
+  --color-review-tint: #442734;
+  --color-on-accent: #1b1c22;
+  --color-user-surface: #2c666f;
+  --color-user-ink: #fcf500;
+  --color-selection: #3e7c84;
+  --color-overlay: #101116;
 }
 
 @layer base {
@@ -93,7 +282,7 @@
   }
 
   ::selection {
-    background-color: #d8e5fd;
+    background-color: var(--color-selection);
   }
 }
 

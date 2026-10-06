@@ -8,6 +8,7 @@ import type { CodexSelection } from '../../hooks/useConversation'
 import { CodexSettingsPicker } from './CodexSettingsPicker'
 
 export interface ComposerProps {
+  implementer?: boolean
   codexSelection: CodexSelection
   draft: string
   onChange: (value: string) => void
@@ -34,7 +35,7 @@ export interface ComposerProps {
  * and the send button parks the text instead of dropping it, so the message
  * leaves the second the agent goes idle.
  */
-export function Composer({ codexSelection, draft, onChange, onSubmit, onQueue, onCancelQueue, queued, sending, error, attachments, onAttach, onRemoveAttachment, attaching, turn, onStop }: ComposerProps) {
+export function Composer({ implementer = false, codexSelection, draft, onChange, onSubmit, onQueue, onCancelQueue, queued, sending, error, attachments, onAttach, onRemoveAttachment, attaching, turn, onStop }: ComposerProps) {
   const busy = sending || turn.active
   const isDelegation = /(?:^|\s)\$opencode\b/i.test(draft)
   const starting = sending && !turn.active
@@ -82,14 +83,14 @@ export function Composer({ codexSelection, draft, onChange, onSubmit, onQueue, o
         {attaching ? <Spinner className="h-4 w-4" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
       </button>
 
-      <textarea value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder="اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode." className="min-h-[3.4rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
+      <textarea value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? 'اكتب توجيهًا إلى Codex المنفّذ…' : 'اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.'} className="min-h-[3.4rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
 
       {turn.active ? (
-        <button type="button" onClick={onStop} disabled={turn.stopping} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-review text-white transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55" aria-label="إيقاف Codex فورًا" title="إيقاف Codex فورًا">
+        <button type="button" onClick={onStop} disabled={turn.stopping} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-review text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55" aria-label="إيقاف Codex فورًا" title="إيقاف Codex فورًا">
           {turn.stopping ? <Spinner className="h-4 w-4" /> : <CircleStop className="h-4 w-4" aria-hidden="true" />}
         </button>
       ) : (
-        <button type="submit" disabled={sending || !hasContent} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-relay text-white transition-colors hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={busy ? 'حفظ الرسالة وإرسالها فور انتهاء دور Codex' : 'إرسال إلى Codex'} title={busy ? 'يُرسل تلقائيًا فور انتهاء دور Codex' : 'إرسال إلى Codex'}>
+        <button type="submit" disabled={sending || !hasContent} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-relay text-on-accent transition-colors hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={busy ? 'حفظ الرسالة وإرسالها فور انتهاء دور Codex' : 'إرسال إلى Codex'} title={busy ? 'يُرسل تلقائيًا فور انتهاء دور Codex' : 'إرسال إلى Codex'}>
           {sending ? <Spinner className="h-4 w-4" /> : busy ? <Timer className="h-4 w-4" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
         </button>
       )}
@@ -109,7 +110,7 @@ export function Composer({ codexSelection, draft, onChange, onSubmit, onQueue, o
       ) : isDelegation ? (
         <span className="font-mono text-relay-ink">$opencode ← سيظهر التفويض في المسار الجانبي</span>
       ) : (
-        <span>Codex يفكر ويراجع؛ OpenCode لا يعمل إلا بالوسم.</span>
+        <span>{implementer ? 'Codex ينفّذ؛ OpenCode يخطط ويراجع.' : 'Codex يفكر ويراجع؛ OpenCode لا يعمل إلا بالوسم.'}</span>
       )}
     </div>
 

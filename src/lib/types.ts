@@ -47,7 +47,11 @@ export interface OpenCodeStatus {
   error?: string
 }
 
+export interface WorkflowSetup { planner: 'codex' | 'opencode'; executor: 'codex' | 'opencode' }
+export interface WorkflowSettings { workflow: WorkflowSetup; agents: { id: string; name: string; available: boolean }[] }
+
 export interface CodexThread {
+  workflow?: WorkflowSetup
   id: string
   title?: string
   name?: string
