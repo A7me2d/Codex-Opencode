@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
-import { themes, readStoredTheme, saveTheme, themeStorageKey, type ThemeId } from '../lib/themes'
+import { themes, themeSources, readStoredTheme, saveTheme, themeStorageKey, type ThemeId } from '../lib/themes'
 import { cx } from '../lib/cx'
 
 export function ThemePanel() {
@@ -18,7 +18,7 @@ export function ThemePanel() {
   }
   return <section aria-label="الثيمات" className="space-y-4 p-6">
     <div><h3 className="text-sm font-bold">الثيمات</h3><p className="mt-1 text-xs leading-6 text-ink-soft">اختَر المظهر المناسب لك. يتطبّق فورًا على الواجهة ويُحفظ تلقائيًا.</p></div>
-    <fieldset><legend className="sr-only">اختر ثيم الواجهة</legend><div className="grid gap-3 sm:grid-cols-3">
+    <fieldset><legend className="sr-only">اختر ثيم الواجهة</legend><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {themes.map(theme => <label key={theme.id} className={cx('min-w-0 cursor-pointer rounded-xl border p-2 transition-colors', selected === theme.id ? 'border-relay ring-1 ring-relay' : 'border-line hover:border-relay/50')}>
         <input type="radio" name="theme" value={theme.id} checked={selected === theme.id} onChange={() => choose(theme.id)} className="sr-only peer" />
         <div data-theme={theme.id} aria-hidden="true" className="overflow-hidden rounded-lg border border-line bg-paper peer-focus-visible:ring-2 peer-focus-visible:ring-relay">
@@ -29,7 +29,7 @@ export function ThemePanel() {
         <p className="mt-1 px-1 pb-1 text-[10px] leading-5 text-ink-soft">{theme.description}</p>
       </label>)}
     </div></fieldset>
-    <p role="status" className="min-h-5 text-xs text-ready-ink">{notice ?? 'الأساسي يحافظ على ألوان الواجهة الأصلية.'}</p>
-    <a href="https://github.com/tokyo-night/tokyo-night-vscode-theme" target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">لوحة ألوان Tokyo Night الأصلية</a>
+    <p role="status" className="min-h-5 text-xs text-ready-ink">{notice ?? `الثيم الحالي: ${themes.find(theme => theme.id === selected)?.name}`}</p>
+    {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">مصدر ألوان الثيم · الألوان مهيّأة لواجهة Relay Room</a> : null}
   </section>
 }
