@@ -73,7 +73,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "installerIcon": "build/app.ico",
-      "uninstallerIcon": "build/app.ico"
+      "uninstallerIcon": "build/app.ico",
+      "runAfterFinish": false
     }
   }
 }
