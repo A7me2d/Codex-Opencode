@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, utilityProcess } from 'electron'
 import { spawn as spawnPty } from 'node-pty'
 import electronUpdater from 'electron-updater'
 import path from 'node:path'
@@ -95,6 +95,10 @@ ipcMain.on('terminal:resize', (event, size) => {
 ipcMain.on('terminal:stop', event => {
   terminals.get(event.sender.id)?.kill()
   terminals.delete(event.sender.id)
+})
+ipcMain.handle('terminal:clipboard-read', () => clipboard.readText())
+ipcMain.handle('terminal:clipboard-write', (_event, text) => {
+  if (typeof text === 'string') clipboard.writeText(text)
 })
 app.on('web-contents-created', (_event, contents) => {
   contents.once('destroyed', () => {
