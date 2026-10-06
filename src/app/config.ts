@@ -51,7 +51,7 @@ function count(value: unknown, fallback: number, min: number, max: number) {
 
 export function readConfig(env: Env): Config {
   return {
-    appTitle: text(env.VITE_APP_TITLE, 'Relay Room'),
+    appTitle: text(env.VITE_APP_TITLE, 'Coding Room'),
     apiBase: text(env.VITE_API_BASE, '').replace(/\/+$/, ''),
     poll: {
       // Turn state is the fastest signal (the composer and the alerts depend on it);

@@ -85,7 +85,7 @@ async function setWorkRoot(directory) {
   return resolved
 }
 const requestedPort = Number(option('--port') ?? process.env.OPENCODE_OBSERVER_PORT ?? 4280)
-const port = Number.isInteger(requestedPort) && requestedPort > 0 ? requestedPort : 4280
+const port = Number.isInteger(requestedPort) && requestedPort >= 0 ? requestedPort : 4280
 
 function powerShellSingleQuoted(value) {
   return String(value).replaceAll("'", "''")
@@ -2506,9 +2506,17 @@ const server = createServer(async (request, response) => {
   }
 })
 
-server.on('close', () => codexBridge.stop())
-
 server.listen(port, '127.0.0.1', () => {
-  console.log(`Relay Room is listening at http://127.0.0.1:${port}`)
+  const address = server.address()
+  const listeningPort = address && typeof address === 'object' ? address.port : port
+  process.parentPort?.postMessage({ type: 'ready', port: listeningPort })
+  console.log(`Relay Room is listening at http://127.0.0.1:${listeningPort}`)
   console.log(`Project scope: ${watchRoot}`)
+})
+
+process.parentPort?.on('message', event => {
+  if (event.data?.type === 'shutdown' && server.listening) {
+    server.close()
+    void codexBridge.stop().finally(() => process.exit(0))
+  }
 })

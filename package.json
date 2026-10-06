@@ -1,14 +1,20 @@
 {
   "name": "opencode-relay-room",
   "version": "1.0.0",
+  "main": "electron/main.mjs",
   "private": true,
   "type": "module",
+  "description": "Coding Room — local desktop app for Codex and OpenCode.",
+  "author": "Coding Room",
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "icons": "node scripts/build-icons.mjs",
+    "build": "npm run icons && tsc --noEmit && vite build",
     "dev": "vite",
     "start": "node --env-file-if-exists=.env server.mjs",
     "dev:api": "node --watch --env-file-if-exists=.env server.mjs",
-    "dev:all": "node --env-file-if-exists=.env scripts/dev-all.mjs"
+    "dev:all": "node --env-file-if-exists=.env scripts/dev-all.mjs",
+    "desktop": "npm run build && electron .",
+    "dist:win": "npm run build && electron-builder --win nsis portable"
   },
   "dependencies": {
     "lucide-react": "^0.545.0",
@@ -16,12 +22,58 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/vite": "^4.1.14",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",
     "vite": "^7.1.9"
+  },
+  "build": {
+    "appId": "com.relayroom.desktop",
+    "productName": "Coding Room",
+    "electronDist": "node_modules/electron/dist",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "server.mjs",
+      "server/**/*",
+      "electron/**/*",
+      "build/app.ico",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/app.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "build/app.ico",
+      "uninstallerIcon": "build/app.ico"
+    }
   }
 }

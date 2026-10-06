@@ -31,7 +31,7 @@ export function ThemePanel() {
       </label>)}
     </div></fieldset>
     <p role="status" className="min-h-5 text-xs text-ready-ink">{notice ?? `الثيم الحالي: ${themes.find(theme => theme.id === selected)?.name}`}</p>
-    {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">مصدر ألوان الثيم · الألوان مهيّأة لواجهة Relay Room</a> : null}
+    {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">مصدر ألوان الثيم · الألوان مهيّأة لواجهة Coding Room</a> : null}
     <FileIconThemePicker />
   </section>
 }

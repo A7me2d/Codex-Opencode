@@ -17,7 +17,15 @@ export function SettingsDialog() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  useEffect(() => { if (saved.data) setSetup({ planner: 'codex', plannerModel: '', executor: 'opencode', executorModel: '', ...saved.data.workflow }) }, [saved.data])
+  useEffect(() => {
+    if (!saved.data) return
+    setSetup({
+      planner: saved.data.workflow.planner ?? 'codex',
+      plannerModel: saved.data.workflow.plannerModel ?? '',
+      executor: saved.data.workflow.executor ?? 'opencode',
+      executorModel: saved.data.workflow.executorModel ?? '',
+    })
+  }, [saved.data])
   useEffect(() => {
     if (!open) return
     void Promise.all([api.codexModels().catch(() => []), api.models().catch(() => [])]).then(([codex, opencode]) => {
