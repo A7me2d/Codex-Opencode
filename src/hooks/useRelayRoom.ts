@@ -32,7 +32,7 @@ export function useRelayRoom() {
   /** Errors from the shell itself (create thread, open folder). */
   const [shellError, setShellError] = useState<string | null>(null)
 
-  const threads = useMemo(() => {
+  const projectThreads = useMemo(() => {
     // Preserve the API's order while tolerating duplicate rollout records
     // from an older server that is still running during a frontend update.
     const seen = new Set<string>()
@@ -42,6 +42,13 @@ export function useRelayRoom() {
       return true
     })
   }, [threadList.data])
+  const workRoot = (project.data as ProjectInfo | null)?.workRoot
+  const threads = useMemo(() => {
+    if (!workRoot) return projectThreads
+    const normalize = (value: string) => value.replace(/[\\/]+$/, '').toLowerCase()
+    const currentRoot = normalize(workRoot)
+    return projectThreads.filter(thread => typeof thread.directory === 'string' && normalize(thread.directory) === currentRoot)
+  }, [projectThreads, workRoot])
   const events = useMemo(() => asArray<RelayEvent>(relayEvents.data), [relayEvents.data])
 
   // Open the most recent conversation on first load, then leave the choice alone.
@@ -51,6 +58,9 @@ export function useRelayRoom() {
   }, [selectedId, threads])
 
   const selectedThread = useMemo(() => threads.find((thread) => thread.id === selectedId) ?? null, [selectedId, threads])
+  useEffect(() => {
+    if (selectedId && !selectedThread) setSelectedId(null)
+  }, [selectedId, selectedThread])
   const conversation = useConversation(selectedThread)
 
   const alerts = useAgentAlerts({
@@ -157,7 +167,7 @@ export function useRelayRoom() {
     codexError: codex?.error,
     openCodeOnline: Boolean(openCode?.online),
     projectDirectory: (project.data as ProjectInfo | null)?.directory,
-    workRoot: (project.data as ProjectInfo | null)?.workRoot,
+    workRoot,
     threads,
     selectedId,
     events,

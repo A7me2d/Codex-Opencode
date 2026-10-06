@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
 import { StateDot } from '../../components/ui/StateDot'
 import { cx } from '../../lib/cx'
 import { clip, relativeTime } from '../../lib/format'
 import type { CodexThread } from '../../lib/types'
+import { ProjectExplorer } from './ProjectExplorer'
 
 export interface SessionListProps {
   collapsed: boolean
@@ -22,8 +24,8 @@ export interface SessionListProps {
 
 /** Left column: the Codex conversations Relay Room owns, plus the project scope. */
 export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot }: SessionListProps) {
-  const projectCount = threads.filter((thread) => thread.inProject).length
-  const externalCount = threads.length - projectCount
+  const [view, setView] = useState<'files' | 'chats'>('files')
+  useEffect(() => { setView('files') }, [workRoot])
   const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? 'إظهار جلسات Codex' : 'إخفاء جلسات Codex'} title={collapsed ? 'إظهار جلسات Codex' : 'إخفاء جلسات Codex'} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
     <PanelLeft className="h-4 w-4" aria-hidden="true" />
   </button>
@@ -64,10 +66,17 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
         </div>
       </div>
 
-      <nav aria-label="جلسات Codex" className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
+      <div role="tablist" aria-label="محتوى المشروع" className="grid shrink-0 grid-cols-2 gap-1 border-b border-line px-3 py-2">
+        <button type="button" role="tab" aria-selected={view === 'files'} onClick={() => setView('files')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'files' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>الملفات</button>
+        <button type="button" role="tab" aria-selected={view === 'chats'} onClick={() => setView('chats')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'chats' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>محادثات المشروع ({threads.length})</button>
+      </div>
+
+      {view === 'files' && workRoot ? <ProjectExplorer key={workRoot.toLowerCase()} workRoot={workRoot} /> : null}
+      {view === 'files' && !workRoot ? <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">اختَر مجلد مشروع لعرض ملفاته هنا.</div> : null}
+      {view === 'chats' ? <nav aria-label="محادثات المشروع" className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
         {threads.length === 0 ? (
           <div className="px-3 py-6 text-center text-xs leading-6 text-ink-soft">
-            لا توجد جلسات Codex على هذا الجهاز بعد.<br />ابدأ محادثة لكي تظهر في هذه القائمة.
+            لا توجد محادثات لهذا المشروع بعد.<br />ابدأ محادثة جديدة وستظهر هنا.
           </div>
         ) : (
           <ul className="space-y-1">
@@ -113,12 +122,10 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
             })}
           </ul>
         )}
-      </nav>
+      </nav> : null}
 
       <div className="shrink-0 border-t border-line px-4 py-3 text-[10px] leading-5 text-ink-soft">
-        كل جلسات Codex على هذا الجهاز: <span className="font-bold text-ink-soft">{projectCount}</span> في هذا المشروع
-        {externalCount > 0 ? <> و <span className="font-bold text-ink-soft">{externalCount}</span> من مشاريع أخرى</> : null}.
-        الفتح يسجّل الجلسة هنا تلقائيًا.
+        {threads.length} محادثة مرتبطة بالمشروع الحالي.
       </div>
     </aside>
   )

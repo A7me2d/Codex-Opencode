@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -1997,6 +1997,26 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/project') {
       sendJson(response, 200, { data: { directory: projectDirectory, workRoot: watchRoot } })
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/project/files') {
+      const relative = url.searchParams.get('path') ?? ''
+      if (relative.includes('\0') || path.isAbsolute(relative) || /^[A-Za-z]:/.test(relative)) {
+        throw new HttpError(400, 'Choose a folder inside the current project.')
+      }
+      const root = await realpath(watchRoot)
+      const directory = path.resolve(root, relative)
+      if (!isInside(root, directory)) throw new HttpError(400, 'Choose a folder inside the current project.')
+      const realDirectory = await realpath(directory)
+      if (!isInside(root, realDirectory)) throw new HttpError(400, 'The folder points outside the current project.')
+      const hiddenGenerated = new Set(['.git', 'node_modules', 'dist', 'coverage', '.next', '.nuxt', '.turbo'])
+      const entries = await readdir(realDirectory, { withFileTypes: true })
+      const visible = entries
+        .filter(entry => !entry.isSymbolicLink() && !hiddenGenerated.has(entry.name.toLowerCase()))
+        .map(entry => ({ name: entry.name, path: path.relative(root, path.join(realDirectory, entry.name)).split(path.sep).join('/'), kind: entry.isDirectory() ? 'directory' : 'file' }))
+        .sort((left, right) => left.kind === right.kind ? left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) : left.kind === 'directory' ? -1 : 1)
+      sendJson(response, 200, { data: { path: path.relative(root, realDirectory).split(path.sep).join('/'), entries: visible.slice(0, 500), truncated: visible.length > 500 } })
       return
     }
 

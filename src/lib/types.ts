@@ -49,6 +49,8 @@ export interface OpenCodeStatus {
 
 export interface WorkflowSetup { planner: 'codex' | 'opencode'; executor: 'codex' | 'opencode' }
 export interface WorkflowSettings { workflow: WorkflowSetup; agents: { id: string; name: string; available: boolean }[] }
+export interface ProjectFileEntry { name: string; path: string; kind: 'directory' | 'file' }
+export interface ProjectFiles { path: string; entries: ProjectFileEntry[]; truncated: boolean }
 
 export interface CodexThread {
   workflow?: WorkflowSetup
