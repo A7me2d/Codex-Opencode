@@ -192,3 +192,11 @@ export interface OpenCodeModelChange {
   /** The provider's own label, for the confirmation notice. */
   name?: string
 }
+
+export interface McpServerInfo {
+  name: string
+  enabled: boolean
+  status: string
+  toolCount: number | null
+  pluginId?: string | null
+}

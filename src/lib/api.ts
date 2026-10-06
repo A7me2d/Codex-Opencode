@@ -6,6 +6,7 @@
  * the same `apiBase` prefix.
  */
 import { config } from '../app/config'
+import type { McpServerInfo } from './types'
 import { readCodexFileChanges } from './diff'
 import type { CodexModelInfo, CodexSettings } from './types'
 import type { SessionFileDiff } from './types'
@@ -48,6 +49,8 @@ function unwrap<T>(body: { data?: T }): T {
 export type ModelSelector = string
 
 export const api = {
+  mcpServers: (agent: 'codex' | 'opencode') => requestJson<{ data: McpServerInfo[] }>(`/api/${agent}/mcp`).then(unwrap),
+  setMcpEnabled: (agent: 'codex' | 'opencode', name: string, enabled: boolean) => post<{ data: { servers: McpServerInfo[]; note: string } }>(`/api/${agent}/mcp`, { name, enabled }).then(unwrap),
   // Project scope
   project: () => requestJson<{ data: ProjectInfo }>('/api/project').then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),

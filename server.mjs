@@ -1842,10 +1842,91 @@ async function serveStatic(request, response, url) {
   }
 }
 
+function mcpConfigKey(name, pluginId) {
+  if (pluginId) return `plugins.${JSON.stringify(pluginId)}.mcp_servers.${JSON.stringify(name)}.enabled`
+  if (name === 'codex_apps') return 'apps._default.enabled'
+  return `mcp_servers.${JSON.stringify(name)}.enabled`
+}
+
+async function listCodexMcp() {
+  const configuration = await codexBridge.call('config/read', { includeLayers: false, cwd: watchRoot })
+  const config = configuration.config ?? {}
+  const discovered = []
+  let cursor
+  do {
+    const page = await codexBridge.call('mcpServerStatus/list', { limit: 100, detail: 'toolsAndAuthOnly', ...(cursor ? { cursor } : {}) })
+    discovered.push(...(page.data ?? []))
+    if (page.nextCursor && page.nextCursor === cursor) throw new Error('Repeated MCP inventory cursor.')
+    cursor = page.nextCursor
+  } while (cursor)
+  const inventory = new Map(discovered.map((entry) => [entry.name, entry]))
+  for (const name of Object.keys(config.mcp_servers ?? {})) if (!inventory.has(name)) inventory.set(name, { name })
+  for (const [pluginId, plugin] of Object.entries(config.plugins ?? {})) {
+    for (const name of Object.keys(plugin.mcp_servers ?? {})) if (!inventory.has(name)) inventory.set(name, { name, pluginId })
+  }
+  if (typeof config.apps?._default?.enabled === 'boolean' && !inventory.has('codex_apps')) inventory.set('codex_apps', { name: 'codex_apps' })
+  return [...inventory.values()].map((entry) => {
+    const settings = entry.pluginId ? config.plugins?.[entry.pluginId]?.mcp_servers?.[entry.name] : config.mcp_servers?.[entry.name]
+    const enabled = entry.name === 'codex_apps' ? config.apps?._default?.enabled !== false
+      : settings?.enabled !== false && (!entry.pluginId || config.plugins?.[entry.pluginId]?.enabled !== false)
+    return {
+      name: entry.name, enabled,
+      status: !enabled ? 'disabled' : entry.runtimeStatus ?? (Object.keys(entry.tools ?? {}).length ? 'connected' : 'notStarted'),
+      toolCount: Object.keys(entry.tools ?? {}).length,
+      pluginId: entry.pluginId ?? null,
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name))
+}
+
+async function listOpenCodeMcp() {
+  // This is a runtime switch. Never return configuration, headers or credentials.
+  const result = await openCodeApi('GET', `/api/mcp?location[directory]=${encodeURIComponent(watchRoot)}`)
+  return (Array.isArray(result?.data) ? result.data : []).map((entry) => ({
+    name: entry.name,
+    enabled: entry.status?.status !== 'disabled' && entry.status?.status !== 'disconnected',
+    status: entry.status?.status ?? 'unknown',
+    toolCount: null,
+  }))
+}
+
+let mcpMutation = null
+async function setMcpEnabled(agent, name, enabled) {
+  if (typeof name !== 'string' || !name || name.length > 200 || typeof enabled !== 'boolean') throw new HttpError(400, 'Invalid MCP server or enabled state.')
+  if (mcpMutation) throw new HttpError(409, 'Another MCP change is in progress.')
+  mcpMutation = { agent, name }
+  try {
+    const servers = agent === 'codex' ? await listCodexMcp() : await listOpenCodeMcp()
+    const server = servers.find((entry) => entry.name === name)
+    if (!server) throw new HttpError(404, 'MCP server not found.')
+    if (agent === 'codex') {
+      if (codexBridge.runningTurns.size) throw new HttpError(409, 'Wait until Codex finishes its current turn before changing MCP settings.')
+      await codexBridge.call('config/value/write', { keyPath: mcpConfigKey(name, server.pluginId), value: enabled, mergeStrategy: 'upsert' })
+      await codexBridge.call('config/mcpServer/reload', {})
+      const updated = await listCodexMcp()
+      if (updated.find((entry) => entry.name === name)?.enabled !== enabled) throw new Error('The effective Codex MCP setting was not changed. A project or managed setting may override it.')
+      return { servers: updated, note: 'إعداد Codex محفوظ؛ يتطبّق على المحادثة مع الرسالة التالية.' }
+    }
+    await openCodeApi('POST', `/api/experimental/mcp/${encodeURIComponent(name)}/${enabled ? 'connect' : 'disconnect'}?location[directory]=${encodeURIComponent(watchRoot)}`, {})
+    const updated = await listOpenCodeMcp()
+    if (updated.find((entry) => entry.name === name)?.enabled !== enabled) throw new Error('OpenCode did not confirm the requested MCP state.')
+    return { servers: updated, note: 'تغيّرت حالة OpenCode في المشروع الحالي؛ التغيير مؤقت حتى إعادة تشغيله.' }
+  } finally { mcpMutation = null }
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
 
   try {
+    const mcpMatch = url.pathname.match(/^\/api\/(codex|opencode)\/mcp$/)
+    if (mcpMatch) {
+      if (request.method === 'GET') {
+        sendJson(response, 200, { data: mcpMatch[1] === 'codex' ? await listCodexMcp() : await listOpenCodeMcp() })
+      } else if (request.method === 'POST') {
+        const body = await readJson(request)
+        sendJson(response, 200, { data: await setMcpEnabled(mcpMatch[1], body.name, body.enabled) })
+      } else throw new HttpError(405, 'Only GET and POST are supported.')
+      return
+    }
     if (request.method === 'GET' && url.pathname === '/api/project') {
       sendJson(response, 200, { data: { directory: projectDirectory, workRoot: watchRoot } })
       return

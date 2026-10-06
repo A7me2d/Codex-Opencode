@@ -8,6 +8,7 @@ import type { ChatMessage, CodexThread, CodexTurnState } from '../../lib/types'
 import type { SessionFileDiff } from '../../lib/types'
 import { Composer } from './Composer'
 import { ChangedFiles } from '../opencode/ChangedFiles'
+import { McpPanel } from '../../components/McpPanel'
 
 import type { CodexSelection } from '../../hooks/useConversation'
 
@@ -91,6 +92,7 @@ export function CodexConversation(props: CodexConversationProps) {
           </div>
           <TurnPill turn={turn} sending={sending} />
         </header>
+        <McpPanel agent="codex" busy={turn.active || sending} />
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">

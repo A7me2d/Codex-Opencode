@@ -19,6 +19,7 @@ import { ModelPicker } from './ModelPicker'
 import type { ModelPickerProps } from './ModelPicker'
 import { OpenCodeControls } from './OpenCodeControls'
 import { QuestionForm } from './QuestionForm'
+import { McpPanel } from '../../components/McpPanel'
 
 export interface HandoffRailProps {
   thread: CodexThread | null
@@ -89,6 +90,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
         </div>
       </details>
     </div>
+    <McpPanel agent="opencode" busy={activity.active || sessions.some((session) => session.active && session.inProject)} />
 
     {!thread ? <Empty>اختر جلسة Codex أولًا لرؤية أي تفويض مرتبط بها.</Empty>
       : loading && !handoff ? <Empty><Spinner />يتم فحص مسار التفويض…</Empty>
