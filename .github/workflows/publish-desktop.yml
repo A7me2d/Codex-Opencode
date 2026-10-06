@@ -24,6 +24,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Download Electron runtime
+        run: node node_modules/electron/install.js
       - name: Verify Electron runtime was installed
         shell: pwsh
         run: |
