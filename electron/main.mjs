@@ -68,14 +68,16 @@ async function createWindow() {
     if (url.startsWith('https://')) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  await window.loadURL(serverUrl)
+  const loadingPage = `<!doctype html><html lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Coding Room</title><style>body{margin:0;height:100vh;display:grid;place-items:center;background:#211f3f;color:#f8f9ff;font:15px system-ui,sans-serif}.card{text-align:center}.mark{width:72px;height:72px;border-radius:22px;background:#71e3cf;color:#211f3f;display:grid;place-items:center;margin:auto auto 18px;font-size:28px;font-weight:800}.spinner{width:17px;height:17px;border:2px solid #ffffff40;border-top-color:#71e3cf;border-radius:50%;display:inline-block;vertical-align:middle;margin-inline-end:8px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style><body><main class="card"><div class="mark">&lt;/&gt;</div><strong>Coding Room</strong><p><span class="spinner"></span>جاري تجهيز مساحة العمل…</p></main></body></html>`
+  await window.loadURL(serverUrl ?? `data:text/html;charset=utf-8,${encodeURIComponent(loadingPage)}`)
   return window
 }
 
 app.whenReady().then(async () => {
+  const window = await createWindow()
   try {
     await startBackend()
-    await createWindow()
+    await window.loadURL(serverUrl)
   } catch (error) {
     await showBackendFailure(error instanceof Error ? error.message : String(error))
   }
