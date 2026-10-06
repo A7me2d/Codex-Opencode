@@ -14,7 +14,7 @@ export const MessageBubble = memo(function MessageBubble({ message, speaker }: {
       aria-hidden="true"
       className={cx(
         'mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-        isUser ? 'bg-ink text-white' : speaker === 'codex' ? 'bg-relay-tint text-relay-ink' : 'bg-ready-tint text-ready-ink',
+        isUser ? 'bg-user-surface text-user-ink' : speaker === 'codex' ? 'bg-relay-tint text-relay-ink' : 'bg-ready-tint text-ready-ink',
       )}
     >
       {isUser ? <UserRound className="h-3.5 w-3.5" /> : speaker === 'codex' ? <Sparkles className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
@@ -25,7 +25,7 @@ export const MessageBubble = memo(function MessageBubble({ message, speaker }: {
         <span>{isUser ? 'أنت' : agentName[speaker]}</span>
         {message.live ? <span className="inline-flex items-center gap-1 text-relay" role="status">يكتب الآن<span className="h-1.5 w-1.5 animate-pulse rounded-full bg-relay" /></span> : null}
       </div>
-      <div className={cx('whitespace-pre-wrap rounded-xl px-3.5 py-3 text-[13px] leading-7 shadow-[0_1px_1px_rgba(25,35,48,0.04)]', isUser ? 'bg-ink text-white' : 'border border-line bg-card text-ink')}>
+      <div className={cx('whitespace-pre-wrap rounded-xl px-3.5 py-3 text-[13px] leading-7 shadow-[0_1px_1px_rgba(25,35,48,0.04)]', isUser ? 'bg-user-surface text-user-ink' : 'border border-line bg-card text-ink')}>
         {message.text}
       </div>
     </div>

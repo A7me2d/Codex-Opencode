@@ -48,7 +48,7 @@ export function McpPanel({ agent, busy = false }: { agent: 'codex' | 'opencode';
           </div>
           <button type="button" role="switch" aria-checked={server.enabled} aria-label={`${server.enabled ? 'تعطيل' : 'تشغيل'} MCP ${server.name} في ${label}`} disabled={busy || Boolean(changing)} onClick={() => void toggle(server.name, !server.enabled)}
             className={cx('relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-wait disabled:opacity-45', server.enabled ? 'bg-ready' : 'bg-ink-soft/30')}>
-            {changing === server.name ? <Spinner className="mx-auto h-3 w-3 text-white" /> : <span className={cx('absolute h-3.5 w-3.5 rounded-full bg-white shadow transition-[left]', server.enabled ? 'left-[19px]' : 'left-[3px]')} />}
+            {changing === server.name ? <Spinner className="mx-auto h-3 w-3 text-on-accent" /> : <span className={cx('absolute h-3.5 w-3.5 rounded-full bg-white shadow transition-[left]', server.enabled ? 'left-[19px]' : 'left-[3px]')} />}
           </button>
         </li>)}
       </ul>

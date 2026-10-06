@@ -74,6 +74,18 @@ Open **http://localhost:4280/**. The API serves the built files from `dist/`.
 
 OpenCode starts delegated work only when the request includes `$opencode`. Direct OpenCode chat is available when the Codex conversation has no linked delegation session.
 
+## Workflow setup
+
+Open **الإعدادات → Setup · توزيع الأدوار** to choose the planner/reviewer and the implementer. They must be different agents. Save the setup, then create a new conversation. Each conversation keeps its assigned roles when the default changes or the app restarts; older conversations keep Codex planning and OpenCode implementation.
+
+With **Codex planning → OpenCode implementation**, chat with Codex and use `$opencode` to request a handoff as usual.
+
+With **OpenCode planning → Codex implementation**, the main chat is OpenCode and the side chat is Codex. Discuss the task with OpenCode, then click **أرسل الخطة إلى Codex للتنفيذ** to send its completed reply to the linked Codex session. Once Codex finishes, click **اطلب من OpenCode المراجعة** to send the implementation conversation back for review. Each plan can be sent once; active work blocks another handoff. New Codex implementation sessions start with workspace-write access to their project.
+
+Open **الإعدادات → الثيمات** to choose **الأساسي**, **Tokyo Night**, or **Tokyo Night Storm**. The original light appearance remains the default. Theme changes apply immediately across the app and are saved in this browser, including after a reload. Tokyo Night colors are adapted from the [original palette](https://github.com/tokyo-night/tokyo-night-vscode-theme).
+
+Claude and GLM are listed as future integrations and cannot be selected yet. The server agent registry is in `server/workflow.mjs`; adding an available agent will also require implementing its execution adapter and chat UI.
+
 ## MCP controls
 
 Open **أدوات MCP · Codex** or **أدوات MCP · OpenCode** in the corresponding chat pane to see that agent's configured servers and switch them on or off. The lists load only when opened and include a manual refresh button.

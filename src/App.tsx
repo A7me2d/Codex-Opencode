@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { AlertStack } from './features/alerts/AlertStack'
 import { CodexConversation } from './features/codex/CodexConversation'
 import { SessionList } from './features/codex/SessionList'
+import { PlannerConversation } from './features/opencode/PlannerConversation'
 import { HandoffRail } from './features/opencode/HandoffRail'
 import { useRelayRoom } from './hooks/useRelayRoom'
 
@@ -108,6 +109,50 @@ export default function App() {
     '--relay-handoff-width': `${panelSizes.handoff}px`,
   } as CSSProperties
 
+  const reverse = conversation.view.thread?.workflow?.planner === 'opencode'
+  const codexPane = <CodexConversation
+          workRoot={room.workRoot}
+          codexSelection={conversation.codexSelection}
+          thread={conversation.view.thread}
+          messages={conversation.view.messages}
+          fileChanges={conversation.view.fileChanges}
+          loading={conversation.view.loading}
+          turn={conversation.turn}
+          onNewThread={room.onCreateThread}
+          sending={conversation.composer.sending}
+          error={conversation.composer.error}
+          draft={conversation.composer.draft}
+          queued={conversation.composer.queued}
+          attachments={conversation.composer.attachments}
+          attaching={conversation.composer.attaching}
+          onDraftChange={conversation.composer.onDraftChange}
+          onSend={conversation.composer.onSend}
+          onQueue={conversation.composer.onQueue}
+          onCancelQueue={conversation.composer.onCancelQueue}
+          onAttach={conversation.composer.onAttach}
+          onRemoveAttachment={conversation.composer.onRemoveAttachment}
+          onStop={conversation.composer.onStop}
+        />
+  const plannerPane = <PlannerConversation key={conversation.view.thread?.id} codexActive={conversation.turn.active} codexHasReply={conversation.view.messages.some(message => message.role === 'assistant')}
+          thread={conversation.view.thread}
+          handoff={conversation.view.handoff}
+          loading={conversation.view.loading}
+          events={room.events}
+          onReview={room.onReview}
+          reviewing={conversation.view.busy}
+          onRefresh={conversation.refreshHandoff}
+          onNotify={room.alerts.notify}
+          models={room.models.data ?? []}
+          model={conversation.model.current}
+          onModelChange={conversation.model.onChange}
+          changingModel={conversation.model.changing}
+          modelError={conversation.model.error}
+          sessions={room.openCodeSessions}
+          onRefreshSessions={room.onRefreshSessions}
+          workRoot={room.workRoot}
+          modelIds={(room.models.data ?? []).filter((entry) => entry.tools).map((entry) => entry.id)}
+        />
+
   return <div dir="rtl" className="flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
     <AlertStack alerts={room.alerts.list} onDismiss={room.alerts.onDismiss} />
 
@@ -148,33 +193,11 @@ export default function App() {
       </ErrorBoundary>
 
       <ErrorBoundary label="محادثة Codex مش معروضة صح دلوقتي.">
-        <CodexConversation
-          workRoot={room.workRoot}
-          codexSelection={conversation.codexSelection}
-          thread={conversation.view.thread}
-          messages={conversation.view.messages}
-          fileChanges={conversation.view.fileChanges}
-          loading={conversation.view.loading}
-          turn={conversation.turn}
-          onNewThread={room.onCreateThread}
-          sending={conversation.composer.sending}
-          error={conversation.composer.error}
-          draft={conversation.composer.draft}
-          queued={conversation.composer.queued}
-          attachments={conversation.composer.attachments}
-          attaching={conversation.composer.attaching}
-          onDraftChange={conversation.composer.onDraftChange}
-          onSend={conversation.composer.onSend}
-          onQueue={conversation.composer.onQueue}
-          onCancelQueue={conversation.composer.onCancelQueue}
-          onAttach={conversation.composer.onAttach}
-          onRemoveAttachment={conversation.composer.onRemoveAttachment}
-          onStop={conversation.composer.onStop}
-        />
+        {reverse ? plannerPane : codexPane}
       </ErrorBoundary>
 
       <ErrorBoundary label="مسار التفويض مش معروض صح دلوقتي.">
-        <HandoffRail
+        {reverse ? codexPane : <HandoffRail
           thread={conversation.view.thread}
           handoff={conversation.view.handoff}
           loading={conversation.view.loading}
@@ -192,7 +215,7 @@ export default function App() {
           onRefreshSessions={room.onRefreshSessions}
           workRoot={room.workRoot}
           modelIds={(room.models.data ?? []).filter((entry) => entry.tools).map((entry) => entry.id)}
-        />
+        />}
       </ErrorBoundary>
 
       <div

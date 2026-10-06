@@ -2,6 +2,7 @@ import { GitPullRequestArrow, RefreshCw, RotateCcw, TriangleAlert, Wifi, WifiOff
 import { config } from '../app/config'
 import { StateDot } from './ui/StateDot'
 import { StatusPill } from './ui/StatusPill'
+import { SettingsDialog } from './SettingsDialog'
 
 export interface AppHeaderProps {
   codexConnected: boolean
@@ -18,16 +19,17 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
   return <header className="shrink-0 border-b border-line bg-card px-4 py-3.5 sm:px-6">
     <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-ink text-white">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-user-surface text-user-ink">
           <GitPullRequestArrow className="h-4.5 w-4.5" aria-hidden="true" />
         </div>
         <div>
           <div className="text-sm font-extrabold tracking-tight text-ink">{config.appTitle}</div>
-          <div className="text-[11px] text-ink-soft">شات Codex ومراقبة تسليم OpenCode</div>
+          <div className="text-[11px] text-ink-soft">التخطيط والتنفيذ والمراجعة بين مساعديك</div>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <SettingsDialog />
         <StatusPill tone={codexConnected ? 'codex' : 'warning'}>
           {codexConnected ? <Wifi className="h-3 w-3" aria-hidden="true" /> : <WifiOff className="h-3 w-3" aria-hidden="true" />}
           {codexConnected ? 'Codex Desktop متصل' : 'Codex غير متصل'}

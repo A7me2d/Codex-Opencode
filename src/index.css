@@ -2,7 +2,7 @@
 
 /*
  * Relay Room — Arabic-first task desk.
- * A calm, light "work desk" palette. No gradients, no neon, no dark control room.
+ * The original light palette is the default; alternate themes override tokens.
  */
 @theme {
   /* Surfaces */
@@ -29,9 +29,77 @@
   --color-relay-tint: #eeedff;
   --color-ready-tint: #e4f5ef;
   --color-review-tint: #fff4df;
+  --color-on-accent: #ffffff;
+  --color-user-surface: #1b2735;
+  --color-user-ink: #ffffff;
+  --color-selection: #d8e5fd;
+  --color-overlay: #1b2735;
 
   --font-sans: "Segoe UI", "Noto Sans Arabic", "Dubai", Tahoma, system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Palette reference: github.com/tokyo-night/tokyo-night-vscode-theme.
+ * Apply to the document and to isolated theme previews. */
+[data-theme="default"] {
+  color-scheme: light;
+  --color-paper: #f5f6f8;
+  --color-card: #fcfcfd;
+  --color-line: #d9e0e8;
+  --color-line-strong: #7c8998;
+  --color-ink: #1b2735;
+  --color-ink-soft: #596575;
+  --color-relay: #635bff;
+  --color-ready: #0c8e70;
+  --color-review: #b77916;
+  --color-relay-ink: #4b43d3;
+  --color-ready-ink: #08745b;
+  --color-review-ink: #865607;
+  --color-relay-tint: #eeedff;
+  --color-ready-tint: #e4f5ef;
+  --color-review-tint: #fff4df;
+  --color-on-accent: #ffffff;
+  --color-user-surface: #1b2735;
+  --color-user-ink: #ffffff;
+  --color-selection: #d8e5fd;
+  --color-overlay: #1b2735;
+}
+
+[data-theme="tokyo-night"],
+[data-theme="tokyo-storm"] {
+  color-scheme: dark;
+  --color-paper: #1a1b26;
+  --color-card: #202230;
+  --color-line: #3b4261;
+  --color-line-strong: #737caa;
+  --color-ink: #c0caf5;
+  --color-ink-soft: #a9b1d6;
+  --color-relay: #7aa2f7;
+  --color-ready: #73daca;
+  --color-review: #e0af68;
+  --color-relay-ink: #a6c0ff;
+  --color-ready-ink: #8ae6d6;
+  --color-review-ink: #f0c88b;
+  --color-relay-tint: #293451;
+  --color-ready-tint: #233c3d;
+  --color-review-tint: #403628;
+  --color-on-accent: #1a1b26;
+  --color-user-surface: #2f3a59;
+  --color-user-ink: #c0caf5;
+  --color-selection: #3d59a1;
+  --color-overlay: #101018;
+}
+
+[data-theme="tokyo-storm"] {
+  --color-paper: #24283b;
+  --color-card: #292e42;
+  --color-line: #444b6a;
+  --color-relay: #bb9af7;
+  --color-relay-ink: #cbb0ff;
+  --color-relay-tint: #3b3558;
+  --color-ready-tint: #294447;
+  --color-review-tint: #453e35;
+  --color-user-surface: #3b4261;
 }
 
 @layer base {
@@ -93,7 +161,7 @@
   }
 
   ::selection {
-    background-color: #d8e5fd;
+    background-color: var(--color-selection);
   }
 }
 
