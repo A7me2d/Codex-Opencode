@@ -2020,6 +2020,42 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/project/search') {
+      const query = (url.searchParams.get('q') ?? '').trim().toLocaleLowerCase()
+      if (!query) { sendJson(response, 200, { data: { entries: [], truncated: false } }); return }
+      const terms = query.split(/[\s\-_/\\.]+/).filter(Boolean)
+      const root = await realpath(watchRoot)
+      const hiddenGenerated = new Set(['.git', 'node_modules', 'dist', 'coverage', '.next', '.nuxt', '.turbo'])
+      const queue = ['']
+      const results = []
+      let visitedDirectories = 0
+      let visitedEntries = 0
+      const maxDirectories = 10000
+      const maxEntries = 200000
+      const maxResults = 1000
+      while (queue.length && visitedDirectories < maxDirectories && visitedEntries < maxEntries && results.length < maxResults) {
+        const relativeDirectory = queue.shift()
+        const absoluteDirectory = path.resolve(root, relativeDirectory)
+        if (!isInside(root, absoluteDirectory)) continue
+        visitedDirectories += 1
+        let children
+        try { children = await readdir(absoluteDirectory, { withFileTypes: true }) } catch { continue }
+        for (const entry of children) {
+          if (entry.isSymbolicLink() || hiddenGenerated.has(entry.name.toLowerCase())) continue
+          visitedEntries += 1
+          const relativePath = path.relative(root, path.join(absoluteDirectory, entry.name)).split(path.sep).join('/')
+          const kind = entry.isDirectory() ? 'directory' : 'file'
+          const searchablePath = `${entry.name} ${relativePath}`.toLocaleLowerCase()
+          if (terms.every((term) => searchablePath.includes(term))) results.push({ name: entry.name, path: relativePath, kind })
+          if (kind === 'directory') queue.push(relativePath)
+          if (visitedEntries >= maxEntries || results.length >= maxResults) break
+        }
+      }
+      results.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+      sendJson(response, 200, { data: { entries: results, truncated: queue.length > 0 || visitedEntries >= maxEntries || visitedDirectories >= maxDirectories || results.length >= maxResults } })
+      return
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/project/open') {
       await openDirectory(projectDirectory)
       sendJson(response, 202, { data: { directory: projectDirectory } })

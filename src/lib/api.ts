@@ -57,6 +57,7 @@ export const api = {
   // Project scope
   project: () => requestJson<{ data: ProjectInfo }>('/api/project').then(unwrap),
   projectFiles: (path = '') => requestJson<{ data: import('./types').ProjectFiles }>(`/api/project/files?path=${encodeURIComponent(path)}`).then(unwrap),
+  projectSearch: (query: string) => requestJson<{ data: import('./types').ProjectSearchResults }>(`/api/project/search?q=${encodeURIComponent(query)}`).then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),
   openWorkRoot: () => post<{ data: { directory: string } }>('/api/project/open-work-root'),
   selectProjectFolder: () =>
