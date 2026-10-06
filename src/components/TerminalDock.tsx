@@ -11,6 +11,8 @@ declare global {
       write: (data: string) => void
       resize: (cols: number, rows: number) => void
       stop: () => void
+      readClipboard: () => Promise<string>
+      writeClipboard: (text: string) => Promise<void>
       onData: (callback: (data: string) => void) => () => void
       onExit: (callback: (code: number) => void) => () => void
     }
@@ -49,6 +51,26 @@ function TerminalViewport({ cwd, sessionId, terminalRef }: { cwd: string; sessio
     terminal.loadAddon(fit)
     terminal.open(host)
     terminalRef.current = terminal
+
+    terminal.attachCustomKeyEventHandler(event => {
+      if (event.type !== 'keydown' || !event.ctrlKey || event.altKey) return true
+
+      const key = event.key.toLowerCase()
+      if (key === 'v') {
+        event.preventDefault()
+        void bridge?.readClipboard().then(text => terminal.paste(text))
+        return false
+      }
+
+      if (key === 'c' && (event.shiftKey || terminal.hasSelection())) {
+        event.preventDefault()
+        const selection = terminal.getSelection()
+        if (selection) void bridge?.writeClipboard(selection).then(() => terminal.clearSelection())
+        return false
+      }
+
+      return true
+    })
 
     if (!bridge) {
       terminal.writeln('الطرفية التفاعلية متاحة داخل نسخة سطح المكتب فقط.')

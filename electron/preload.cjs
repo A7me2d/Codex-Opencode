@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('codingRoomTerminal', {
   write: data => ipcRenderer.send('terminal:write', data),
   resize: (cols, rows) => ipcRenderer.send('terminal:resize', { cols, rows }),
   stop: () => ipcRenderer.send('terminal:stop'),
+  readClipboard: () => ipcRenderer.invoke('terminal:clipboard-read'),
+  writeClipboard: text => ipcRenderer.invoke('terminal:clipboard-write', text),
   onData: callback => {
     const listener = (_event, data) => callback(data)
     ipcRenderer.on('terminal:data', listener)
