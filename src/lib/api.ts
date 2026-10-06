@@ -51,11 +51,13 @@ export type ModelSelector = string
 export const api = {
   workflow: () => requestJson<{ data: import('./types').WorkflowSettings }>('/api/workflow').then(unwrap),
   saveWorkflow: (setup: import('./types').WorkflowSetup) => post<{ data: import('./types').WorkflowSettings }>('/api/workflow', setup).then(unwrap),
-  workflowAction: (threadId: string, action: 'plan' | 'execute' | 'review', text?: string) => post(`/api/codex/threads/${threadId}/workflow/${action}`, { text }),
+  workflowAction: (threadId: string, action: 'plan' | 'execute' | 'review', text?: string) => post<{ data: { accepted: boolean; threadId?: string } }>(`/api/codex/threads/${threadId}/workflow/${action}`, { text }).then(unwrap),
   mcpServers: (agent: 'codex' | 'opencode') => requestJson<{ data: McpServerInfo[] }>(`/api/${agent}/mcp`).then(unwrap),
   setMcpEnabled: (agent: 'codex' | 'opencode', name: string, enabled: boolean) => post<{ data: { servers: McpServerInfo[]; note: string } }>(`/api/${agent}/mcp`, { name, enabled }).then(unwrap),
   // Project scope
   project: () => requestJson<{ data: ProjectInfo }>('/api/project').then(unwrap),
+  projectFiles: (path = '') => requestJson<{ data: import('./types').ProjectFiles }>(`/api/project/files?path=${encodeURIComponent(path)}`).then(unwrap),
+  projectSearch: (query: string) => requestJson<{ data: import('./types').ProjectSearchResults }>(`/api/project/search?q=${encodeURIComponent(query)}`).then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),
   openWorkRoot: () => post<{ data: { directory: string } }>('/api/project/open-work-root'),
   selectProjectFolder: () =>

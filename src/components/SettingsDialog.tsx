@@ -3,7 +3,7 @@ import { Settings, X, Check, Brain, Wrench, Palette } from 'lucide-react'
 import { api } from '../lib/api'
 import { usePolling } from '../hooks/usePolling'
 import { cx } from '../lib/cx'
-import type { WorkflowSetup } from '../lib/types'
+import type { CodexModelInfo, ModelInfo, WorkflowSetup } from '../lib/types'
 import { ThemePanel } from './ThemePanel'
 
 export function SettingsDialog() {
@@ -11,16 +11,29 @@ export function SettingsDialog() {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'setup' | 'themes'>('setup')
   const saved = usePolling(open ? api.workflow : null, 0)
-  const [setup, setSetup] = useState<WorkflowSetup>({ planner: 'codex', executor: 'opencode' })
+  const [setup, setSetup] = useState<WorkflowSetup>({ planner: 'codex', plannerModel: '', executor: 'opencode', executorModel: '' })
+  const [codexModels, setCodexModels] = useState<CodexModelInfo[]>([])
+  const [openCodeModels, setOpenCodeModels] = useState<ModelInfo[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  useEffect(() => { if (saved.data) setSetup(saved.data.workflow) }, [saved.data])
+  useEffect(() => { if (saved.data) setSetup({ planner: 'codex', plannerModel: '', executor: 'opencode', executorModel: '', ...saved.data.workflow }) }, [saved.data])
+  useEffect(() => {
+    if (!open) return
+    void Promise.all([api.codexModels().catch(() => []), api.models().catch(() => [])]).then(([codex, opencode]) => {
+      setCodexModels(codex)
+      setOpenCodeModels(opencode)
+    })
+  }, [open])
   function show() { setOpen(true); setError(null); setNotice(null); dialog.current?.showModal() }
-  function choose(role: keyof WorkflowSetup, agent: WorkflowSetup['planner']) {
-    const other = agent === 'codex' ? 'opencode' : 'codex'
-    setSetup(role === 'planner' ? { planner: agent, executor: other } : { planner: other, executor: agent })
+  function choose(role: 'planner' | 'executor', agent: WorkflowSetup['planner']) {
+    setSetup(current => ({ ...current, [role]: agent, [`${role}Model`]: '' }))
     setNotice(null)
+  }
+  function modelOptions(agent: WorkflowSetup['planner']) {
+    return agent === 'codex'
+      ? codexModels.map(model => ({ id: model.model, name: model.displayName }))
+      : openCodeModels.filter(model => model.tools).map(model => ({ id: model.id, name: model.name }))
   }
   async function save() {
     setSaving(true); setError(null)
@@ -41,8 +54,14 @@ export function SettingsDialog() {
         {(['planner', 'executor'] as const).map((role, index) => <fieldset key={role} disabled={saving || !saved.data}>
           <legend className="mb-3 flex items-center gap-2 text-sm font-bold">{role === 'planner' ? <Brain className="h-4 w-4 text-relay" /> : <Wrench className="h-4 w-4 text-ready" />}{index + 1}. {role === 'planner' ? 'تحب مين المفكّر والمراجع؟' : 'تحب مين المنفّذ؟'}</legend>
           <div className="grid grid-cols-2 gap-3">{saved.data?.agents.filter(agent => agent.available).map(agent => <label key={agent.id} className={cx('flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors', setup[role] === agent.id ? 'border-relay bg-relay-tint/50' : 'border-line bg-paper hover:border-relay/40')}>
-            <input type="radio" name={role} value={agent.id} checked={setup[role] === agent.id} onChange={() => choose(role, agent.id as WorkflowSetup['planner'])} className="accent-relay" /><span className="flex-1 text-sm font-semibold" dir="ltr">{agent.name}</span>{setup[role] === agent.id ? <Check className="h-4 w-4 text-relay" /> : null}
+            <input type="radio" name={role} value={agent.id} checked={setup[role] === agent.id} disabled={agent.id === 'opencode' && setup[role === 'planner' ? 'executor' : 'planner'] === 'opencode'} onChange={() => choose(role, agent.id as WorkflowSetup['planner'])} className="accent-relay" /><span className="flex-1 text-sm font-semibold" dir="ltr">{agent.name}</span>{setup[role] === agent.id ? <Check className="h-4 w-4 text-relay" /> : null}
           </label>)}</div>
+          <label className="mt-3 block text-xs font-semibold text-ink-soft">الموديل
+            <select value={setup[`${role}Model`]} onChange={event => setSetup(current => ({ ...current, [`${role}Model`]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2.5 text-sm text-ink">
+              <option value="">استخدم الموديل الافتراضي</option>
+              {modelOptions(setup[role]).map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+            </select>
+          </label>
         </fieldset>)}
         <p className="rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink-soft">المفكّر يخطط ويراجع، والمنفّذ يعدّل الملفات ويختبر النتيجة.</p>
         <div className="border-t border-line pt-4"><p className="text-xs text-ink-soft">أطراف إضافية مستقبلًا</p><div className="mt-2 flex gap-2">{saved.data?.agents.filter(agent => !agent.available).map(agent => <span key={agent.id} className="rounded-lg border border-dashed border-line px-3 py-1.5 text-xs text-ink-soft">{agent.name} · لاحقًا</span>)}</div></div>

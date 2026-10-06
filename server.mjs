@@ -1,11 +1,11 @@
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { defaultWorkflow, agentRegistry, validateWorkflow, codexExecutorInstructions, plannerPrompt, latestOpenCodeReply } from './server/workflow.mjs'
+import { defaultWorkflow, agentRegistry, validateWorkflow, codexExecutorInstructions, codexPlannerInstructions, codexToCodexExecutorInstructions, plannerPrompt, latestOpenCodeReply } from './server/workflow.mjs'
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url))
 const projectDirectory = appDirectory
@@ -964,7 +964,11 @@ async function ensureRelayCodexThreadLoaded(threadId) {
       cwd,
       // Preserve the existing thread's permissions and approval policy.
       // Opening a conversation in Relay Room must not downgrade its sandbox.
-      developerInstructions: saved.workflow?.executor === 'codex' ? codexExecutorInstructions : relayCodexInstructions,
+      developerInstructions: saved.workflowRole === 'executor' && saved.workflow?.planner === 'codex'
+        ? codexToCodexExecutorInstructions
+        : saved.workflowRole === 'executor' || (saved.workflow?.planner === 'opencode' && saved.workflow?.executor === 'codex')
+          ? codexExecutorInstructions
+        : saved.workflow?.planner === 'codex' && saved.workflow?.executor === 'codex' ? codexPlannerInstructions : relayCodexInstructions,
       excludeTurns: true,
     })
     if (resumed?.model) {
@@ -1057,6 +1061,7 @@ async function listAllCodexThreads() {
         needsRegistration: !saved,
         openCodeModel: saved?.openCodeModel,
         workflow: saved?.workflow ?? defaultWorkflow,
+        workflowRole: saved?.workflowRole ?? (saved?.workflow?.planner === 'opencode' && saved?.workflow?.executor === 'codex' ? 'executor' : 'planner'),
       }
     })
     .filter(Boolean)
@@ -1070,12 +1075,15 @@ async function listAllCodexThreads() {
 async function createRelayCodexThread(input) {
   const title = shortThreadTitle(input?.title)
   const workflow = validateWorkflow((await readCodexState()).workflow)
+  const codexIsPlanner = workflow.planner === 'codex'
+  const codexIsPlannerOnly = codexIsPlanner && workflow.executor === 'codex'
+  const codexIsOnlyExecutor = workflow.executor === 'codex' && workflow.planner !== 'codex'
   const response = await codexBridge.call('thread/start', {
     cwd: watchRoot,
-    sandbox: workflow.executor === 'codex' ? 'workspace-write' : 'read-only',
+    sandbox: codexIsOnlyExecutor ? 'workspace-write' : 'read-only',
     approvalPolicy: 'never',
-    developerInstructions: workflow.executor === 'codex' ? codexExecutorInstructions : relayCodexInstructions,
-    dynamicTools: workflow.executor === 'codex' ? [] : relayDynamicTools,
+    developerInstructions: codexIsOnlyExecutor ? codexExecutorInstructions : codexIsPlannerOnly ? codexPlannerInstructions : relayCodexInstructions,
+    dynamicTools: codexIsOnlyExecutor ? [] : relayDynamicTools,
     threadSource: 'appServer',
   })
   const thread = response?.thread ?? response?.data ?? response
@@ -1083,6 +1091,13 @@ async function createRelayCodexThread(input) {
   await updateCodexState((state) => {
     state.threads[saved.id].codexSandbox = codexSandboxMode(response?.sandbox?.type)
     state.threads[saved.id].workflow = workflow
+    if (codexIsPlanner && workflow.plannerModel) {
+      state.threads[saved.id].codexModel = workflow.plannerModel
+      state.threads[saved.id].codexEffort = ''
+    } else if (codexIsOnlyExecutor && workflow.executorModel) {
+      state.threads[saved.id].codexModel = workflow.executorModel
+      state.threads[saved.id].codexEffort = ''
+    }
   })
   codexBridge.markThreadActive(saved.id)
 
@@ -1206,6 +1221,30 @@ async function sendRelayCodexMessage(threadId, input) {
   }
 }
 
+async function createCodexExecutorThread(workflow, title) {
+  const name = shortThreadTitle(title)
+  const response = await codexBridge.call('thread/start', {
+    cwd: watchRoot,
+    sandbox: 'workspace-write',
+    approvalPolicy: 'never',
+    developerInstructions: codexToCodexExecutorInstructions,
+    dynamicTools: [],
+    threadSource: 'appServer',
+  })
+  const thread = response?.thread ?? response?.data ?? response
+  const saved = await registerRelayCodexThread(thread, name, thread?.cwd ?? watchRoot)
+  await updateCodexState(state => {
+    state.threads[saved.id].codexSandbox = codexSandboxMode(response?.sandbox?.type)
+    state.threads[saved.id].workflow = workflow
+    state.threads[saved.id].workflowRole = 'executor'
+    state.threads[saved.id].codexModel = workflow.executorModel || ''
+    state.threads[saved.id].codexEffort = ''
+  })
+  codexBridge.markThreadActive(saved.id)
+  try { await codexBridge.call('thread/name/set', { threadId: saved.id, name }) } catch { /* cosmetic */ }
+  return { ...thread, ...saved, id: saved.id, title: name, workflow }
+}
+
 /**
  * The folder a delegated task is about.
  *
@@ -1267,7 +1306,10 @@ async function ensureOpenCodeLink(codexThreadId, task) {
   }
 
   const title = shortThreadTitle(`Codex · ${task}`)
-  const model = state.threads[codexThreadId]?.openCodeModel ?? defaultOpenCodeModel
+  const roleModel = state.threads[codexThreadId]?.workflow?.planner === 'opencode'
+    ? state.threads[codexThreadId]?.workflow?.plannerModel
+    : state.threads[codexThreadId]?.workflow?.executorModel
+  const model = state.threads[codexThreadId]?.openCodeModel ?? roleModel ?? defaultOpenCodeModel
   // Create the session in the folder the work is about, not in whatever root
   // this instance happens to watch. That is what makes OpenCode pick the right
   // project without being told twice.
@@ -1930,6 +1972,30 @@ async function queuePlannerMessage(link, text) {
 }
 async function reverseWorkflowAction(threadId, action, input) {
   const { saved } = await requireRelayCodexThread(threadId)
+  if (saved.workflow?.planner === 'codex' && saved.workflow?.executor === 'codex') {
+    if (action !== 'execute') throw new HttpError(409, 'This Codex conversation is the planner; use Execute to start its separate executor chat.')
+    if (workflowActions.has(threadId)) throw new HttpError(409, 'A workflow action is already in progress.')
+    workflowActions.add(threadId)
+    try {
+      if (codexBridge.runningTurns.has(threadId)) throw new HttpError(409, 'Wait for the Codex planning chat to finish first.')
+      const items = await listRelayCodexMessages(threadId)
+      const plan = [...items].reverse().find(item => item.type === 'agentMessage' && (item.text || textFromCodexInput(item.content)))
+      if (!plan) throw new HttpError(409, 'Codex has not produced a plan to execute yet.')
+      if (saved.executedPlanId === plan.id) throw new HttpError(409, 'This plan has already been sent to Codex. Ask the planner for an updated plan before sending it again.')
+      const executor = await createCodexExecutorThread(saved.workflow, `${saved.title ?? 'Codex'} · تنفيذ`)
+      await sendRelayCodexMessage(executor.id, {
+        text: `Implement the following plan in this project. Verify the result and report changed files and checks. Do not delegate.\n\n${plan.text ?? textFromCodexInput(plan.content)}`,
+        model: saved.workflow.executorModel || undefined,
+      })
+      await updateCodexState(state => {
+        if (state.threads[threadId]) {
+          state.threads[threadId].executorThreadId = executor.id
+          state.threads[threadId].executedPlanId = plan.id
+        }
+      })
+      return { accepted: true, threadId: executor.id }
+    } finally { workflowActions.delete(threadId) }
+  }
   if (saved.workflow?.planner !== 'opencode' || saved.workflow?.executor !== 'codex') throw new HttpError(409, 'This conversation uses Codex planning and OpenCode implementation.')
   if (workflowActions.has(threadId)) throw new HttpError(409, 'A workflow action is already in progress.')
   workflowActions.add(threadId)
@@ -1997,6 +2063,62 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/project') {
       sendJson(response, 200, { data: { directory: projectDirectory, workRoot: watchRoot } })
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/project/files') {
+      const relative = url.searchParams.get('path') ?? ''
+      if (relative.includes('\0') || path.isAbsolute(relative) || /^[A-Za-z]:/.test(relative)) {
+        throw new HttpError(400, 'Choose a folder inside the current project.')
+      }
+      const root = await realpath(watchRoot)
+      const directory = path.resolve(root, relative)
+      if (!isInside(root, directory)) throw new HttpError(400, 'Choose a folder inside the current project.')
+      const realDirectory = await realpath(directory)
+      if (!isInside(root, realDirectory)) throw new HttpError(400, 'The folder points outside the current project.')
+      const hiddenGenerated = new Set(['.git', 'node_modules', 'dist', 'coverage', '.next', '.nuxt', '.turbo'])
+      const entries = await readdir(realDirectory, { withFileTypes: true })
+      const visible = entries
+        .filter(entry => !entry.isSymbolicLink() && !hiddenGenerated.has(entry.name.toLowerCase()))
+        .map(entry => ({ name: entry.name, path: path.relative(root, path.join(realDirectory, entry.name)).split(path.sep).join('/'), kind: entry.isDirectory() ? 'directory' : 'file' }))
+        .sort((left, right) => left.kind === right.kind ? left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) : left.kind === 'directory' ? -1 : 1)
+      sendJson(response, 200, { data: { path: path.relative(root, realDirectory).split(path.sep).join('/'), entries: visible.slice(0, 500), truncated: visible.length > 500 } })
+      return
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/project/search') {
+      const query = (url.searchParams.get('q') ?? '').trim().toLocaleLowerCase()
+      if (!query) { sendJson(response, 200, { data: { entries: [], truncated: false } }); return }
+      const terms = query.split(/[\s\-_/\\.]+/).filter(Boolean)
+      const root = await realpath(watchRoot)
+      const hiddenGenerated = new Set(['.git', 'node_modules', 'dist', 'coverage', '.next', '.nuxt', '.turbo'])
+      const queue = ['']
+      const results = []
+      let visitedDirectories = 0
+      let visitedEntries = 0
+      const maxDirectories = 10000
+      const maxEntries = 200000
+      const maxResults = 1000
+      while (queue.length && visitedDirectories < maxDirectories && visitedEntries < maxEntries && results.length < maxResults) {
+        const relativeDirectory = queue.shift()
+        const absoluteDirectory = path.resolve(root, relativeDirectory)
+        if (!isInside(root, absoluteDirectory)) continue
+        visitedDirectories += 1
+        let children
+        try { children = await readdir(absoluteDirectory, { withFileTypes: true }) } catch { continue }
+        for (const entry of children) {
+          if (entry.isSymbolicLink() || hiddenGenerated.has(entry.name.toLowerCase())) continue
+          visitedEntries += 1
+          const relativePath = path.relative(root, path.join(absoluteDirectory, entry.name)).split(path.sep).join('/')
+          const kind = entry.isDirectory() ? 'directory' : 'file'
+          const searchablePath = `${entry.name} ${relativePath}`.toLocaleLowerCase()
+          if (terms.every((term) => searchablePath.includes(term))) results.push({ name: entry.name, path: relativePath, kind })
+          if (kind === 'directory') queue.push(relativePath)
+          if (visitedEntries >= maxEntries || results.length >= maxResults) break
+        }
+      }
+      results.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+      sendJson(response, 200, { data: { entries: results, truncated: queue.length > 0 || visitedEntries >= maxEntries || visitedDirectories >= maxDirectories || results.length >= maxResults } })
       return
     }
 

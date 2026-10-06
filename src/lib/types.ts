@@ -47,11 +47,15 @@ export interface OpenCodeStatus {
   error?: string
 }
 
-export interface WorkflowSetup { planner: 'codex' | 'opencode'; executor: 'codex' | 'opencode' }
+export interface WorkflowSetup { planner: 'codex' | 'opencode'; plannerModel: string; executor: 'codex' | 'opencode'; executorModel: string }
 export interface WorkflowSettings { workflow: WorkflowSetup; agents: { id: string; name: string; available: boolean }[] }
+export interface ProjectFileEntry { name: string; path: string; kind: 'directory' | 'file' }
+export interface ProjectFiles { path: string; entries: ProjectFileEntry[]; truncated: boolean }
+export interface ProjectSearchResults { entries: ProjectFileEntry[]; truncated: boolean }
 
 export interface CodexThread {
   workflow?: WorkflowSetup
+  workflowRole?: 'planner' | 'executor'
   id: string
   title?: string
   name?: string
