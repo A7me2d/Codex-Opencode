@@ -1,4 +1,5 @@
-import { CircleDot, Plus, Sparkles } from 'lucide-react'
+import { ArrowUpRight, CircleDot, Plus, Sparkles } from 'lucide-react'
+import { useState } from 'react'
 import { MessageBubble } from '../../components/MessageBubble'
 import { ScrollToLatest } from '../../components/ui/ScrollToLatest'
 import { Spinner } from '../../components/ui/Spinner'
@@ -34,6 +35,7 @@ export interface CodexConversationProps {
   onRemoveAttachment: (path: string) => void
   onStop: () => void
   onNewThread: () => void
+  onExecutePlan: (threadId: string) => Promise<void>
 }
 
 function EmptyThread({ onNewThread }: { onNewThread: () => void }) {
@@ -72,6 +74,9 @@ function TurnPill({ turn, sending }: { turn: CodexTurnState; sending: boolean })
 /** Middle column: the conversation with Codex, plus the composer. */
 export function CodexConversation(props: CodexConversationProps) {
   const { thread, messages, loading, turn, sending, error, draft, queued, attachments, attaching, onDraftChange, onSend, onQueue, onCancelQueue, onAttach, onRemoveAttachment, onStop, onNewThread } = props
+  const [executingPlan, setExecutingPlan] = useState(false)
+  const [executionError, setExecutionError] = useState<string | null>(null)
+  const executorChat = thread?.workflowRole === 'executor'
   const scroll = useStickyScroll(messages, thread?.id)
 
   return <section dir="rtl" className="flex min-h-[32rem] min-w-0 flex-col bg-paper lg:min-h-0 lg:overflow-hidden">
@@ -83,7 +88,7 @@ export function CodexConversation(props: CodexConversationProps) {
               <Sparkles className="h-4 w-4 shrink-0 text-relay" aria-hidden="true" />
               <span className="truncate">{thread.title ?? thread.name ?? 'محادثة جديدة'}</span>
             </div>
-            <p className="mt-1 text-[11px] text-ink-soft">{thread.workflow?.executor === 'codex' ? 'Codex · المنفّذ — تعديل الملفات والتحقق من النتيجة.' : 'هنا تتحدث مع Codex — التخطيط، المنطق، والمراجعة.'}</p>
+            <p className="mt-1 text-[11px] text-ink-soft">{executorChat || thread.workflow?.planner !== 'codex' ? 'Codex · المنفّذ — تعديل الملفات والتحقق من النتيجة.' : 'هنا محادثة التخطيط والمراجعة مع Codex.'}</p>
             {thread.directory ? <div className="mt-2 text-[10px] text-ink-soft">
               <span>مجلد هذه الجلسة: </span><code dir="ltr" className="ltr inline-block max-w-full truncate align-bottom" title={thread.directory}>{thread.directory}</code>
               {props.workRoot && thread.directory.replace(/[\\/]+$/, '').toLowerCase() !== props.workRoot.replace(/[\\/]+$/, '').toLowerCase() ? <p className="mt-1 text-review-ink">هذه جلسة لمشروع مختلف. لإنشاء جلسة في المجلد المختار، اضغط «+ محادثة».</p> : null}
@@ -102,7 +107,7 @@ export function CodexConversation(props: CodexConversationProps) {
               </div>
             ) : messages.length === 0 ? (
               <div className="flex h-full items-center justify-center text-center">
-                <p className="max-w-sm text-sm leading-7 text-ink-soft">{thread.workflow?.executor === 'codex' ? 'خطة OpenCode تظهر هنا عند إرسالها للتنفيذ. يمكنك أيضًا توجيه Codex مباشرة.' : 'هذه جلسة جديدة. اكتب ما تريد من Codex أن يفهمه أو يخطط له.'}</p>
+                <p className="max-w-sm text-sm leading-7 text-ink-soft">{executorChat || thread.workflow?.planner !== 'codex' ? 'هذه محادثة التنفيذ. ستظهر هنا الخطة المرسلة من المفكّر.' : 'هذه جلسة التخطيط. اكتب طلبك، ثم أرسل الخطة إلى شات التنفيذ عند جاهزيتها.'}</p>
               </div>
             ) : (
               <ol className="mx-auto flex max-w-3xl flex-col gap-5">
@@ -114,7 +119,7 @@ export function CodexConversation(props: CodexConversationProps) {
         </div>
 
         <Composer
-          implementer={thread.workflow?.executor === 'codex'}
+          implementer={executorChat || (thread.workflow?.planner !== 'codex' && thread.workflow?.executor === 'codex')}
           codexSelection={props.codexSelection}
           draft={draft}
           onChange={onDraftChange}
@@ -131,6 +136,16 @@ export function CodexConversation(props: CodexConversationProps) {
           turn={turn}
           onStop={onStop}
         />
+        {thread.workflow?.planner === 'codex' && thread.workflow?.executor === 'codex' && !executorChat ? <div className="shrink-0 border-t border-line bg-card px-4 py-2.5">
+          <button type="button" onClick={() => {
+            if (!thread || executingPlan) return
+            setExecutingPlan(true); setExecutionError(null)
+            void props.onExecutePlan(thread.id).catch(failure => setExecutionError(failure instanceof Error ? failure.message : 'تعذّر بدء محادثة التنفيذ.')).finally(() => setExecutingPlan(false))
+          }} disabled={turn.active || sending || executingPlan || !messages.some(message => message.role === 'assistant')} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-ready/35 px-3 py-2 text-xs font-bold text-ready-ink hover:bg-ready-tint disabled:opacity-40">
+            {executingPlan ? <Spinner className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}أرسل آخر خطة إلى شات Codex للتنفيذ
+          </button>
+          {executionError ? <p role="alert" className="mt-2 text-xs text-review-ink">{executionError}</p> : null}
+        </div> : null}
       </>
     ) : <EmptyThread onNewThread={onNewThread} />}
   </section>

@@ -63,6 +63,12 @@ export function useRelayRoom() {
   }, [selectedId, selectedThread])
   const conversation = useConversation(selectedThread)
 
+  const executeCodexPlan = useCallback(async (threadId: string) => {
+    const result = await api.workflowAction(threadId, 'execute')
+    await threadList.refresh()
+    if (result.threadId) setSelectedId(result.threadId)
+  }, [threadList])
+
   const alerts = useAgentAlerts({
     codexActive: conversation.turn.active,
     openCodeActive: Boolean(conversation.view.handoff?.active),
@@ -185,6 +191,7 @@ export function useRelayRoom() {
     onOpenThreadFolder: openThreadFolder,
     onRefreshAll: refreshEverything,
     onSelectThread: setSelectedId,
+    onExecutePlan: executeCodexPlan,
     onReview: reviewImplementation,
   }
 }

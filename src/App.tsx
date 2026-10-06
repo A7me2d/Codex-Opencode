@@ -110,6 +110,7 @@ export default function App() {
   } as CSSProperties
 
   const reverse = conversation.view.thread?.workflow?.planner === 'opencode'
+  const codexToCodex = conversation.view.thread?.workflow?.planner === 'codex' && conversation.view.thread?.workflow?.executor === 'codex'
   const codexPane = <CodexConversation
           workRoot={room.workRoot}
           codexSelection={conversation.codexSelection}
@@ -119,6 +120,7 @@ export default function App() {
           loading={conversation.view.loading}
           turn={conversation.turn}
           onNewThread={room.onCreateThread}
+          onExecutePlan={room.onExecutePlan}
           sending={conversation.composer.sending}
           error={conversation.composer.error}
           draft={conversation.composer.draft}
@@ -197,7 +199,11 @@ export default function App() {
       </ErrorBoundary>
 
       <ErrorBoundary label="مسار التفويض مش معروض صح دلوقتي.">
-        {reverse ? codexPane : <HandoffRail
+        {reverse ? codexPane : codexToCodex ? <aside dir="rtl" className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card px-5 py-6 lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
+          <h2 className="text-sm font-bold text-ink">Codex · شات التنفيذ</h2>
+          <p className="mt-2 text-xs leading-6 text-ink-soft">التخطيط والمراجعة في المحادثة الرئيسية. عند إرسال الخطة، يفتح شات Codex منفصل بالموديل المحدد للتنفيذ ويظهر ضمن قائمة الجلسات.</p>
+          {conversation.view.thread?.workflow?.executorModel ? <code dir="ltr" className="mt-3 rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">{conversation.view.thread.workflow.executorModel}</code> : null}
+        </aside> : <HandoffRail
           thread={conversation.view.thread}
           handoff={conversation.view.handoff}
           loading={conversation.view.loading}
