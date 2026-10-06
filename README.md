@@ -1,4 +1,4 @@
-# Relay Room
+# Coding Room
 
 A local web app for chatting with Codex and handing implementation tasks to OpenCode. It includes project selection, model and reasoning controls, session permissions, and file-change summaries.
 
@@ -63,6 +63,19 @@ Open **http://localhost:4280/**. The API serves the built files from `dist/`.
 
 `npm run start` does not rebuild the frontend or enable automatic reload. After source changes, run `npm run build` again and refresh the browser; restart the server for backend changes. Use `dev:all` while developing.
 
+## Desktop app and Windows EXE
+
+Install the project dependencies once on the build machine, then create the Windows desktop packages:
+
+```powershell
+npm ci
+npm run dist:win
+```
+
+The output is written to `release/`. It contains a Windows installer and a portable `.exe` that launches **Coding Room** directly. Both use the app's custom icon. The installed app adds Start Menu and desktop shortcuts. Closing the app asks its local API server to shut down; session links and app settings remain in the current Windows user's app data folder.
+
+The installer does not include personal Codex or OpenCode accounts. Each computer still needs Codex Desktop signed in and the compatible OpenCode CLI installed and configured. No Node.js or npm installation is required on computers that only run the packaged app. Project builds target Windows x64.
+
 ## Use the app
 
 1. Select your project folder before creating a new Codex conversation.
@@ -76,7 +89,9 @@ OpenCode starts delegated work only when the request includes `$opencode`. Direc
 
 ## Workflow setup
 
-Open **الإعدادات → Setup · توزيع الأدوار** to choose the planner/reviewer and the implementer. They must be different agents. Save the setup, then create a new conversation. Each conversation keeps its assigned roles when the default changes or the app restarts; older conversations keep Codex planning and OpenCode implementation.
+Open **الإعدادات → Setup · توزيع الأدوار** to choose an agent and model independently for the planner/reviewer and implementer. Save the setup, then create a new conversation. Each conversation keeps its assigned roles when the default changes or the app restarts; older conversations keep their existing roles.
+
+You can choose Codex for both roles, including different Codex models. The main Codex conversation plans and reviews with read-only access. When its plan is ready, use **أرسل آخر خطة إلى شات Codex للتنفيذ** to start a separate, writable Codex conversation with the selected implementation model. The new execution chat appears in the session list. OpenCode-to-OpenCode is not currently supported.
 
 With **Codex planning → OpenCode implementation**, chat with Codex and use `$opencode` to request a handoff as usual.
 

@@ -1,4 +1,6 @@
 node_modules/
 dist/
+release/
+release-*/
 .relay-state/
 .env
