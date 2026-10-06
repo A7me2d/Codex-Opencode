@@ -109,6 +109,10 @@ Codex changes are saved in its local user configuration and apply to loaded conv
 
 OpenCode switches disconnect or reconnect the server in the current project at runtime. They last until OpenCode restarts and do not rewrite its configuration or delete credentials. Wait for active work to finish before changing a switch.
 
+## Desktop updates
+
+The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds and publishes a Windows installer whenever code is pushed to `main` or `new-models`. Installed copies check GitHub Releases after startup and every six hours, download updates automatically, and install them on exit (or restart immediately from the update notice). Share the **Coding Room Setup** installer from the latest GitHub Release; the portable executable does not support automatic updates.
+
 ## Commands
 
 | Command | Purpose |

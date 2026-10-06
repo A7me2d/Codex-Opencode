@@ -148,6 +148,8 @@ export interface ChatMessage {
   text: string
   /** Codex is still streaming this message. */
   live?: boolean
+  /** The user prompt that produced this OpenCode answer, used for scoped diffs/reverts. */
+  userMessageId?: string
 }
 
 export type Speaker = 'codex' | 'opencode'

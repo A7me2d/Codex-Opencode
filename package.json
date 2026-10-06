@@ -17,7 +17,11 @@
     "dist:win": "npm run build && electron-builder --win nsis portable"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^0.545.0",
+    "node-pty": "^1.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -36,8 +40,10 @@
   "build": {
     "appId": "com.relayroom.desktop",
     "productName": "Coding Room",
+    "npmRebuild": false,
     "electronDist": "node_modules/electron/dist",
     "asar": false,
+    "publish": [{ "provider": "github", "owner": "A7me2d", "repo": "Codex-Opencode", "releaseType": "release" }],
     "directories": {
       "output": "release"
     },
@@ -76,5 +82,9 @@
       "uninstallerIcon": "build/app.ico",
       "runAfterFinish": false
     }
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true,
+    "electron@44.5.1": true
   }
 }

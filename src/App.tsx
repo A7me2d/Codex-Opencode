@@ -3,6 +3,7 @@ import { GripVertical } from 'lucide-react'
 import { AppHeader } from './components/AppHeader'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { AlertStack } from './features/alerts/AlertStack'
+import { TerminalDock } from './components/TerminalDock'
 import { CodexConversation } from './features/codex/CodexConversation'
 import { SessionList } from './features/codex/SessionList'
 import { PlannerConversation } from './features/opencode/PlannerConversation'
@@ -265,5 +266,6 @@ export default function App() {
         </span>
       </div>
     </main>
+    <TerminalDock cwd={room.workRoot || conversation.view.thread?.directory} />
   </div>
 }

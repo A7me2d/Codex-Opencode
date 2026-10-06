@@ -6,7 +6,7 @@ import { api } from '../../lib/api'
 import { cx } from '../../lib/cx'
 import { readOpenCodeChat } from '../../lib/chat'
 import { clip, relativeTime } from '../../lib/format'
-import { ChangedFiles } from './ChangedFiles'
+import { MessageChanges } from './MessageChanges'
 import { usePolling } from '../../hooks/usePolling'
 import type { Notify } from '../../hooks/useAgentAlerts'
 import type { OpenCodeSession } from '../../lib/types'
@@ -200,14 +200,16 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     ) : (
       <>
         <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          <ChangedFiles key={selected} sessionId={selected} active={running} />
           {loading && messages.length === 0 ? (
             <p className="flex items-center justify-center gap-2 py-6 text-xs text-ink-soft"><Spinner />يتم قراءة الرسائل…</p>
           ) : messages.length === 0 ? (
             <p className="py-6 text-center text-xs leading-6 text-ink-soft">لا توجد رسائل في هذه الجلسة بعد. اكتب أول رسالة.</p>
           ) : (
-            <ol className="space-y-3">
-              {messages.map((message) => <li key={message.id}><MessageBubble message={message} speaker="opencode" /></li>)}
+              <ol className="space-y-3">
+              {messages.map((message) => <li key={message.id}>
+                <MessageBubble message={message} speaker="opencode" />
+                {message.role === 'assistant' && message.userMessageId ? <MessageChanges sessionId={selected} messageId={message.userMessageId} active={running} onChanged={() => { void read(); onRefreshSessions() }} /> : null}
+              </li>)}
             </ol>
           )}
         </div>

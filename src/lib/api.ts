@@ -97,6 +97,10 @@ export const api = {
   sessionMessages: (sessionId: string) =>
     requestJson<{ data: unknown[] }>(`/api/sessions/${sessionId}/messages`).then((body) => body?.data ?? null),
   sessionDiff: (sessionId: string) => requestJson<{ data: SessionFileDiff[] }>(`/api/sessions/${sessionId}/diff`).then(unwrap),
+  sessionMessageDiff: (sessionId: string, messageId: string) =>
+    requestJson<{ data: SessionFileDiff[] }>(`/api/sessions/${sessionId}/diff?messageID=${encodeURIComponent(messageId)}`).then(unwrap),
+  revertSessionMessage: (sessionId: string, messageId: string) =>
+    post<{ data: { reverted: boolean; messageID: string } }>(`/api/sessions/${sessionId}/revert`, { messageID: messageId }).then(unwrap),
   sendToOpenCodeSession: (sessionId: string, text: string) =>
     post(`/api/sessions/${sessionId}/prompt`, { text }),
   stopOpenCodeSession: (sessionId: string) => post(`/api/opencode/sessions/${sessionId}/stop`),

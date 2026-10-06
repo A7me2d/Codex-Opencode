@@ -2437,7 +2437,7 @@ const server = createServer(async (request, response) => {
       return
     }
 
-    const sessionMatch = url.pathname.match(/^\/api\/sessions\/(ses_[A-Za-z0-9]+)\/(messages|diff|prompt|control)$/)
+    const sessionMatch = url.pathname.match(/^\/api\/sessions\/(ses_[A-Za-z0-9]+)\/(messages|diff|prompt|control|revert)$/)
     if (sessionMatch) {
       const [, sessionId, action] = sessionMatch
       await requireScopedSession(sessionId)
@@ -2449,8 +2449,21 @@ const server = createServer(async (request, response) => {
       }
 
       if (request.method === 'GET' && action === 'diff') {
-        const data = await openCodeApi('GET', `/api/session/${sessionId}/diff?context=3`)
+        const messageId = url.searchParams.get('messageID')
+        const target = messageId ? `&messageID=${encodeURIComponent(messageId)}` : ''
+        const data = await openCodeApi('GET', `/api/session/${sessionId}/diff?context=3${target}`)
         sendJson(response, 200, data)
+        return
+      }
+
+      if (request.method === 'POST' && action === 'revert') {
+        const input = await readJson(request)
+        const messageId = String(input.messageID ?? '')
+        if (!/^msg_[A-Za-z0-9]+$/.test(messageId)) throw new HttpError(400, 'Invalid OpenCode message id.')
+        const result = await openCodeApi('POST', `/api/session/${sessionId}/revert`, { messageID: messageId })
+        const confirmed = result === true || result?.data === true || Boolean(result?.id || result?.data?.id)
+        if (!confirmed) throw new Error('OpenCode did not confirm that the message changes were reverted.')
+        sendJson(response, 200, { data: { reverted: true, messageID: messageId } })
         return
       }
 
