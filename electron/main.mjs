@@ -1,10 +1,16 @@
-import { app, BrowserWindow, dialog, shell, utilityProcess } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from 'electron'
+import { spawn as spawnPty } from 'node-pty'
+import electronUpdater from 'electron-updater'
 import path from 'node:path'
+import fs from 'node:fs'
 
 let backend
 let serverUrl
 let quitting = false
 let quitAfterBackend = false
+const terminals = new Map()
+let mainWindow
+const { autoUpdater } = electronUpdater
 
 // Keep the existing session state folder stable across this product rename.
 app.setPath('userData', path.join(app.getPath('appData'), 'Relay Room'))
@@ -43,6 +49,60 @@ function startBackend() {
   })
 }
 
+ipcMain.handle('terminal:start', (event, input) => {
+  const requestedDirectory = input?.directory
+  const sessionId = String(input?.sessionId ?? '').trim()
+  if (!/^ses_[A-Za-z0-9]+$/.test(sessionId)) throw new Error('أدخل معرّف جلسة OpenCode صالحًا.')
+  const directory = typeof requestedDirectory === 'string' && requestedDirectory.trim()
+    ? path.resolve(requestedDirectory)
+    : app.getPath('documents')
+  if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) {
+    throw new Error('مجلد العمل غير موجود.')
+  }
+
+  terminals.get(event.sender.id)?.kill()
+  const powershell = process.env.WINDIR
+    ? path.join(process.env.WINDIR, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    : 'powershell.exe'
+  const terminal = spawnPty(fs.existsSync(powershell) ? powershell : 'powershell.exe', ['-NoLogo', '-NoProfile', '-NoExit', '-Command', `opencode --session ${sessionId}`], {
+    name: 'xterm-256color',
+    cols: 100,
+    rows: 24,
+    cwd: directory,
+    env: { ...process.env, TERM: 'xterm-256color' },
+  })
+  terminals.set(event.sender.id, terminal)
+  terminal.onData(data => event.sender.send('terminal:data', data))
+  terminal.onExit(({ exitCode }) => {
+    if (terminals.get(event.sender.id) === terminal) {
+      terminals.delete(event.sender.id)
+      event.sender.send('terminal:exit', exitCode)
+    }
+  })
+  return { cwd: directory, command: `opencode --session ${sessionId}` }
+})
+
+ipcMain.on('terminal:write', (event, data) => {
+  const terminal = terminals.get(event.sender.id)
+  if (terminal && typeof data === 'string' && data.length <= 16_384) terminal.write(data)
+})
+ipcMain.on('terminal:resize', (event, size) => {
+  const terminal = terminals.get(event.sender.id)
+  if (terminal && Number.isInteger(size?.cols) && Number.isInteger(size?.rows)) {
+    terminal.resize(Math.min(400, Math.max(20, size.cols)), Math.min(120, Math.max(5, size.rows)))
+  }
+})
+ipcMain.on('terminal:stop', event => {
+  terminals.get(event.sender.id)?.kill()
+  terminals.delete(event.sender.id)
+})
+app.on('web-contents-created', (_event, contents) => {
+  contents.once('destroyed', () => {
+    terminals.get(contents.id)?.kill()
+    terminals.delete(contents.id)
+  })
+})
+
 async function showBackendFailure(message) {
   await dialog.showMessageBox({ type: 'error', title: 'Coding Room', message })
   app.quit()
@@ -58,6 +118,7 @@ async function createWindow() {
     backgroundColor: '#f4f6f8',
     icon: path.join(app.getAppPath(), 'build', 'app.ico'),
     webPreferences: {
+      preload: path.join(app.getAppPath(), 'electron', 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -73,11 +134,40 @@ async function createWindow() {
   return window
 }
 
+function configureAutoUpdates() {
+  if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR) return
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.allowDowngrade = false
+  autoUpdater.on('update-available', info => console.log(`[Coding Room] Update ${info.version} is available.`))
+  autoUpdater.on('update-not-available', info => console.log(`[Coding Room] Up to date (${info.version}).`))
+  autoUpdater.on('error', error => console.error('[Coding Room] Update check failed:', error))
+  autoUpdater.on('update-downloaded', info => {
+    if (quitting) return
+    void dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'تحديث Coding Room جاهز',
+      message: `تم تنزيل الإصدار ${info.version}. سيُثبت عند إغلاق التطبيق.`,
+      buttons: ['أعد التشغيل الآن', 'لاحقًا'],
+      defaultId: 1,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall()
+    })
+  })
+
+  const check = () => void autoUpdater.checkForUpdates().catch(error => console.error('[Coding Room] Update check failed:', error))
+  setTimeout(check, 15_000)
+  setInterval(check, 6 * 60 * 60 * 1000)
+}
+
 app.whenReady().then(async () => {
   const window = await createWindow()
+  mainWindow = window
   try {
     await startBackend()
     await window.loadURL(serverUrl)
+    configureAutoUpdates()
   } catch (error) {
     await showBackendFailure(error instanceof Error ? error.message : String(error))
   }

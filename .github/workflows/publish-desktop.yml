@@ -1,0 +1,35 @@
+name: Publish Coding Room desktop update
+
+on:
+  push:
+    branches:
+      - main
+      - new-models
+
+permissions:
+  contents: write
+
+concurrency:
+  group: coding-room-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Assign a unique release version
+        shell: pwsh
+        run: npm version "1.0.${{ github.run_number }}" --no-git-tag-version
+      - name: Build the application
+        run: npm run build
+      - name: Publish the Windows installer and update manifest
+        run: npx electron-builder --win nsis --x64 --publish always
+        env:
+          GH_TOKEN: ${{ github.token }}
