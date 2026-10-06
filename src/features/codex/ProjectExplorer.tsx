@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookOpen, Braces, Boxes, ChevronDown, ChevronLeft, Code2, Component, Database, FileArchive, FileAudio2, FileCode2, FileCog, FileImage, FileJson2, FileLock2, FileSpreadsheet, FileText, FileType2, FileVideo2, FlaskConical, Folder, FolderOpen, Globe2, Image, Layers3, LoaderCircle, Package, Palette, Search, Settings2, TestTube2, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
+import { BookOpen, Braces, Boxes, Check, ChevronDown, ChevronLeft, Code2, Component, Copy, Database, FileArchive, FileAudio2, FileCode2, FileCog, FileImage, FileJson2, FileLock2, FileSpreadsheet, FileText, FileType2, FileVideo2, FlaskConical, Folder, FolderOpen, Globe2, Image, Layers3, LoaderCircle, Package, Palette, Search, Settings2, TestTube2, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { api } from '../../lib/api'
 import type { ProjectFileEntry, ProjectFiles } from '../../lib/types'
 import { useFileIconTheme } from '../../lib/fileIconThemes'
@@ -67,12 +68,38 @@ function lynxIconPathFor(entry: ProjectFileEntry, expanded = false): string {
   return lynxIcons.iconPaths[iconId] ?? lynxIcons.iconPaths[entry.kind === 'directory' ? 'folder' : 'file'] ?? ''
 }
 
-function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, iconTheme, onToggle }: {
+function projectAbsolutePath(workRoot: string, relativePath: string) {
+  const separator = workRoot.includes('\\') ? '\\' : '/'
+  const root = workRoot.replace(/[\\/]+$/, '')
+  const child = relativePath.replace(/[\\/]+/g, separator).replace(/^[\\/]+/, '')
+  return child ? `${root}${separator}${child}` : root
+}
+
+function CopyPathButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<number | null>(null)
+  useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current) }, [])
+  async function copyPath(event: ReactMouseEvent<HTMLButtonElement>) {
+    event.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(path)
+      setCopied(true)
+      if (timer.current !== null) window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => setCopied(false), 1_500)
+    } catch { setCopied(false) }
+  }
+  return <button type="button" onClick={copyPath} aria-label={`نسخ المسار: ${path}`} title={copied ? 'تم نسخ المسار' : 'نسخ المسار الكامل'} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+    {copied ? <Check className="h-3.5 w-3.5 text-ready" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+  </button>
+}
+
+function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, iconTheme, workRoot, onToggle }: {
   entry: ProjectFileEntry
   childrenByPath: Record<string, ProjectFiles>
   loadingPaths: Set<string>
   expandedPaths: Set<string>
   iconTheme: 'lynx-style-a' | 'classic'
+  workRoot: string
   onToggle: (entry: ProjectFileEntry) => void
 }) {
   const directory = entry.kind === 'directory'
@@ -82,16 +109,20 @@ function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, icon
   const { icon: EntryIcon, color } = iconFor(entry, isExpanded, iconTheme)
   const iconPath = iconTheme === 'lynx-style-a' ? lynxIconPathFor(entry, isExpanded) : undefined
   return <li>
-    {directory ? <button type="button" onClick={() => onToggle(entry)} aria-expanded={isExpanded} title={entry.path}
-      className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-right text-[11px] text-ink hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+    {directory ? <div className="group/entry flex min-h-8 items-center gap-0.5 rounded-md pr-1 hover:bg-paper">
+      <button type="button" onClick={() => onToggle(entry)} aria-expanded={isExpanded} title={entry.path}
+      className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-right text-[11px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
       {loading ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-soft" /> : isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-soft" /> : <ChevronLeft className="h-3.5 w-3.5 shrink-0 text-ink-soft" />}
       {iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <EntryIcon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}
       <span dir="auto" className="min-w-0 truncate">{entry.name}</span>
-    </button> : <div title={entry.path} className="flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[11px] text-ink-soft">
+      </button>
+      <CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} />
+    </div> : <div title={entry.path} className="group/entry flex min-h-8 items-center gap-0.5 rounded-md pr-1 text-[11px] text-ink-soft hover:bg-paper">
       <span className="h-3.5 w-3.5 shrink-0" />{iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <EntryIcon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}
-      <span dir="auto" className="min-w-0 truncate">{entry.name}</span>
+      <span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span>
+      <CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} />
     </div>}
-    {isExpanded && children ? <ul className="ms-3 border-s border-line ps-1.5">{children.entries.map(child => <ProjectEntry key={child.path} entry={child} childrenByPath={childrenByPath} loadingPaths={loadingPaths} expandedPaths={expandedPaths} iconTheme={iconTheme} onToggle={onToggle} />)}</ul> : null}
+    {isExpanded && children ? <ul className="ms-3 border-s border-line ps-1.5">{children.entries.map(child => <ProjectEntry key={child.path} entry={child} childrenByPath={childrenByPath} loadingPaths={loadingPaths} expandedPaths={expandedPaths} iconTheme={iconTheme} workRoot={workRoot} onToggle={onToggle} />)}</ul> : null}
   </li>
 }
 
@@ -157,12 +188,12 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
     </label>
     <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
       {query.trim() ? <>
-        {searchResults.length ? <ul className="space-y-0.5">{searchResults.map(entry => <ProjectSearchResult key={entry.path} entry={entry} iconTheme={iconTheme} />)}</ul> : !searching ? <p className="px-3 py-6 text-center text-[11px] text-ink-soft">لا توجد نتائج مطابقة.</p> : null}
+        {searchResults.length ? <ul className="space-y-0.5">{searchResults.map(entry => <ProjectSearchResult key={entry.path} entry={entry} iconTheme={iconTheme} workRoot={workRoot} />)}</ul> : !searching ? <p className="px-3 py-6 text-center text-[11px] text-ink-soft">لا توجد نتائج مطابقة.</p> : null}
         {searching ? <p className="px-3 py-2 text-center text-[10px] text-ink-soft">جارٍ البحث في ملفات المشروع…</p> : null}
         {searchTruncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">تم عرض أول 1000 نتيجة فقط.</p> : null}
       </> : <>
       {loading.has('') && !root ? <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-ink-soft"><LoaderCircle className="h-4 w-4 animate-spin" />جارٍ قراءة ملفات المشروع…</div> : null}
-      {root?.entries.length ? <ul className="space-y-0.5">{root.entries.map(entry => <ProjectEntry key={entry.path} entry={entry} childrenByPath={directories} loadingPaths={loading} expandedPaths={expanded} iconTheme={iconTheme} onToggle={toggleDirectory} />)}</ul> : null}
+      {root?.entries.length ? <ul className="space-y-0.5">{root.entries.map(entry => <ProjectEntry key={entry.path} entry={entry} childrenByPath={directories} loadingPaths={loading} expandedPaths={expanded} iconTheme={iconTheme} workRoot={workRoot} onToggle={toggleDirectory} />)}</ul> : null}
       {root && root.entries.length === 0 ? <p className="px-3 py-6 text-center text-[11px] leading-5 text-ink-soft">المجلد ده فاضي لسه.</p> : null}
       {root?.truncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">تم عرض أول 500 عنصر في هذا المجلد.</p> : null}
       </>}
@@ -171,8 +202,8 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
   </section>
 }
 
-function ProjectSearchResult({ entry, iconTheme }: { entry: ProjectFileEntry; iconTheme: 'lynx-style-a' | 'classic' }) {
+function ProjectSearchResult({ entry, iconTheme, workRoot }: { entry: ProjectFileEntry; iconTheme: 'lynx-style-a' | 'classic'; workRoot: string }) {
   const { icon: Icon, color } = iconFor(entry, false, iconTheme)
   const iconPath = iconTheme === 'lynx-style-a' ? lynxIconPathFor(entry) : undefined
-  return <li title={entry.path} className="flex min-h-8 items-center gap-1.5 rounded-md px-2 text-[11px] text-ink"><span className="h-3.5 w-3.5 shrink-0" />{iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <Icon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}<span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span><code dir="ltr" className="ltr max-w-[45%] truncate text-[9px] text-ink-soft">{entry.path}</code></li>
+  return <li title={entry.path} className="group/entry flex min-h-8 items-center gap-1 rounded-md px-1 text-[11px] text-ink hover:bg-paper"><span className="h-3.5 w-3.5 shrink-0" />{iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <Icon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}<span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span><code dir="ltr" className="ltr max-w-[40%] truncate text-[9px] text-ink-soft">{entry.path}</code><CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} /></li>
 }
