@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
 import { themes, themeSources, readStoredTheme, saveTheme, themeStorageKey, type ThemeId } from '../lib/themes'
+import { saveFileIconTheme, useFileIconTheme, type FileIconThemeId } from '../lib/fileIconThemes'
 import { cx } from '../lib/cx'
 
 export function ThemePanel() {
@@ -31,5 +32,20 @@ export function ThemePanel() {
     </div></fieldset>
     <p role="status" className="min-h-5 text-xs text-ready-ink">{notice ?? `الثيم الحالي: ${themes.find(theme => theme.id === selected)?.name}`}</p>
     {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">مصدر ألوان الثيم · الألوان مهيّأة لواجهة Relay Room</a> : null}
+    <FileIconThemePicker />
   </section>
+}
+
+function FileIconThemePicker() {
+  const selected = useFileIconTheme()
+  function choose(theme: FileIconThemeId) { saveFileIconTheme(theme) }
+  return <div className="max-w-md border-t border-line pt-5">
+    <label htmlFor="file-icon-theme" className="block text-xs font-bold">Set File Icon Theme</label>
+    <p className="mt-1 text-[10px] leading-5 text-ink-soft">Choose how folders and file types appear in the project explorer.</p>
+    <select id="file-icon-theme" value={selected} onChange={event => choose(event.target.value as FileIconThemeId)} className="mt-2 h-10 w-full rounded-lg border border-line bg-card px-3 text-xs font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+      <option value="lynx-style-a">Lynx — Style A</option>
+      <option value="classic">Classic</option>
+    </select>
+    <p role="status" className="mt-2 text-[10px] text-ready-ink">Current file icon theme: {selected === 'lynx-style-a' ? 'Lynx — Style A' : 'Classic'}</p>
+  </div>
 }
