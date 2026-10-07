@@ -112,6 +112,7 @@ export default function App() {
 
   const reverse = conversation.view.thread?.workflow?.planner === 'opencode'
   const codexToCodex = conversation.view.thread?.workflow?.planner === 'codex' && conversation.view.thread?.workflow?.executor === 'codex'
+    && conversation.view.thread?.workflowRole !== 'executor'
   const codexPane = <CodexConversation
           workRoot={room.workRoot}
           codexSelection={conversation.codexSelection}
@@ -155,6 +156,32 @@ export default function App() {
           workRoot={room.workRoot}
           modelIds={(room.models.data ?? []).filter((entry) => entry.tools).map((entry) => entry.id)}
         />
+
+  const executorConversation = room.executorConversation
+  const executorPane = executorConversation.view.thread ? <CodexConversation
+    workRoot={room.workRoot}
+    codexSelection={executorConversation.codexSelection}
+    thread={executorConversation.view.thread}
+    messages={executorConversation.view.messages}
+    fileChanges={executorConversation.view.fileChanges}
+    loading={executorConversation.view.loading}
+    turn={executorConversation.turn}
+    onNewThread={room.onCreateThread}
+    onExecutePlan={room.onExecutePlan}
+    sending={executorConversation.composer.sending}
+    error={executorConversation.composer.error}
+    draft={executorConversation.composer.draft}
+    queued={executorConversation.composer.queued}
+    attachments={executorConversation.composer.attachments}
+    attaching={executorConversation.composer.attaching}
+    onDraftChange={executorConversation.composer.onDraftChange}
+    onSend={executorConversation.composer.onSend}
+    onQueue={executorConversation.composer.onQueue}
+    onCancelQueue={executorConversation.composer.onCancelQueue}
+    onAttach={executorConversation.composer.onAttach}
+    onRemoveAttachment={executorConversation.composer.onRemoveAttachment}
+    onStop={executorConversation.composer.onStop}
+  /> : null
 
   return <div dir="rtl" className="flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
     <AlertStack alerts={room.alerts.list} onDismiss={room.alerts.onDismiss} />
@@ -200,10 +227,12 @@ export default function App() {
       </ErrorBoundary>
 
       <ErrorBoundary label="مسار التفويض مش معروض صح دلوقتي.">
-        {reverse ? codexPane : codexToCodex ? <aside dir="rtl" className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card px-5 py-6 lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
-          <h2 className="text-sm font-bold text-ink">Codex · شات التنفيذ</h2>
-          <p className="mt-2 text-xs leading-6 text-ink-soft">التخطيط والمراجعة في المحادثة الرئيسية. عند إرسال الخطة، يفتح شات Codex منفصل بالموديل المحدد للتنفيذ ويظهر ضمن قائمة الجلسات.</p>
-          {conversation.view.thread?.workflow?.executorModel ? <code dir="ltr" className="mt-3 rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">{conversation.view.thread.workflow.executorModel}</code> : null}
+        {reverse ? codexPane : codexToCodex ? <aside dir="rtl" className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
+          {executorPane ?? <div className="flex flex-1 flex-col px-5 py-6">
+            <h2 className="text-sm font-bold text-ink">Codex · شات التنفيذ</h2>
+            <p className="mt-2 text-xs leading-6 text-ink-soft">هنا هتظهر محادثة التنفيذ بعد إرسال الخطة من الشات الرئيسي.</p>
+            {conversation.view.thread?.workflow?.executorModel ? <code dir="ltr" className="mt-3 self-start rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">{conversation.view.thread.workflow.executorModel}</code> : null}
+          </div>}
         </aside> : <HandoffRail
           thread={conversation.view.thread}
           handoff={conversation.view.handoff}

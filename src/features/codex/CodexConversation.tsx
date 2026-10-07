@@ -137,12 +137,12 @@ export function CodexConversation(props: CodexConversationProps) {
           onStop={onStop}
         />
         {thread.workflow?.planner === 'codex' && thread.workflow?.executor === 'codex' && !executorChat ? <div className="shrink-0 border-t border-line bg-card px-4 py-2.5">
-          <button type="button" onClick={() => {
+          <button type="button" title="يرسل آخر رد من شات المفكّر إلى شات المنفّذ، ثم يعيد تقرير المنفّذ للمفكّر تلقائيًا للمراجعة." onClick={() => {
             if (!thread || executingPlan) return
             setExecutingPlan(true); setExecutionError(null)
             void props.onExecutePlan(thread.id).catch(failure => setExecutionError(failure instanceof Error ? failure.message : 'تعذّر بدء محادثة التنفيذ.')).finally(() => setExecutingPlan(false))
           }} disabled={turn.active || sending || executingPlan || !messages.some(message => message.role === 'assistant')} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-ready/35 px-3 py-2 text-xs font-bold text-ready-ink hover:bg-ready-tint disabled:opacity-40">
-            {executingPlan ? <Spinner className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}أرسل آخر خطة إلى شات Codex للتنفيذ
+            {executingPlan ? <Spinner className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}أرسل آخر رد إلى شات Codex للتنفيذ
           </button>
           {executionError ? <p role="alert" className="mt-2 text-xs text-review-ink">{executionError}</p> : null}
         </div> : null}

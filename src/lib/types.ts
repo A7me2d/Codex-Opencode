@@ -56,6 +56,7 @@ export interface ProjectSearchResults { entries: ProjectFileEntry[]; truncated: 
 export interface CodexThread {
   workflow?: WorkflowSetup
   workflowRole?: 'planner' | 'executor'
+  executorThreadId?: string
   id: string
   title?: string
   name?: string

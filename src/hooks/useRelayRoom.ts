@@ -61,12 +61,20 @@ export function useRelayRoom() {
   useEffect(() => {
     if (selectedId && !selectedThread) setSelectedId(null)
   }, [selectedId, selectedThread])
-  const conversation = useConversation(selectedThread)
+  const primaryThread = useMemo(() => {
+    if (selectedThread?.workflowRole !== 'executor') return selectedThread
+    return threads.find(thread => thread.executorThreadId === selectedThread.id) ?? selectedThread
+  }, [selectedThread, threads])
+  const conversation = useConversation(primaryThread)
+  const executorThread = useMemo(
+    () => primaryThread?.executorThreadId ? threads.find(thread => thread.id === primaryThread.executorThreadId) ?? null : null,
+    [primaryThread, threads],
+  )
+  const executorConversation = useConversation(executorThread)
 
   const executeCodexPlan = useCallback(async (threadId: string) => {
-    const result = await api.workflowAction(threadId, 'execute')
+    await api.workflowAction(threadId, 'execute')
     await threadList.refresh()
-    if (result.threadId) setSelectedId(result.threadId)
   }, [threadList])
 
   const alerts = useAgentAlerts({
@@ -169,6 +177,7 @@ export function useRelayRoom() {
   return {
     alerts: { list: alerts.alerts, onDismiss: alerts.dismiss, notify: alerts.notify as Notify },
     conversation,
+    executorConversation,
     codexConnected: Boolean(codex?.connected),
     codexError: codex?.error,
     openCodeOnline: Boolean(openCode?.online),
