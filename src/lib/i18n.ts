@@ -181,7 +181,6 @@ const english: Record<string, string> = {
   'اكتب معرّفًا يبدأ بـ ses_ ثم حروفًا أو أرقامًا.': 'Enter an ID that starts with ses_ followed by letters or numbers.',
   'الآن': 'Now',
   'الأساسي': 'Default',
-  'الإعدادات': 'Settings',
   'الثيم الحالي: {{0}}': 'Current theme: {{0}}',
   'الحالة مش معروضة صح دلوقتي.': 'The status is not displayed correctly right now.',
   'الطرفية': 'Terminal',
@@ -252,7 +251,6 @@ const english: Record<string, string> = {
   'حفظ توزيع الأدوار': 'Save role assignments',
   'خلفية داكنة وألوان أزرق وبنفسجي.': 'Dark background with blue and purple accents.',
   'رسالة إلى OpenCode المفكّر': 'Message the OpenCode planner',
-  'رسالة مباشرة إلى OpenCode': 'Direct message to OpenCode',
   'رفض': 'Reject',
   'رمادي داكن مع أصفر نيون وتركواز.': 'Dark gray with neon yellow and turquoise.',
   'سؤال {{0}}': 'Question {{0}}',
@@ -357,7 +355,6 @@ const english: Record<string, string> = {
   'النمط A': 'Style A',
   'كلاسيكي': 'Classic',
   'مظهر أيقونات الملفات الحالي:': 'Current file icon theme:',
-  'الطرفية': 'Terminal',
 }
 
 const listeners = new Set<() => void>()
