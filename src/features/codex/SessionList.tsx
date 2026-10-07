@@ -1,3 +1,4 @@
+import { direction, tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
 import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
 import { StateDot } from '../../components/ui/StateDot'
@@ -26,65 +27,62 @@ export interface SessionListProps {
 export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot }: SessionListProps) {
   const [view, setView] = useState<'files' | 'chats'>('files')
   useEffect(() => { setView('files') }, [workRoot])
-  const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? 'إظهار جلسات Codex' : 'إخفاء جلسات Codex'} title={collapsed ? 'إظهار جلسات Codex' : 'إخفاء جلسات Codex'} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+  const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} title={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
     <PanelLeft className="h-4 w-4" aria-hidden="true" />
   </button>
-  if (collapsed) return <aside dir="rtl" className="flex items-start justify-center border-b border-line bg-card py-2 lg:border-b-0 lg:border-r">
+  if (collapsed) return <aside dir={direction()} className="flex items-start justify-center border-b border-line bg-card py-2 lg:border-b-0 lg:border-r">
     {toggle}
   </aside>
   return (
-    <aside dir="rtl" className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
+    <aside dir={direction()} className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
       <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-4">
         <div className="flex items-center gap-2 text-sm font-bold text-ink">
-          {toggle} جلسات Codex
-        </div>
+          {toggle} {tr("جلسات Codex")}</div>
         <button type="button" onClick={onCreate} disabled={!connected || creating} className="inline-flex items-center gap-1.5 rounded-lg bg-relay px-2.5 py-1.5 text-xs font-bold text-on-accent transition-colors hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-45">
           {creating ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
-          محادثة
-        </button>
+          {tr("محادثة")}</button>
       </div>
 
       <div className="shrink-0 border-b border-line px-4 py-3">
         <div className="mb-3 flex items-center gap-2 text-[10px] text-ink-soft">
           <StateDot active={connected} warning={!connected} />
-          <span>{connected ? 'Codex Desktop متصل' : 'Codex Desktop غير متصل'}</span>
+          <span>{connected ? tr("Codex Desktop متصل") : tr("Codex Desktop غير متصل")}</span>
         </div>
         <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
           className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-relay/25 bg-relay-tint/60 px-3 py-2 text-xs font-bold text-relay-ink transition-colors hover:border-relay/50 hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-55">
           {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
-          {choosingWorkRoot ? 'جارٍ اختيار المشروع…' : 'فتح مجلد مشروع جديد'}
+          {choosingWorkRoot ? tr("جارٍ اختيار المشروع…") : tr("فتح مجلد مشروع جديد")}
         </button>
         <div className="mt-3 flex items-start gap-2 px-1">
           <FolderTree className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <span className="block text-[10px] text-ink-soft">المشروع الحالي</span>
+            <span className="block text-[10px] text-ink-soft">{tr("المشروع الحالي")}</span>
             {workRoot ? <>
               <span dir="auto" className="mt-0.5 block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
               <code dir="ltr" className="ltr mt-1 block truncate text-[10px] text-ink-soft" title={workRoot}>{workRoot}</code>
-            </> : <span className="mt-1 block text-[11px] text-ink-soft">جارٍ تحديد المجلد…</span>}
+            </> : <span className="mt-1 block text-[11px] text-ink-soft">{tr("جارٍ تحديد المجلد…")}</span>}
           </div>
         </div>
       </div>
 
-      <div role="tablist" aria-label="محتوى المشروع" className="grid shrink-0 grid-cols-2 gap-1 border-b border-line px-3 py-2">
-        <button type="button" role="tab" aria-selected={view === 'files'} onClick={() => setView('files')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'files' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>الملفات</button>
-        <button type="button" role="tab" aria-selected={view === 'chats'} onClick={() => setView('chats')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'chats' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>محادثات المشروع ({threads.length})</button>
+      <div role="tablist" aria-label={tr("محتوى المشروع")} className="grid shrink-0 grid-cols-2 gap-1 border-b border-line px-3 py-2">
+        <button type="button" role="tab" aria-selected={view === 'files'} onClick={() => setView('files')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'files' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr("الملفات")}</button>
+        <button type="button" role="tab" aria-selected={view === 'chats'} onClick={() => setView('chats')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'chats' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr("محادثات المشروع (")}{threads.length})</button>
       </div>
 
       {view === 'files' && workRoot ? <ProjectExplorer key={workRoot.toLowerCase()} workRoot={workRoot} /> : null}
-      {view === 'files' && !workRoot ? <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">اختَر مجلد مشروع لعرض ملفاته هنا.</div> : null}
-      {view === 'chats' ? <nav aria-label="محادثات المشروع" className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
+      {view === 'files' && !workRoot ? <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">{tr("اختَر مجلد مشروع لعرض ملفاته هنا.")}</div> : null}
+      {view === 'chats' ? <nav aria-label={tr("محادثات المشروع")} className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
         {threads.length === 0 ? (
           <div className="px-3 py-6 text-center text-xs leading-6 text-ink-soft">
-            لا توجد محادثات لهذا المشروع بعد.<br />ابدأ محادثة جديدة وستظهر هنا.
-          </div>
+            {tr("لا توجد محادثات لهذا المشروع بعد.")}<br />{tr("ابدأ محادثة جديدة وستظهر هنا.")}</div>
         ) : (
           <ul className="space-y-1">
             {threads.map((thread) => {
               const selected = thread.id === selectedId
-              const title = thread.title ?? thread.name ?? 'محادثة جديدة'
+              const title = thread.title ?? thread.name ?? tr("محادثة جديدة")
               return <li key={thread.id} className="group/item relative">
-                <button type="button" onClick={() => onSelect(thread.id)} aria-current={selected ? 'true' : undefined} className={cx('w-full rounded-lg px-3 py-2.5 text-right transition-colors', selected ? 'bg-relay-tint text-relay-ink' : 'text-ink hover:bg-paper')}>
+                <button type="button" onClick={() => onSelect(thread.id)} aria-current={selected ? 'true' : undefined} className={cx('w-full rounded-lg px-3 py-2.5 text-start transition-colors', selected ? 'bg-relay-tint text-relay-ink' : 'text-ink hover:bg-paper')}>
                   <span className="flex items-start gap-2">
                     <MessageCircleMore className={cx('mt-0.5 h-3.5 w-3.5 shrink-0', selected ? 'text-relay' : 'text-ink-soft')} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
@@ -93,7 +91,7 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
                         <span className={cx('text-[10px]', selected ? 'text-relay-ink/75' : 'text-ink-soft')}>{relativeTime(thread.updatedAt)}</span>
                         {thread.active ? <StateDot active /> : null}
                         {thread.inProject
-                          ? <span className="rounded bg-relay-tint px-1 text-[9px] font-bold text-relay-ink">المشروع</span>
+                          ? <span className="rounded bg-relay-tint px-1 text-[9px] font-bold text-relay-ink">{tr("المشروع")}</span>
                           : thread.directory
                             ? <code dir="ltr" className="ltr truncate text-[9px] text-ink-soft" title={thread.directory}>{clip(thread.directory, 22)}</code>
                             : null}
@@ -109,8 +107,8 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onOpenThreadFolder(thread.id) }
                         }}
-                        title={`افتح ${thread.directory}`}
-                        aria-label={`افتح مجلد الجلسة ${thread.directory}`}
+                        title={tr("افتح {{0}}", [thread.directory])}
+                        aria-label={tr("افتح مجلد الجلسة {{0}}", [thread.directory])}
                         className="mt-0.5 shrink-0 rounded p-1 text-ink-soft opacity-0 transition-opacity hover:text-relay focus:opacity-100 group-hover/item:opacity-100"
                       >
                         <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" />
@@ -125,8 +123,7 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
       </nav> : null}
 
       <div className="shrink-0 border-t border-line px-4 py-3 text-[10px] leading-5 text-ink-soft">
-        {threads.length} محادثة مرتبطة بالمشروع الحالي.
-      </div>
+        {threads.length} {tr("محادثة مرتبطة بالمشروع الحالي.")}</div>
     </aside>
   )
 }

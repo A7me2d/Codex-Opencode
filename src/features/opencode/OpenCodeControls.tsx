@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { useEffect, useRef, useState } from 'react'
 import { CircleStop, Send, TriangleAlert } from 'lucide-react'
 import { api } from '../../lib/api'
@@ -39,9 +40,9 @@ export function OpenCodeControls({ threadId, sessionId, active, onNotify }: Open
     try {
       await api.sendOpenCodeMessage(threadId, text)
       setDraft('')
-      onNotify(active ? 'تم توجيه النص إلى OpenCode الجاري' : 'تم إرسال المهمة إلى OpenCode')
+      onNotify(active ? tr("تم توجيه النص إلى OpenCode الجاري") : tr("تم إرسال المهمة إلى OpenCode"))
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذر إرسال الرسالة إلى OpenCode.')
+      setError(failure instanceof Error ? failure.message : tr("تعذر إرسال الرسالة إلى OpenCode."))
     } finally {
       setSending(false)
       box.current?.focus()
@@ -54,9 +55,9 @@ export function OpenCodeControls({ threadId, sessionId, active, onNotify }: Open
     setError(null)
     try {
       await api.stopOpenCode(threadId)
-      onNotify('أرسلنا طلب إيقاف OpenCode', sessionId)
+      onNotify(tr("أرسلنا طلب إيقاف OpenCode"), sessionId)
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذر إيقاف OpenCode.')
+      setError(failure instanceof Error ? failure.message : tr("تعذر إيقاف OpenCode."))
     } finally {
       setStopping(false)
     }
@@ -64,12 +65,11 @@ export function OpenCodeControls({ threadId, sessionId, active, onNotify }: Open
 
   return <div className="shrink-0 border-t border-line bg-paper p-3">
     <div className="mb-2 flex items-center justify-between gap-2">
-      <label htmlFor="opencode-direct" className="text-[11px] font-bold text-ready-ink">رسالة مباشرة إلى OpenCode</label>
+      <label htmlFor="opencode-direct" className="text-[11px] font-bold text-ready-ink">{tr("رسالة مباشرة إلى OpenCode")}</label>
       {active ? (
-        <button type="button" onClick={() => void stop()} disabled={stopping} className="inline-flex items-center gap-1 rounded-md bg-review px-2 py-1 text-[10px] font-bold text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55" aria-label="إيقاف OpenCode فورًا">
+        <button type="button" onClick={() => void stop()} disabled={stopping} className="inline-flex items-center gap-1 rounded-md bg-review px-2 py-1 text-[10px] font-bold text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55" aria-label={tr("إيقاف OpenCode فورًا")}>
           {stopping ? <Spinner className="h-3 w-3" /> : <CircleStop className="h-3 w-3" aria-hidden="true" />}
-          إيقاف
-        </button>
+          {tr("إيقاف")}</button>
       ) : null}
     </div>
 
@@ -83,17 +83,17 @@ export function OpenCodeControls({ threadId, sessionId, active, onNotify }: Open
           if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() }
         }}
         rows={2}
-        placeholder={active ? 'اكتب تصحيحًا، سيصل إلى العمل الجاري…' : 'اكتب إلى OpenCode مباشرة…'}
+        placeholder={active ? tr("اكتب تصحيحًا، سيصل إلى العمل الجاري…") : tr("اكتب إلى OpenCode مباشرة…")}
         className="min-h-[3.25rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75"
       />
-      <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ready text-on-accent transition-colors hover:bg-ready-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label="إرسال إلى OpenCode" title={active ? 'توجيه مباشر للعمل الجاري' : 'إرسال رسالة جديدة'}>
+      <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ready text-on-accent transition-colors hover:bg-ready-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={tr("إرسال إلى OpenCode")} title={active ? tr("توجيه مباشر للعمل الجاري") : tr("إرسال رسالة جديدة")}>
         {sending ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" aria-hidden="true" />}
       </button>
     </div>
 
     {error ? (
       <div className="mt-2 flex items-start gap-2 rounded-lg bg-review-tint px-3 py-2 text-[11px] leading-5 text-review-ink">
-        <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{error}
+        <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{tr(error)}
       </div>
     ) : null}
   </div>

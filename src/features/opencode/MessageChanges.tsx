@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
 import { Check, RotateCcw } from 'lucide-react'
 import { ChangedFiles } from './ChangedFiles'
@@ -40,7 +41,7 @@ export function MessageChanges({ sessionId, messageId, active, onChanged }: {
     void api.sessionMessageDiff(sessionId, messageId).then(value => {
       if (!cancelled) setFiles(Array.isArray(value) ? value : [])
     }).catch(failure => {
-      if (!cancelled) setError(failure instanceof Error ? failure.message : 'تعذر تحميل التغييرات.')
+      if (!cancelled) setError(failure instanceof Error ? failure.message : tr("تعذر تحميل التغييرات."))
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [decision, messageId, sessionId])
@@ -61,7 +62,7 @@ export function MessageChanges({ sessionId, messageId, active, onChanged }: {
       setDecision('rejected')
       onChanged?.()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذر رفض تغييرات الرسالة.')
+      setError(failure instanceof Error ? failure.message : tr("تعذر رفض تغييرات الرسالة."))
     } finally {
       setRejecting(false)
     }
@@ -69,17 +70,16 @@ export function MessageChanges({ sessionId, messageId, active, onChanged }: {
 
   return <section className="mt-3 overflow-hidden rounded-xl border border-ready/25 bg-ready-tint/25">
     {files ? <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-3">
-      <p className="text-[11px] font-bold text-ink">التغييرات الناتجة عن هذه الرسالة</p>
+      <p className="text-[11px] font-bold text-ink">{tr("التغييرات الناتجة عن هذه الرسالة")}</p>
       <div className="flex gap-1.5">
         <button type="button" onClick={accept} disabled={active || rejecting} className="inline-flex items-center gap-1 rounded-md bg-ready px-2.5 py-1.5 text-[10px] font-bold text-on-accent hover:bg-ready-ink disabled:cursor-not-allowed disabled:opacity-45">
-          <Check className="h-3 w-3" aria-hidden="true" />أوافق على التعديلات
-        </button>
+          <Check className="h-3 w-3" aria-hidden="true" />{tr("أوافق على التعديلات")}</button>
         <button type="button" onClick={() => void reject()} disabled={active || rejecting} className="inline-flex items-center gap-1 rounded-md border border-review/35 bg-card px-2.5 py-1.5 text-[10px] font-bold text-review-ink hover:bg-review-tint disabled:cursor-not-allowed disabled:opacity-45">
-          <RotateCcw className="h-3 w-3" aria-hidden="true" />{rejecting ? 'جارٍ الرفض…' : 'رفض'}
+          <RotateCcw className="h-3 w-3" aria-hidden="true" />{rejecting ? tr("جارٍ الرفض…") : tr("رفض")}
         </button>
       </div>
     </div> : null}
     {files ? <div className="px-3"><ChangedFiles sessionId={sessionId} active={false} files={files} /></div> : null}
-    {error ? <p role="alert" className="px-3 pb-3 text-[11px] text-review-ink">{error}</p> : null}
+    {error ? <p role="alert" className="px-3 pb-3 text-[11px] text-review-ink">{tr(error)}</p> : null}
   </section>
 }

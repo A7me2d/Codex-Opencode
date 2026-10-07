@@ -1,3 +1,4 @@
+import { tr } from './i18n'
 /**
  * The one place that talks HTTP.
  *
@@ -25,7 +26,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   } catch {
     // A dev server without the API proxy answers unknown paths with index.html.
     throw new Error(response.ok
-      ? 'استجابة غير متوقعة من الخادم — شغّل Coding Room بالأمر npm run dev:api.'
+      ? tr("استجابة غير متوقعة من الخادم — شغّل Coding Room بالأمر npm run dev:api.")
       : `Request failed (${response.status}).`)
   }
 

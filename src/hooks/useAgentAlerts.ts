@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { config } from '../app/config'
 
@@ -73,13 +74,13 @@ export function useAgentAlerts({ codexActive, openCodeActive, questionCount, sub
     }
     if (codexActive && !before.codexActive) now.startedAt = Date.now()
     if (before.codexActive && !codexActive && Date.now() - now.startedAt >= config.minimumTurnMs) {
-      push('codex', 'Codex خلّص دوره', subject)
+      push('codex', tr("Codex خلّص دوره"), subject)
     }
     if (before.openCodeActive && !openCodeActive) {
-      push('openCode', 'OpenCode خلّص شغله', subject)
+      push('openCode', tr("OpenCode خلّص شغله"), subject)
     }
     if (questionCount > before.questionCount) {
-      push('question', 'OpenCode ينتظر إجابتك', questionCount > 1 ? `${questionCount} أسئلة مفتوحة` : 'شوف السؤال في المسار الجانبي', true)
+      push('question', tr("OpenCode ينتظر إجابتك"), questionCount > 1 ? tr("{{0}} أسئلة مفتوحة", [questionCount]) : tr("شوف السؤال في المسار الجانبي"), true)
     }
     previous.current = now
   }, [codexActive, openCodeActive, push, questionCount, scope, subject])

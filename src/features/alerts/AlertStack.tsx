@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { Bot, CircleDot, MessageCircleQuestion, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cx } from '../../lib/cx'
@@ -24,10 +25,10 @@ export function AlertStack({ alerts, onDismiss }: { alerts: AgentAlert[]; onDism
       return <div key={alert.id} className={cx('pointer-events-auto flex w-full max-w-md items-start gap-2.5 rounded-xl border px-3.5 py-3 shadow-[0_10px_30px_rgba(25,35,48,0.16)]', tone.card)}>
         {tone.icon}
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-bold leading-6">{alert.title}</p>
-          {alert.detail ? <p className="mt-0.5 truncate text-[11px] text-ink-soft" title={alert.detail}>{alert.detail}</p> : null}
+          <p className="text-[13px] font-bold leading-6">{tr(alert.title)}</p>
+          {alert.detail ? <p className="mt-0.5 truncate text-[11px] text-ink-soft" title={tr(alert.detail)}>{tr(alert.detail)}</p> : null}
         </div>
-        <button type="button" onClick={() => onDismiss(alert.id)} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper hover:text-ink" aria-label="إخفاء التنبيه">
+        <button type="button" onClick={() => onDismiss(alert.id)} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-paper hover:text-ink" aria-label={tr("إخفاء التنبيه")}>
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>

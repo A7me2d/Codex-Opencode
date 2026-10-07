@@ -1,3 +1,4 @@
+import { tr } from './i18n'
 /**
  * OpenCode questions.
  *
@@ -49,7 +50,7 @@ function readField(value: unknown, position: number): FormField {
   const options = readOptions(field.options)
   return {
     key: typeof field.key === 'string' && field.key ? field.key : `q${position}`,
-    title: readText(field.title ?? field.label ?? field.question) || `سؤال ${position + 1}`,
+    title: readText(field.title ?? field.label ?? field.question) || tr("سؤال {{0}}", [position + 1]),
     description: readText(field.description) || undefined,
     type: typeof field.type === 'string' ? field.type : options.length > 0 ? 'select' : 'string',
     options,
@@ -64,12 +65,12 @@ function readForm(value: unknown, index: number): OpenCodeForm | null {
   const fields = asArray(record.fields ?? record.questions ?? record.input).map(readField)
   return {
     id,
-    title: readText(record.title) || 'OpenCode يحتاج إلى توضيح',
+    title: readText(record.title) || tr("OpenCode يحتاج إلى توضيح"),
     // Never render an empty card: a question with no field is unanswerable, so
     // fall back to a single free-text answer under the form's own description.
     fields: fields.length > 0
       ? fields
-      : [{ key: 'answer', title: readText(record.description) || 'اكتب ردّك', type: 'string', options: [] }],
+      : [{ key: 'answer', title: readText(record.description) || tr("اكتب ردّك"), type: 'string', options: [] }],
   }
 }
 
@@ -84,6 +85,6 @@ export function readForms(value: unknown): OpenCodeForm[] {
 /** Boolean questions arrive without options, so offer the two honest answers. */
 export function fieldOptions(field: FormField): FormOption[] {
   if (field.options.length > 0) return field.options
-  if (field.type === 'boolean') return [{ value: 'true', label: 'نعم' }, { value: 'false', label: 'لا' }]
+  if (field.type === 'boolean') return [{ value: 'true', label: tr("نعم") }, { value: 'false', label: tr("لا") }]
   return []
 }

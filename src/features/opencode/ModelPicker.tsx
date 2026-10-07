@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, Check, ChevronDown, Search, X } from 'lucide-react'
 import { cx } from '../../lib/cx'
@@ -84,12 +85,12 @@ export function ModelPicker({ models, selected, onSelect, disabled = false }: Mo
       aria-haspopup="listbox"
       aria-expanded={open}
       title={current?.id ?? selected}
-      className="flex w-full items-center gap-2 rounded-lg border border-ready/25 bg-paper px-2.5 py-1.5 text-right transition-colors hover:border-ready/50 disabled:cursor-not-allowed disabled:opacity-55"
+      className="flex w-full items-center gap-2 rounded-lg border border-ready/25 bg-paper px-2.5 py-1.5 text-start transition-colors hover:border-ready/50 disabled:cursor-not-allowed disabled:opacity-55"
     >
       <Bot className="h-3.5 w-3.5 shrink-0 text-ready" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[10px] leading-4 text-ink-soft">موديل التنفيذ</span>
-        <span className="block truncate text-[11px] font-bold leading-4 text-ink">{current?.name ?? selected ?? 'اختر موديلًا'}</span>
+        <span className="block text-[10px] leading-4 text-ink-soft">{tr("موديل التنفيذ")}</span>
+        <span className="block truncate text-[11px] font-bold leading-4 text-ink">{current?.name ?? selected ?? tr("اختر موديلًا")}</span>
       </span>
       <ChevronDown className={cx('h-3.5 w-3.5 shrink-0 text-ink-soft transition-transform', open && 'rotate-180')} aria-hidden="true" />
     </button>
@@ -105,15 +106,15 @@ export function ModelPicker({ models, selected, onSelect, disabled = false }: Mo
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="ابحث بالاسم أو المعرّف أو المزوّد…"
-            aria-label="ابحث في موديلات OpenCode"
+            placeholder={tr("ابحث بالاسم أو المعرّف أو المزوّد…")}
+            aria-label={tr("ابحث في موديلات OpenCode")}
             className="w-full bg-transparent text-[12px] leading-5 text-ink outline-none placeholder:text-ink-soft/70"
           />
           {searching ? (
             <button
               type="button"
               onClick={() => { setQuery(''); field.current?.focus() }}
-              aria-label="امسح البحث"
+              aria-label={tr("امسح البحث")}
               className="shrink-0 rounded p-0.5 text-ink-soft transition-colors hover:text-ink"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -121,9 +122,9 @@ export function ModelPicker({ models, selected, onSelect, disabled = false }: Mo
           ) : null}
         </div>
 
-        <ul role="listbox" aria-label="موديلات OpenCode" className="thin-scroll max-h-64 overflow-y-auto py-1">
+        <ul role="listbox" aria-label={tr("موديلات OpenCode")} className="thin-scroll max-h-64 overflow-y-auto py-1">
           {filtered.length === 0 ? (
-            <li className="px-3 py-4 text-center text-[11px] leading-5 text-ink-soft">لا يوجد موديل مطابق.</li>
+            <li className="px-3 py-4 text-center text-[11px] leading-5 text-ink-soft">{tr("لا يوجد موديل مطابق.")}</li>
           ) : filtered.map((model) => {
             const active = model.id === selected
             return <li key={model.id}>
@@ -132,13 +133,13 @@ export function ModelPicker({ models, selected, onSelect, disabled = false }: Mo
                 role="option"
                 aria-selected={active}
                 onClick={() => choose(model.id)}
-                className={cx('flex w-full items-start gap-2 px-3 py-2 text-right transition-colors', active ? 'bg-ready-tint' : 'hover:bg-paper')}
+                className={cx('flex w-full items-start gap-2 px-3 py-2 text-start transition-colors', active ? 'bg-ready-tint' : 'hover:bg-paper')}
               >
                 <span className="min-w-0 flex-1">
                   <span className={cx('block truncate text-[12px] font-bold leading-5', active ? 'text-ready-ink' : 'text-ink')}>{model.name}</span>
                   <code dir="ltr" className="ltr mt-0.5 block truncate text-[9px] text-ink-soft">{model.id}</code>
                 </span>
-                {active ? <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-ready" aria-label="المُحدَّد" /> : null}
+                {active ? <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-ready" aria-label={tr("المُحدَّد")} /> : null}
               </button>
             </li>
           })}
@@ -147,8 +148,8 @@ export function ModelPicker({ models, selected, onSelect, disabled = false }: Mo
         {/* One quiet line so an empty-looking list is explained rather than
             guessed at, and the count is visible while narrowing down. */}
         <div className="flex items-center justify-between border-t border-line px-3 py-1.5 text-[10px] leading-4 text-ink-soft">
-          <span>{searching ? `${filtered.length} من ${usable.length}` : `${usable.length} موديلًا قابلاً للتنفيذ`}</span>
-          <span>Esc للإغلاق</span>
+          <span>{searching ? tr("{{0}} من {{1}}", [filtered.length, usable.length]) : tr("{{0}} موديلًا قابلاً للتنفيذ", [usable.length])}</span>
+          <span>{tr("Esc للإغلاق")}</span>
         </div>
       </div>
     ) : null}

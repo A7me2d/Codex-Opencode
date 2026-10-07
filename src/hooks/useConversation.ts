@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { config } from '../app/config'
 import { api } from '../lib/api'
@@ -163,7 +164,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       await refreshAll()
       return true
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذر إرسال الرسالة إلى Codex.')
+      setError(failure instanceof Error ? failure.message : tr("تعذر إرسال الرسالة إلى Codex."))
       return false
     } finally {
       setSending(false)
@@ -214,7 +215,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       await api.stopTurn(threadId)
       await refreshAll()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذر إيقاف Codex.')
+      setError(failure instanceof Error ? failure.message : tr("تعذر إيقاف Codex."))
     } finally {
       setStopping(false)
     }
@@ -229,7 +230,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       const selection = await api.selectProjectFile(thread?.directory)
       if (selection?.path) setAttachments((current) => (current.includes(selection.path) ? current : [...current, selection.path]))
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذر اختيار ملف من المشروع.')
+      setError(failure instanceof Error ? failure.message : tr("تعذر اختيار ملف من المشروع."))
     } finally {
       setAttaching(false)
     }
@@ -254,7 +255,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       setModelChange({ changing: false, error: null })
       await refreshAll()
     }).catch((failure: unknown) => {
-      setModelChange({ changing: false, error: failure instanceof Error ? failure.message : 'تعذّر تغيير الموديل.' })
+      setModelChange({ changing: false, error: failure instanceof Error ? failure.message : tr("تعذّر تغيير الموديل.") })
     })
   }, [currentModel, refreshAll, threadId])
 
@@ -269,7 +270,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
         void api.setCodexPermissions(threadId, sandbox).then(async () => {
           await savedSettings.refresh()
           setPermissionChange({ scope, changing: false, error: null })
-        }).catch((failure: unknown) => setPermissionChange({ scope, changing: false, error: failure instanceof Error ? failure.message : 'تعذّر تغيير الصلاحيات.' }))
+        }).catch((failure: unknown) => setPermissionChange({ scope, changing: false, error: failure instanceof Error ? failure.message : tr("تعذّر تغيير الصلاحيات.") }))
       },
       models: availableModels, current: codexSettings,
       loading: catalog.status === 'loading' || savedSettings.status === 'loading',

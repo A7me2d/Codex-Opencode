@@ -1,13 +1,19 @@
-export const themes = [
-  { id: 'default', name: 'الأساسي', description: 'نفس الاستايل الأصلي الفاتح.' },
-  { id: 'tokyo-night', name: 'Tokyo Night', description: 'خلفية داكنة وألوان أزرق وبنفسجي.' },
-  { id: 'tokyo-storm', name: 'Tokyo Night Storm', description: 'درجات كحلي مائلة للبنفسجي.' },
-  { id: 'laserwave', name: 'LaserWave', description: 'بنفسجي داكن مع وردي وأزرق ريترو.' },
-  { id: 'sea-green', name: 'Sea Green Theme', description: 'درجات البحر الداكنة ولمسات تركواز.' },
-  { id: 'pro-hacker', name: 'Pro hacker theme', description: 'أسود وأخضر مستوحى من التيرمنال.' },
-  { id: 'huacat-pink', name: 'Huacat Pink Theme', description: 'وردي فاتح وهادئ مع تفاصيل وردية.' },
-  { id: 'cyberpunk-2077', name: 'Cyberpunk 2077', description: 'رمادي داكن مع أصفر نيون وتركواز.' },
-] as const
+import { tr } from './i18n'
+
+export function getThemes() {
+  return [
+    { id: 'default', name: tr("الأساسي"), description: tr("نفس الاستايل الأصلي الفاتح.") },
+    { id: 'tokyo-night', name: 'Tokyo Night', description: tr("خلفية داكنة وألوان أزرق وبنفسجي.") },
+    { id: 'tokyo-storm', name: 'Tokyo Night Storm', description: tr("درجات كحلي مائلة للبنفسجي.") },
+    { id: 'laserwave', name: 'LaserWave', description: tr("بنفسجي داكن مع وردي وأزرق ريترو.") },
+    { id: 'sea-green', name: 'Sea Green Theme', description: tr("درجات البحر الداكنة ولمسات تركواز.") },
+    { id: 'pro-hacker', name: 'Pro hacker theme', description: tr("أسود وأخضر مستوحى من التيرمنال.") },
+    { id: 'huacat-pink', name: 'Huacat Pink Theme', description: tr("وردي فاتح وهادئ مع تفاصيل وردية.") },
+    { id: 'cyberpunk-2077', name: 'Cyberpunk 2077', description: tr("رمادي داكن مع أصفر نيون وتركواز.") },
+  ] as const
+}
+
+export const themes = getThemes()
 
 export type ThemeId = typeof themes[number]['id']
 export const themeSources: Partial<Record<ThemeId, string>> = {

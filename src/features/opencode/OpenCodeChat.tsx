@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, CircleStop, Plus, Send } from 'lucide-react'
 import { Spinner } from '../../components/ui/Spinner'
@@ -75,13 +76,13 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
       const id = String((created as { id?: string })?.id ?? '')
       if (id) {
         setSelected(id)
-        onNotify('بدأنا جلسة OpenCode جديدة', id)
+        onNotify(tr("بدأنا جلسة OpenCode جديدة"), id)
       } else {
-        onNotify('أُنشئت الجلسة', 'لم نستقبل معرّفها، حدّث القائمة.')
+        onNotify(tr("أُنشئت الجلسة"), tr("لم نستقبل معرّفها، حدّث القائمة."))
       }
       onRefreshSessions()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذّر بدء جلسة جديدة.')
+      setError(failure instanceof Error ? failure.message : tr("تعذّر بدء جلسة جديدة."))
     } finally {
       setStarting(false)
     }
@@ -98,7 +99,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
       await read()
       onRefreshSessions()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذّر إرسال الرسالة.')
+      setError(failure instanceof Error ? failure.message : tr("تعذّر إرسال الرسالة."))
     } finally {
       setSending(false)
       box.current?.focus()
@@ -111,16 +112,16 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     setError(null)
     try {
       await api.stopOpenCodeSession(selected)
-      onNotify('أرسلنا طلب إيقاف OpenCode', current?.title)
+      onNotify(tr("أرسلنا طلب إيقاف OpenCode"), current?.title)
       onRefreshSessions()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذّر إيقاف الجلسة.')
+      setError(failure instanceof Error ? failure.message : tr("تعذّر إيقاف الجلسة."))
     } finally {
       setStopping(false)
     }
   }
 
-  return <section aria-label="شات مباشر مع OpenCode" className={cx('min-h-0 border-t border-line', minimized ? 'mt-auto shrink-0' : 'flex flex-1 flex-col')}>
+  return <section aria-label={tr("شات مباشر مع OpenCode")} className={cx('min-h-0 border-t border-line', minimized ? 'mt-auto shrink-0' : 'flex flex-1 flex-col')}>
     <div className={cx('shrink-0 bg-paper px-3 py-2.5', minimized ? '' : 'space-y-2 border-b border-line')}>
       <button
         type="button"
@@ -129,11 +130,11 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
         aria-controls={panelId}
         className="flex min-h-9 w-full items-center justify-between gap-2 rounded-md text-start transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/35"
       >
-        <span className="text-[11px] font-bold text-ink">شات مباشر مع OpenCode</span>
+        <span className="text-[11px] font-bold text-ink">{tr("شات مباشر مع OpenCode")}</span>
         <span className="flex items-center gap-2">
-          <span className="text-[10px] text-ink-soft">{sessions.length} جلسات متاحة</span>
+          <span className="text-[10px] text-ink-soft">{sessions.length} {' '}{tr("جلسات متاحة")}</span>
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ready-ink">
-            {minimized ? 'إظهار' : 'إخفاء'}
+            {minimized ? tr("إظهار") : tr("إخفاء")}
             <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none', minimized ? '' : 'rotate-180')} aria-hidden="true" />
           </span>
         </span>
@@ -145,43 +146,40 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
         <select
           value={selected}
           onChange={(event) => setSelected(event.target.value)}
-          aria-label="اختر جلسة OpenCode"
+          aria-label={tr("اختر جلسة OpenCode")}
           className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2 py-1.5 text-[11px] text-ink outline-none focus:border-ready/55"
         >
-          <option value="">— اختر جلسة للتشات —</option>
+          <option value="">{tr("— اختر جلسة للتشات —")}</option>
           {sessions.map((session) => (
             <option key={session.id} value={session.id}>
-              {clip(session.title, 40)}{session.active ? ' ● شغّالة' : ''}
+              {clip(session.title, 40)}{session.active ? tr(" ● شغّالة") : ''}
             </option>
           ))}
         </select>
         {running ? (
-          <button type="button" onClick={() => void stop()} disabled={stopping} className="inline-flex shrink-0 items-center gap-1 rounded-md bg-review px-2 py-1.5 text-[10px] font-bold text-on-accent transition-colors hover:bg-review-ink disabled:opacity-55" aria-label="أوقف الجلسة">
+          <button type="button" onClick={() => void stop()} disabled={stopping} className="inline-flex shrink-0 items-center gap-1 rounded-md bg-review px-2 py-1.5 text-[10px] font-bold text-on-accent transition-colors hover:bg-review-ink disabled:opacity-55" aria-label={tr("أوقف الجلسة")}>
             {stopping ? <Spinner className="h-3 w-3" /> : <CircleStop className="h-3 w-3" aria-hidden="true" />}
-            إيقاف
-          </button>
+            {tr("إيقاف")}</button>
         ) : null}
       </div>
 
       <details className="rounded-lg border border-line bg-card">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-[10px] font-bold text-ready-ink marker:content-none">
-          جلسة OpenCode جديدة
-          <span className="font-normal text-ink-soft">اختياري</span>
+          {tr("جلسة OpenCode جديدة")}<span className="font-normal text-ink-soft">{tr("اختياري")}</span>
         </summary>
         <div className="flex items-center gap-2 border-t border-line p-2">
           <select
             value={newModel}
             onChange={(event) => setNewModel(event.target.value)}
-            aria-label="موديل الجلسة الجديدة"
+            aria-label={tr("موديل الجلسة الجديدة")}
             className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-2 py-1 text-[10px] text-ink outline-none focus:border-ready/55"
           >
-            <option value="">موديل الجلسة الجديدة: {clip(model || 'الافتراضي', 28)}</option>
+            <option value="">{tr("موديل الجلسة الجديدة:")}{' '}{clip(model || tr("الافتراضي"), 28)}</option>
             {models.map((id) => <option key={id} value={id}>{clip(id, 40)}</option>)}
           </select>
-          <button type="button" onClick={() => void startSession()} disabled={starting} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ready/30 bg-ready-tint px-2 py-1 text-[10px] font-bold text-ready-ink transition-colors hover:bg-ready-tint/80 disabled:opacity-55" aria-label="ابدأ جلسة OpenCode جديدة">
+          <button type="button" onClick={() => void startSession()} disabled={starting} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ready/30 bg-ready-tint px-2 py-1 text-[10px] font-bold text-ready-ink transition-colors hover:bg-ready-tint/80 disabled:opacity-55" aria-label={tr("ابدأ جلسة OpenCode جديدة")}>
             {starting ? <Spinner className="h-3 w-3" /> : <Plus className="h-3 w-3" aria-hidden="true" />}
-            ابدأ
-          </button>
+            {tr("ابدأ")}</button>
         </div>
       </details>
 
@@ -195,15 +193,14 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
 
     {!selected ? (
       <p className="flex flex-1 items-center justify-center px-6 text-center text-xs leading-6 text-ink-soft">
-        اختر جلسة من القائمة، أو ابدأ جلسة جديدة، لتتحدث مع OpenCode مباشرة بدون Codex.
-      </p>
+        {tr("اختر جلسة من القائمة، أو ابدأ جلسة جديدة، لتتحدث مع OpenCode مباشرة بدون Codex.")}</p>
     ) : (
       <>
         <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
           {loading && messages.length === 0 ? (
-            <p className="flex items-center justify-center gap-2 py-6 text-xs text-ink-soft"><Spinner />يتم قراءة الرسائل…</p>
+            <p className="flex items-center justify-center gap-2 py-6 text-xs text-ink-soft"><Spinner />{tr("يتم قراءة الرسائل…")}</p>
           ) : messages.length === 0 ? (
-            <p className="py-6 text-center text-xs leading-6 text-ink-soft">لا توجد رسائل في هذه الجلسة بعد. اكتب أول رسالة.</p>
+            <p className="py-6 text-center text-xs leading-6 text-ink-soft">{tr("لا توجد رسائل في هذه الجلسة بعد. اكتب أول رسالة.")}</p>
           ) : (
               <ol className="space-y-3">
               {messages.map((message) => <li key={message.id}>
@@ -224,15 +221,15 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
                 if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() }
               }}
               rows={2}
-              placeholder={running ? 'اكتب تصحيحًا، سيصل إلى العمل الجاري…' : 'اكتب إلى OpenCode…'}
+              placeholder={running ? tr("اكتب تصحيحًا، سيصل إلى العمل الجاري…") : tr("اكتب إلى OpenCode…")}
               className="min-h-[3rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75"
             />
-            <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ready text-on-accent transition-colors hover:bg-ready-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label="إرسال إلى OpenCode">
+            <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ready text-on-accent transition-colors hover:bg-ready-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={tr("إرسال إلى OpenCode")}>
               {sending ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" aria-hidden="true" />}
             </button>
           </div>
-          {(error || transcript.error) ? <p className="mt-2 text-[11px] leading-5 text-review-ink">{error || transcript.error}</p> : null}
-          <p className="mt-2 px-1 text-[10px] text-ink-soft">Enter للإرسال · Shift + Enter لسطر جديد · هذا الشات لا يمرّ على Codex.</p>
+          {(error || transcript.error) ? <p className="mt-2 text-[11px] leading-5 text-review-ink">{tr(error || transcript.error || '')}</p> : null}
+          <p className="mt-2 px-1 text-[10px] text-ink-soft">{tr("Enter للإرسال · Shift + Enter لسطر جديد · هذا الشات لا يمرّ على Codex.")}</p>
         </div>
       </>
     )}

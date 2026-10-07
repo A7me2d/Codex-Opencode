@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { ArrowDown } from 'lucide-react'
 import { cx } from '../../lib/cx'
 
@@ -22,6 +23,5 @@ export function ScrollToLatest({ visible, onClick, tone = 'relay' }: {
     )}
   >
     <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-    آخر رسالة
-  </button>
+    {tr("آخر رسالة")}</button>
 }

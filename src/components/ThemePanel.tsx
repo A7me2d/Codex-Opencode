@@ -1,10 +1,12 @@
+import { tr } from '../lib/i18n'
 import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
-import { themes, themeSources, readStoredTheme, saveTheme, themeStorageKey, type ThemeId } from '../lib/themes'
+import { getThemes, themeSources, readStoredTheme, saveTheme, themeStorageKey, type ThemeId } from '../lib/themes'
 import { saveFileIconTheme, useFileIconTheme, type FileIconThemeId } from '../lib/fileIconThemes'
 import { cx } from '../lib/cx'
 
 export function ThemePanel() {
+  const themes = getThemes()
   const [selected, setSelected] = useState<ThemeId>(readStoredTheme)
   const [notice, setNotice] = useState<string | null>(null)
   useEffect(() => {
@@ -15,11 +17,11 @@ export function ThemePanel() {
   function choose(theme: ThemeId) {
     const saved = saveTheme(theme)
     setSelected(theme)
-    setNotice(saved ? 'تم تطبيق الثيم وحفظه لهذا المتصفح.' : 'تم تطبيق الثيم. تعذّر حفظ الاختيار في هذا المتصفح.')
+    setNotice(saved ? tr("تم تطبيق الثيم وحفظه لهذا المتصفح.") : tr("تم تطبيق الثيم. تعذّر حفظ الاختيار في هذا المتصفح."))
   }
-  return <section aria-label="الثيمات" className="space-y-4 p-6">
-    <div><h3 className="text-sm font-bold">الثيمات</h3><p className="mt-1 text-xs leading-6 text-ink-soft">اختَر المظهر المناسب لك. يتطبّق فورًا على الواجهة ويُحفظ تلقائيًا.</p></div>
-    <fieldset><legend className="sr-only">اختر ثيم الواجهة</legend><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+  return <section aria-label={tr("الثيمات")} className="space-y-4 p-6">
+    <div><h3 className="text-sm font-bold">{tr("الثيمات")}</h3><p className="mt-1 text-xs leading-6 text-ink-soft">{tr("اختَر المظهر المناسب لك. يتطبّق فورًا على الواجهة ويُحفظ تلقائيًا.")}</p></div>
+    <fieldset><legend className="sr-only">{tr("اختر ثيم الواجهة")}</legend><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {themes.map(theme => <label key={theme.id} className={cx('min-w-0 cursor-pointer rounded-xl border p-2 transition-colors', selected === theme.id ? 'border-relay ring-1 ring-relay' : 'border-line hover:border-relay/50')}>
         <input type="radio" name="theme" value={theme.id} checked={selected === theme.id} onChange={() => choose(theme.id)} className="sr-only peer" />
         <div data-theme={theme.id} aria-hidden="true" className="overflow-hidden rounded-lg border border-line bg-paper peer-focus-visible:ring-2 peer-focus-visible:ring-relay">
@@ -30,8 +32,8 @@ export function ThemePanel() {
         <p className="mt-1 px-1 pb-1 text-[10px] leading-5 text-ink-soft">{theme.description}</p>
       </label>)}
     </div></fieldset>
-    <p role="status" className="min-h-5 text-xs text-ready-ink">{notice ?? `الثيم الحالي: ${themes.find(theme => theme.id === selected)?.name}`}</p>
-    {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">مصدر ألوان الثيم · الألوان مهيّأة لواجهة Coding Room</a> : null}
+    <p role="status" className="min-h-5 text-xs text-ready-ink">{notice ? tr(notice) : tr("الثيم الحالي: {{0}}", [themes.find(theme => theme.id === selected)?.name ?? ''])}</p>
+    {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">{tr("مصدر ألوان الثيم · الألوان مهيّأة لواجهة Coding Room")}</a> : null}
     <FileIconThemePicker />
   </section>
 }
@@ -40,12 +42,12 @@ function FileIconThemePicker() {
   const selected = useFileIconTheme()
   function choose(theme: FileIconThemeId) { saveFileIconTheme(theme) }
   return <div className="max-w-md border-t border-line pt-5">
-    <label htmlFor="file-icon-theme" className="block text-xs font-bold">Set File Icon Theme</label>
-    <p className="mt-1 text-[10px] leading-5 text-ink-soft">Choose how folders and file types appear in the project explorer.</p>
+    <label htmlFor="file-icon-theme" className="block text-xs font-bold">{tr("مظهر أيقونات الملفات")}</label>
+    <p className="mt-1 text-[10px] leading-5 text-ink-soft">{tr("اختر شكل ظهور المجلدات وأنواع الملفات في مستكشف المشروع.")}</p>
     <select id="file-icon-theme" value={selected} onChange={event => choose(event.target.value as FileIconThemeId)} className="mt-2 h-10 w-full rounded-lg border border-line bg-card px-3 text-xs font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
-      <option value="lynx-style-a">Lynx — Style A</option>
-      <option value="classic">Classic</option>
+      <option value="lynx-style-a">Lynx — {tr("النمط A")}</option>
+      <option value="classic">{tr("كلاسيكي")}</option>
     </select>
-    <p role="status" className="mt-2 text-[10px] text-ready-ink">Current file icon theme: {selected === 'lynx-style-a' ? 'Lynx — Style A' : 'Classic'}</p>
+    <p role="status" className="mt-2 text-[10px] text-ready-ink">{tr("مظهر أيقونات الملفات الحالي:")} {selected === 'lynx-style-a' ? `Lynx — ${tr("النمط A")}` : tr("كلاسيكي")}</p>
   </div>
 }

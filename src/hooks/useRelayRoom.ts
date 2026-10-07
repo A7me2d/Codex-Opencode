@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { config } from '../app/config'
 import { api } from '../lib/api'
@@ -61,19 +62,27 @@ export function useRelayRoom() {
   useEffect(() => {
     if (selectedId && !selectedThread) setSelectedId(null)
   }, [selectedId, selectedThread])
-  const conversation = useConversation(selectedThread)
+  const primaryThread = useMemo(() => {
+    if (selectedThread?.workflowRole !== 'executor') return selectedThread
+    return threads.find(thread => thread.executorThreadId === selectedThread.id) ?? selectedThread
+  }, [selectedThread, threads])
+  const conversation = useConversation(primaryThread)
+  const executorThread = useMemo(
+    () => primaryThread?.executorThreadId ? threads.find(thread => thread.id === primaryThread.executorThreadId) ?? null : null,
+    [primaryThread, threads],
+  )
+  const executorConversation = useConversation(executorThread)
 
   const executeCodexPlan = useCallback(async (threadId: string) => {
-    const result = await api.workflowAction(threadId, 'execute')
+    await api.workflowAction(threadId, 'execute')
     await threadList.refresh()
-    if (result.threadId) setSelectedId(result.threadId)
   }, [threadList])
 
   const alerts = useAgentAlerts({
     codexActive: conversation.turn.active,
     openCodeActive: Boolean(conversation.view.handoff?.active),
     questionCount: conversation.view.questions,
-    subject: selectedThread?.title ?? selectedThread?.name ?? 'محادثة Codex',
+    subject: selectedThread?.title ?? selectedThread?.name ?? tr("محادثة Codex"),
     scope: selectedId ?? 'none',
   })
 
@@ -82,11 +91,11 @@ export function useRelayRoom() {
     setCreating(true)
     setShellError(null)
     try {
-      const created = await api.createThread('محادثة جديدة')
+      const created = await api.createThread(tr("محادثة جديدة"))
       setSelectedId(created.id)
       await threadList.refresh()
     } catch (failure) {
-      setShellError(failure instanceof Error ? failure.message : 'تعذر إنشاء جلسة Codex.')
+      setShellError(failure instanceof Error ? failure.message : tr("تعذر إنشاء جلسة Codex."))
     } finally {
       setCreating(false)
     }
@@ -99,7 +108,7 @@ export function useRelayRoom() {
     try {
       await api.openProjectFolder()
     } catch (failure) {
-      setShellError(failure instanceof Error ? failure.message : 'تعذر فتح ملفات المشروع.')
+      setShellError(failure instanceof Error ? failure.message : tr("تعذر فتح ملفات المشروع."))
     } finally {
       setOpeningProject(false)
     }
@@ -114,7 +123,7 @@ export function useRelayRoom() {
     try {
       await api.openWorkRoot()
     } catch (failure) {
-      setShellError(failure instanceof Error ? failure.message : 'تعذر فتح مجلد المشروع.')
+      setShellError(failure instanceof Error ? failure.message : tr("تعذر فتح مجلد المشروع."))
     } finally {
       setOpeningProject(false)
     }
@@ -137,10 +146,10 @@ export function useRelayRoom() {
           relayEvents.refresh(),
           openCodeSessions.refresh(),
         ])
-        alerts.notify('تم اختيار مجلد المشروع', result.directory, 'openCode')
+        alerts.notify(tr("تم اختيار مجلد المشروع"), result.directory, 'openCode')
       }
     } catch (failure) {
-      setShellError(failure instanceof Error ? failure.message : 'تعذر اختيار مجلد المشروع.')
+      setShellError(failure instanceof Error ? failure.message : tr("تعذر اختيار مجلد المشروع."))
     } finally {
       setChoosingWorkRoot(false)
     }
@@ -151,7 +160,7 @@ export function useRelayRoom() {
     try {
       await api.openThreadFolder(threadId)
     } catch (failure) {
-      setShellError(failure instanceof Error ? failure.message : 'تعذر فتح مجلد الجلسة.')
+      setShellError(failure instanceof Error ? failure.message : tr("تعذر فتح مجلد الجلسة."))
     }
   }, [])
 
@@ -169,6 +178,7 @@ export function useRelayRoom() {
   return {
     alerts: { list: alerts.alerts, onDismiss: alerts.dismiss, notify: alerts.notify as Notify },
     conversation,
+    executorConversation,
     codexConnected: Boolean(codex?.connected),
     codexError: codex?.error,
     openCodeOnline: Boolean(openCode?.online),

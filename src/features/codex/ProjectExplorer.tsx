@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { BookOpen, Braces, Boxes, Check, ChevronDown, ChevronLeft, Code2, Component, Copy, Database, FileArchive, FileAudio2, FileCode2, FileCog, FileImage, FileJson2, FileLock2, FileSpreadsheet, FileText, FileType2, FileVideo2, FlaskConical, Folder, FolderOpen, Globe2, Image, Layers3, LoaderCircle, Package, Palette, Search, Settings2, TestTube2, TriangleAlert, X, type LucideIcon } from 'lucide-react'
@@ -88,7 +89,7 @@ function CopyPathButton({ path }: { path: string }) {
       timer.current = window.setTimeout(() => setCopied(false), 1_500)
     } catch { setCopied(false) }
   }
-  return <button type="button" onClick={copyPath} aria-label={`نسخ المسار: ${path}`} title={copied ? 'تم نسخ المسار' : 'نسخ المسار الكامل'} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+  return <button type="button" onClick={copyPath} aria-label={tr("نسخ المسار: {{0}}", [path])} title={copied ? tr("تم نسخ المسار") : tr("نسخ المسار الكامل")} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
     {copied ? <Check className="h-3.5 w-3.5 text-ready" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
   </button>
 }
@@ -111,7 +112,7 @@ function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, icon
   return <li>
     {directory ? <div className="group/entry flex min-h-8 items-center gap-0.5 rounded-md pr-1 hover:bg-paper">
       <button type="button" onClick={() => onToggle(entry)} aria-expanded={isExpanded} title={entry.path}
-      className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-right text-[11px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+      className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-start text-[11px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
       {loading ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-soft" /> : isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-soft" /> : <ChevronLeft className="h-3.5 w-3.5 shrink-0 text-ink-soft" />}
       {iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <EntryIcon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}
       <span dir="auto" className="min-w-0 truncate">{entry.name}</span>
@@ -145,7 +146,7 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
       const result = await api.projectFiles(directory)
       if (generation.current === requestGeneration) setDirectories(current => ({ ...current, [directory]: result }))
     } catch (failure) {
-      if (generation.current === requestGeneration) setError(failure instanceof Error ? failure.message : 'تعذّر قراءة ملفات المشروع.')
+      if (generation.current === requestGeneration) setError(failure instanceof Error ? failure.message : tr("تعذّر قراءة ملفات المشروع."))
     } finally {
       if (generation.current === requestGeneration) setLoading(current => { const next = new Set(current); next.delete(directory); return next })
     }
@@ -165,7 +166,7 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
         const result = await api.projectSearch(term)
         if (!cancelled) { setSearchResults(result.entries); setSearchTruncated(result.truncated) }
       } catch (failure) {
-        if (!cancelled) setError(failure instanceof Error ? failure.message : 'تعذّر البحث في ملفات المشروع.')
+        if (!cancelled) setError(failure instanceof Error ? failure.message : tr("تعذّر البحث في ملفات المشروع."))
       } finally { if (!cancelled) setSearching(false) }
     }, 250)
     return () => { cancelled = true; window.clearTimeout(timer) }
@@ -179,26 +180,26 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
     if (!directories[entry.path] && !loading.has(entry.path)) void loadDirectory(entry.path)
   }
   const root = directories['']
-  return <section aria-label="ملفات المشروع" className="flex min-h-0 flex-1 flex-col">
-    {error ? <p role="alert" className="flex shrink-0 items-start gap-2 border-b border-line bg-review-tint px-3 py-2 text-[10px] leading-5 text-review-ink"><TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />{error}</p> : null}
+  return <section aria-label={tr("ملفات المشروع")} className="flex min-h-0 flex-1 flex-col">
+    {error ? <p role="alert" className="flex shrink-0 items-start gap-2 border-b border-line bg-review-tint px-3 py-2 text-[10px] leading-5 text-review-ink"><TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />{tr(error)}</p> : null}
     <label className="mx-2 mt-2 flex shrink-0 items-center gap-2 rounded-md border border-line bg-paper px-2.5 focus-within:border-relay/50 focus-within:ring-2 focus-within:ring-relay/20">
       {searching ? <LoaderCircle className="h-3.5 w-3.5 animate-spin text-ink-soft" aria-hidden="true" /> : <Search className="h-3.5 w-3.5 text-ink-soft" aria-hidden="true" />}
-      <input value={query} onChange={event => setQuery(event.target.value)} placeholder="ابحث باسم الملف…" aria-label="ابحث باسم الملف" className="h-9 min-w-0 flex-1 bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-soft" />
-      {query ? <button type="button" onClick={() => setQuery('')} aria-label="مسح البحث" className="rounded p-1 text-ink-soft hover:bg-card hover:text-ink"><X className="h-3.5 w-3.5" /></button> : null}
+      <input value={query} onChange={event => setQuery(event.target.value)} placeholder={tr("ابحث باسم الملف…")} aria-label={tr("ابحث باسم الملف")} className="h-9 min-w-0 flex-1 bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-soft" />
+      {query ? <button type="button" onClick={() => setQuery('')} aria-label={tr("مسح البحث")} className="rounded p-1 text-ink-soft hover:bg-card hover:text-ink"><X className="h-3.5 w-3.5" /></button> : null}
     </label>
     <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
       {query.trim() ? <>
-        {searchResults.length ? <ul className="space-y-0.5">{searchResults.map(entry => <ProjectSearchResult key={entry.path} entry={entry} iconTheme={iconTheme} workRoot={workRoot} />)}</ul> : !searching ? <p className="px-3 py-6 text-center text-[11px] text-ink-soft">لا توجد نتائج مطابقة.</p> : null}
-        {searching ? <p className="px-3 py-2 text-center text-[10px] text-ink-soft">جارٍ البحث في ملفات المشروع…</p> : null}
-        {searchTruncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">تم عرض أول 1000 نتيجة فقط.</p> : null}
+        {searchResults.length ? <ul className="space-y-0.5">{searchResults.map(entry => <ProjectSearchResult key={entry.path} entry={entry} iconTheme={iconTheme} workRoot={workRoot} />)}</ul> : !searching ? <p className="px-3 py-6 text-center text-[11px] text-ink-soft">{tr("لا توجد نتائج مطابقة.")}</p> : null}
+        {searching ? <p className="px-3 py-2 text-center text-[10px] text-ink-soft">{tr("جارٍ البحث في ملفات المشروع…")}</p> : null}
+        {searchTruncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">{tr("تم عرض أول 1000 نتيجة فقط.")}</p> : null}
       </> : <>
-      {loading.has('') && !root ? <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-ink-soft"><LoaderCircle className="h-4 w-4 animate-spin" />جارٍ قراءة ملفات المشروع…</div> : null}
+      {loading.has('') && !root ? <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-ink-soft"><LoaderCircle className="h-4 w-4 animate-spin" />{tr("جارٍ قراءة ملفات المشروع…")}</div> : null}
       {root?.entries.length ? <ul className="space-y-0.5">{root.entries.map(entry => <ProjectEntry key={entry.path} entry={entry} childrenByPath={directories} loadingPaths={loading} expandedPaths={expanded} iconTheme={iconTheme} workRoot={workRoot} onToggle={toggleDirectory} />)}</ul> : null}
-      {root && root.entries.length === 0 ? <p className="px-3 py-6 text-center text-[11px] leading-5 text-ink-soft">المجلد ده فاضي لسه.</p> : null}
-      {root?.truncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">تم عرض أول 500 عنصر في هذا المجلد.</p> : null}
+      {root && root.entries.length === 0 ? <p className="px-3 py-6 text-center text-[11px] leading-5 text-ink-soft">{tr("المجلد ده فاضي لسه.")}</p> : null}
+      {root?.truncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">{tr("تم عرض أول 500 عنصر في هذا المجلد.")}</p> : null}
       </>}
     </div>
-    <div className="shrink-0 border-t border-line px-3 py-2 text-[10px] text-ink-soft">{root ? `${root.entries.length} عنصر` : 'مستكشف ملفات المشروع'}</div>
+    <div className="shrink-0 border-t border-line px-3 py-2 text-[10px] text-ink-soft">{root ? tr("{{0}} عنصر", [root.entries.length]) : tr("مستكشف ملفات المشروع")}</div>
   </section>
 }
 
