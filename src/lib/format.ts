@@ -1,3 +1,4 @@
+import { tr } from './i18n'
 /** Presentation-only string helpers. No React, no data fetching. */
 
 /** Accepts seconds, milliseconds, or an ISO string, and normalises to epoch ms. */
@@ -13,13 +14,13 @@ export function toEpoch(value: unknown) {
 /** Compact Arabic relative time: الآن / منذ ٤ د / منذ ٣ س / منذ ٢ ي */
 export function relativeTime(value: unknown) {
   const timestamp = toEpoch(value)
-  if (!timestamp) return 'الآن'
+  if (!timestamp) return tr("الآن")
   const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000))
-  if (minutes < 1) return 'الآن'
-  if (minutes < 60) return `منذ ${minutes} د`
+  if (minutes < 1) return tr("الآن")
+  if (minutes < 60) return tr("منذ {{0}} د", [minutes])
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `منذ ${hours} س`
-  return `منذ ${Math.round(hours / 24)} ي`
+  if (hours < 24) return tr("منذ {{0}} س", [hours])
+  return tr("منذ {{0}} ي", [Math.round(hours / 24)])
 }
 
 /** Single-line truncation for list rows and titles. */

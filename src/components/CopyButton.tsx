@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n'
 import { useEffect, useRef, useState } from 'react'
 
 /**
@@ -6,7 +7,7 @@ import { useEffect, useRef, useState } from 'react'
  * A panel is mounted and unmounted on every conversation switch, so the timer
  * has to be cleaned up with it.
  */
-export function CopyButton({ value, label = 'نسخ' }: { value: string; label?: string }) {
+export function CopyButton({ value, label = tr("نسخ") }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false)
   const timer = useRef(0)
 
@@ -28,6 +29,6 @@ export function CopyButton({ value, label = 'نسخ' }: { value: string; label?:
     onClick={() => void copy()}
     className="inline-flex items-center gap-1 rounded-md border border-line bg-paper px-2 py-1 text-[10px] font-bold text-ink-soft transition-colors hover:border-relay/35 hover:text-relay-ink"
   >
-    {copied ? 'اتنسخ' : label}
+    {copied ? tr("اتنسخ") : label}
   </button>
 }

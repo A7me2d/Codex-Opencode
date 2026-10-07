@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n'
 import { useState } from 'react'
 import { LoaderCircle, Send, TriangleAlert } from 'lucide-react'
 import { api } from '../../lib/api'
@@ -32,7 +33,7 @@ export function QuestionForm({ form, sessionId, onAnswered, onNotify }: Question
     for (const field of form.fields) {
       const value = values[field.key]?.trim() ?? ''
       if (!value) {
-        setError('جاوب على كل الأسئلة عشان OpenCode يكمّل.')
+        setError(tr("جاوب على كل الأسئلة عشان OpenCode يكمّل."))
         return
       }
       answer[field.key] = value
@@ -43,9 +44,9 @@ export function QuestionForm({ form, sessionId, onAnswered, onNotify }: Question
     try {
       await api.replyToForm(sessionId, form.id, answer)
       setValues({})
-      onNotify('تم إرسال إجابتك إلى OpenCode', 'متابعة التنفيذ الآن')
+      onNotify(tr("تم إرسال إجابتك إلى OpenCode"), tr("متابعة التنفيذ الآن"))
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'تعذر إرسال الإجابة.')
+      setError(failure instanceof Error ? failure.message : tr("تعذر إرسال الإجابة."))
     } finally {
       setSending(false)
       // Either way the server state changed: a rejected answer may already be
@@ -89,7 +90,7 @@ export function QuestionForm({ form, sessionId, onAnswered, onNotify }: Question
               type={field.type === 'number' ? 'number' : 'text'}
               value={values[field.key] ?? ''}
               onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
-              placeholder="اكتب إجابتك…"
+              placeholder={tr("اكتب إجابتك…")}
               className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-[12px] leading-6 text-ink outline-none placeholder:text-ink-soft/70 focus:border-relay/55 focus:ring-2 focus:ring-relay/10"
             />
           )}
@@ -99,13 +100,12 @@ export function QuestionForm({ form, sessionId, onAnswered, onNotify }: Question
 
     {error ? (
       <div className="mt-2.5 flex items-start gap-1.5 rounded-lg bg-review-tint px-2.5 py-2 text-[11px] leading-5 text-review-ink">
-        <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{error}
+        <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{tr(error)}
       </div>
     ) : null}
 
     <button type="submit" disabled={sending} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-review px-3 py-2 text-[12px] font-bold text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55">
       {sending ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Send className="h-3.5 w-3.5" aria-hidden="true" />}
-      أرسل الإجابة وأكمل
-    </button>
+      {tr("أرسل الإجابة وأكمل")}</button>
   </form>
 }

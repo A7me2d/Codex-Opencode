@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Request } from '../lib/types'
 
@@ -64,7 +65,7 @@ export function usePolling<T>(load: (() => Promise<T> | null) | null, intervalMs
         return stableData
       } catch (error) {
         if (generation.current !== requestGeneration) return null
-        const message = error instanceof Error ? error.message : 'تعذر تحميل البيانات.'
+        const message = error instanceof Error ? error.message : tr("تعذر تحميل البيانات.")
         setState((previous) => previous.error === message ? previous
           : { ...previous, error: message, status: previous.data !== null ? 'ready' : 'error' })
         return null

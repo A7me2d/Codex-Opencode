@@ -1,3 +1,4 @@
+import { direction, setLocale, tr, useLocale } from './lib/i18n'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
 import { GripVertical } from 'lucide-react'
 import { AppHeader } from './components/AppHeader'
@@ -46,6 +47,7 @@ function loadPanelSizes(): PanelSizes {
 export default function App() {
   const room = useRelayRoom()
   const { conversation } = room
+  const locale = useLocale()
   const layoutRef = useRef<HTMLElement>(null)
   const [panelSizes, setPanelSizes] = useState<PanelSizes>(loadPanelSizes)
   const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
@@ -183,7 +185,7 @@ export default function App() {
     onStop={executorConversation.composer.onStop}
   /> : null
 
-  return <div dir="rtl" className="flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+  return <div dir={direction()} className="flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
     <AlertStack alerts={room.alerts.list} onDismiss={room.alerts.onDismiss} />
 
     <AppHeader
@@ -193,6 +195,8 @@ export default function App() {
       shellError={room.shellError}
       onRefresh={room.onRefreshAll}
       onResetLayout={resetPanelSizes}
+      locale={locale}
+      onToggleLanguage={() => setLocale(locale === 'en' ? 'ar' : 'en')}
     />
 
     {/*
@@ -205,7 +209,7 @@ export default function App() {
       style={layoutStyle}
       className="relative mx-auto grid w-full max-w-[1800px] flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[var(--relay-sessions-width)_minmax(22rem,1fr)_var(--relay-handoff-width)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
     >
-      <ErrorBoundary label="قائمة الجلسات مش معروضة صح دلوقتي.">
+      <ErrorBoundary label={tr("قائمة الجلسات مش معروضة صح دلوقتي.")}>
         <SessionList
           collapsed={sessionsCollapsed}
           onToggle={() => setSessionsCollapsed((value) => !value)}
@@ -222,15 +226,15 @@ export default function App() {
         />
       </ErrorBoundary>
 
-      <ErrorBoundary label="محادثة Codex مش معروضة صح دلوقتي.">
+      <ErrorBoundary label={tr("محادثة Codex مش معروضة صح دلوقتي.")}>
         {reverse ? plannerPane : codexPane}
       </ErrorBoundary>
 
-      <ErrorBoundary label="مسار التفويض مش معروض صح دلوقتي.">
-        {reverse ? codexPane : codexToCodex ? <aside dir="rtl" className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
+      <ErrorBoundary label={tr("مسار التفويض مش معروض صح دلوقتي.")}>
+        {reverse ? codexPane : codexToCodex ? <aside dir={direction()} className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
           {executorPane ?? <div className="flex flex-1 flex-col px-5 py-6">
-            <h2 className="text-sm font-bold text-ink">Codex · شات التنفيذ</h2>
-            <p className="mt-2 text-xs leading-6 text-ink-soft">هنا هتظهر محادثة التنفيذ بعد إرسال الخطة من الشات الرئيسي.</p>
+            <h2 className="text-sm font-bold text-ink">{tr("Codex · شات التنفيذ")}</h2>
+            <p className="mt-2 text-xs leading-6 text-ink-soft">{tr("هنا هتظهر محادثة التنفيذ بعد إرسال الخطة من الشات الرئيسي.")}</p>
             {conversation.view.thread?.workflow?.executorModel ? <code dir="ltr" className="mt-3 self-start rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">{conversation.view.thread.workflow.executorModel}</code> : null}
           </div>}
         </aside> : <HandoffRail
@@ -257,12 +261,12 @@ export default function App() {
       <div
         role="slider"
         tabIndex={0}
-        aria-label="تغيير عرض قائمة جلسات Codex"
+        aria-label={tr("تغيير عرض قائمة جلسات Codex")}
         aria-orientation="horizontal"
         aria-valuemin={MIN_PANEL_SIZES.sessions}
         aria-valuemax={MAX_PANEL_SIZES.sessions}
         aria-valuenow={panelSizes.sessions}
-        title="اسحب لتغيير عرض قائمة الجلسات. الأسهم للتغيير، وShift لتغيير أسرع. نقرتان لإعادة الضبط."
+        title={tr("اسحب لتغيير عرض قائمة الجلسات. الأسهم للتغيير، وShift لتغيير أسرع. نقرتان لإعادة الضبط.")}
         onPointerDown={(event) => startResize('sessions', event)}
         onKeyDown={(event) => handleResizeKey('sessions', event)}
         onDoubleClick={resetPanelSizes}
@@ -278,12 +282,12 @@ export default function App() {
       <div
         role="slider"
         tabIndex={0}
-        aria-label="تغيير عرض مسار التفويض"
+        aria-label={tr("تغيير عرض مسار التفويض")}
         aria-orientation="horizontal"
         aria-valuemin={MIN_PANEL_SIZES.handoff}
         aria-valuemax={MAX_PANEL_SIZES.handoff}
         aria-valuenow={panelSizes.handoff}
-        title="اسحب لتغيير عرض مسار التفويض. الأسهم للتغيير، وShift لتغيير أسرع. نقرتان لإعادة الضبط."
+        title={tr("اسحب لتغيير عرض مسار التفويض. الأسهم للتغيير، وShift لتغيير أسرع. نقرتان لإعادة الضبط.")}
         onPointerDown={(event) => startResize('handoff', event)}
         onKeyDown={(event) => handleResizeKey('handoff', event)}
         onDoubleClick={resetPanelSizes}
