@@ -8,6 +8,7 @@ let backend
 let serverUrl
 let quitting = false
 let quitAfterBackend = false
+let manualUpdateCheck = false
 const terminals = new Map()
 let mainWindow
 const { autoUpdater } = electronUpdater
@@ -100,6 +101,23 @@ ipcMain.handle('terminal:clipboard-read', () => clipboard.readText())
 ipcMain.handle('terminal:clipboard-write', (_event, text) => {
   if (typeof text === 'string') clipboard.writeText(text)
 })
+ipcMain.handle('app:check-for-updates', async () => {
+  if (!app.isPackaged) return { status: 'unsupported' }
+  if (process.env.PORTABLE_EXECUTABLE_DIR) return { status: 'portable' }
+  manualUpdateCheck = true
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    if (!result) return { status: 'unavailable' }
+    return {
+      status: result.isUpdateAvailable ? 'available' : 'current',
+      version: result.updateInfo.version,
+    }
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : String(error) }
+  } finally {
+    manualUpdateCheck = false
+  }
+})
 app.on('web-contents-created', (_event, contents) => {
   contents.once('destroyed', () => {
     terminals.get(contents.id)?.kill()
@@ -143,7 +161,17 @@ function configureAutoUpdates() {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowDowngrade = false
-  autoUpdater.on('update-available', info => console.log(`[Coding Room] Update ${info.version} is available.`))
+  autoUpdater.on('update-available', info => {
+    console.log(`[Coding Room] Update ${info.version} is available.`)
+    if (manualUpdateCheck) return
+    if (quitting || !mainWindow || mainWindow.isDestroyed()) return
+    void dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'تحديث جديد متاح',
+      message: `يتوفر الإصدار ${info.version} من Coding Room. يجري تنزيله في الخلفية، وسيُثبت عند إغلاق التطبيق.`,
+      buttons: ['حسنًا'],
+    })
+  })
   autoUpdater.on('update-not-available', info => console.log(`[Coding Room] Up to date (${info.version}).`))
   autoUpdater.on('error', error => console.error('[Coding Room] Update check failed:', error))
   autoUpdater.on('update-downloaded', info => {
@@ -170,8 +198,8 @@ app.whenReady().then(async () => {
   mainWindow = window
   try {
     await startBackend()
-    await window.loadURL(serverUrl)
     configureAutoUpdates()
+    await window.loadURL(serverUrl)
   } catch (error) {
     await showBackendFailure(error instanceof Error ? error.message : String(error))
   }
