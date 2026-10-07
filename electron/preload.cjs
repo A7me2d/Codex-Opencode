@@ -18,3 +18,7 @@ contextBridge.exposeInMainWorld('codingRoomTerminal', {
     return () => ipcRenderer.removeListener('terminal:exit', listener)
   },
 })
+
+contextBridge.exposeInMainWorld('codingRoomUpdates', {
+  check: () => ipcRenderer.invoke('app:check-for-updates'),
+})
