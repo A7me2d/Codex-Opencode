@@ -1,6 +1,6 @@
 import { direction, tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
-import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
+import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus, UserRound } from 'lucide-react'
 import { StateDot } from '../../components/ui/StateDot'
 import { cx } from '../../lib/cx'
 import { clip, relativeTime } from '../../lib/format'
@@ -21,17 +21,26 @@ export interface SessionListProps {
   onChooseWorkRoot: () => void
   onOpenThreadFolder: (threadId: string) => void
   choosingWorkRoot: boolean
+  codexIdentity?: string
 }
 
 /** Left column: the Codex conversations Relay Room owns, plus the project scope. */
-export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot }: SessionListProps) {
+export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot, codexIdentity }: SessionListProps) {
   const [view, setView] = useState<'files' | 'chats'>('files')
   useEffect(() => { setView('files') }, [workRoot])
+  const accountName = codexIdentity?.includes('@') ? codexIdentity.split('@')[0] : codexIdentity
+  const nameParts = accountName?.split(/[\s._-]+/).filter(Boolean) ?? []
+  const accountInitials = nameParts.length > 1
+    ? nameParts.slice(0, 2).map(part => part[0]).join('').toUpperCase()
+    : nameParts[0]?.slice(0, 2).toUpperCase()
   const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} title={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
     <PanelLeft className="h-4 w-4" aria-hidden="true" />
   </button>
-  if (collapsed) return <aside dir={direction()} className="flex items-start justify-center border-b border-line bg-card py-2 lg:border-b-0 lg:border-r">
+  if (collapsed) return <aside dir={direction()} className="flex flex-col items-center gap-2 border-b border-line bg-card py-2 lg:h-full lg:border-b-0 lg:border-r">
     {toggle}
+    <span aria-label={tr("Codex account")} title={tr("Codex account")} className="mt-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
+        {accountInitials || <UserRound className="h-4 w-4" />}
+    </span>
   </aside>
   return (
     <aside dir={direction()} className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">

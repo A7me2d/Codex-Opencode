@@ -578,7 +578,16 @@ class CodexAppServerBridge {
     }, 20_000)
     this.write({ jsonrpc: '2.0', method: 'initialized', params: {} })
 
-    return { connected: true, identity: 'Codex Desktop local session' }
+    let identity = 'Codex Desktop local session'
+    try {
+      const accountResult = await this.requestRaw('account/read', { refreshToken: false }, 5_000)
+      const account = accountResult?.account
+      identity = account?.email || account?.name || account?.username || identity
+    } catch {
+      // Keep the Codex connection usable if account metadata is unavailable.
+    }
+
+    return { connected: true, identity }
   }
 
   async call(method, params, timeoutMs = 30_000) {

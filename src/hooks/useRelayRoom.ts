@@ -176,6 +176,7 @@ export function useRelayRoom() {
     conversation,
     executorConversation,
     codexConnected: Boolean(codex?.connected),
+    codexIdentity: codex?.identity,
     codexError: codex?.error,
     openCodeOnline: Boolean(openCode?.online),
     projectDirectory: (project.data as ProjectInfo | null)?.directory,

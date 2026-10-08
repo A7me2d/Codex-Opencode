@@ -20,6 +20,7 @@ const DEFAULT_PANEL_SIZES: PanelSizes = { sessions: 272, handoff: 368 }
 const MIN_PANEL_SIZES: PanelSizes = { sessions: 224, handoff: 280 }
 const MAX_PANEL_SIZES: PanelSizes = { sessions: 420, handoff: 920 }
 const MIN_CONVERSATION_WIDTH = 352
+const COLLAPSED_SESSIONS_WIDTH = 52
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -65,7 +66,7 @@ export default function App() {
     setPanelSizes((current) => {
       const layoutWidth = layoutRef.current?.getBoundingClientRect().width ?? window.innerWidth
       const otherPanel = panel === 'sessions' ? 'handoff' : 'sessions'
-      const available = layoutWidth - (otherPanel === 'sessions' && sessionsCollapsed ? 52 : current[otherPanel]) - MIN_CONVERSATION_WIDTH
+      const available = layoutWidth - (otherPanel === 'sessions' && sessionsCollapsed ? COLLAPSED_SESSIONS_WIDTH : current[otherPanel]) - MIN_CONVERSATION_WIDTH
       const maximum = Math.max(MIN_PANEL_SIZES[panel], Math.min(MAX_PANEL_SIZES[panel], available))
       return { ...current, [panel]: clamp(nextSize, MIN_PANEL_SIZES[panel], maximum) }
     })
@@ -113,7 +114,7 @@ export default function App() {
 
   const resetPanelSizes = useCallback(() => { setPanelSizes(DEFAULT_PANEL_SIZES); setSessionsCollapsed(false) }, [])
   const layoutStyle = {
-    '--relay-sessions-width': `${sessionsCollapsed ? 52 : panelSizes.sessions}px`,
+    '--relay-sessions-width': `${sessionsCollapsed ? COLLAPSED_SESSIONS_WIDTH : panelSizes.sessions}px`,
     '--relay-handoff-width': `${handoffVisible ? panelSizes.handoff : 0}px`,
   } as CSSProperties
 
@@ -225,6 +226,7 @@ export default function App() {
           onCreate={room.onCreateThread}
           creating={room.creating}
           connected={room.codexConnected}
+          codexIdentity={room.codexIdentity}
           workRoot={room.workRoot}
           onChooseWorkRoot={room.onChooseWorkRoot}
           onOpenThreadFolder={room.onOpenThreadFolder}
