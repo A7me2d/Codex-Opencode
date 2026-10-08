@@ -1,8 +1,9 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, utilityProcess } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell, utilityProcess } from 'electron'
 import { spawn as spawnPty } from 'node-pty'
 import electronUpdater from 'electron-updater'
 import path from 'node:path'
 import fs from 'node:fs'
+import { randomUUID } from 'node:crypto'
 
 Menu.setApplicationMenu(null)
 
@@ -10,14 +11,17 @@ let backend
 let serverUrl
 let quitting = false
 let quitAfterBackend = false
-let manualUpdateCheck = false
 const terminals = new Map()
 let mainWindow
+let mandatoryUpdatePending = false
 const { autoUpdater } = electronUpdater
 
 // Keep the existing session state folder stable across this product rename.
 app.setPath('userData', path.join(app.getPath('appData'), 'Relay Room'))
 const preferencesPath = path.join(app.getPath('userData'), 'ui-preferences.json')
+const licensePath = path.join(app.getPath('userData'), 'license.bin')
+const deviceIdPath = path.join(app.getPath('userData'), 'device-id')
+const licenseApi = 'https://license-console-mauve.vercel.app/api/license'
 const allowedPreferenceKeys = new Set([
   'relay-room.theme',
   'coding-room.locale',
@@ -26,6 +30,78 @@ const allowedPreferenceKeys = new Set([
   'relay-room.handoff-visible',
 ])
 let preferenceWriteQueue = Promise.resolve()
+let licenseToken = ''
+let licenseDeviceId = ''
+
+async function readLicense() {
+  try { licenseDeviceId = (await fs.promises.readFile(deviceIdPath, 'utf8')).trim() } catch { /* created on first activation */ }
+  if (!licenseDeviceId) {
+    licenseDeviceId = randomUUID()
+    await fs.promises.mkdir(path.dirname(deviceIdPath), { recursive: true })
+    await fs.promises.writeFile(deviceIdPath, licenseDeviceId, 'utf8')
+  }
+  try {
+    if (safeStorage.isEncryptionAvailable()) licenseToken = JSON.parse(safeStorage.decryptString(await fs.promises.readFile(licensePath))).token ?? ''
+  } catch { licenseToken = '' }
+}
+
+async function syncLicenseToken() {
+  if (!backend) return
+  const requestId = randomUUID()
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => { backend?.removeListener('message', onMessage); reject(new Error('The local message service did not receive the license state.')) }, 5000)
+    const onMessage = message => {
+      if (message?.type !== 'license-token-applied' || message.requestId !== requestId) return
+      clearTimeout(timeout)
+      backend?.removeListener('message', onMessage)
+      message.ok ? resolve() : reject(new Error('Could not secure the license state in the local message service.'))
+    }
+    backend.on('message', onMessage)
+    backend.postMessage({ type: 'license-token', requestId, token: licenseToken, deviceId: licenseDeviceId })
+  })
+}
+
+async function licenseRequest(endpoint, { token, ...options } = {}) {
+  let response
+  try {
+    response = await fetch(`${licenseApi}${endpoint}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
+    })
+  } catch { throw new Error('Could not reach the license service. Check your internet connection and try again.') }
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw Object.assign(new Error(body.error || (body.reason === 'quota' ? 'Daily message limit reached.' : 'License is invalid, expired, or disabled.')), { status: response.status, reason: body.reason })
+  return body
+}
+
+ipcMain.handle('license:status', async () => {
+  let free
+  try { free = (await licenseRequest(`/free-entitlement?deviceId=${encodeURIComponent(licenseDeviceId)}`)).entitlement }
+  catch (error) { if (error.status !== 404) throw error }
+  if (!licenseToken) return { active: false, free }
+  try {
+    const body = await licenseRequest('/entitlement', { token: licenseToken })
+    return { active: true, entitlement: body.entitlement, free }
+  } catch (error) {
+    if (error.status !== 403) throw error
+    return { active: false, free: freeResult.entitlement, licenseError: error.message }
+  }
+})
+ipcMain.handle('license:activate', async (_event, key) => {
+  if (typeof key !== 'string' || key.trim().length < 20 || key.length > 256) throw new Error('Enter a valid activation key.')
+  const body = await licenseRequest('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId }) })
+  if (!body.ok || typeof body.token !== 'string') throw new Error(body.reason === 'device_limit' ? 'This key has reached its device limit.' : 'This key is invalid, expired, or disabled.')
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure license storage is unavailable on this device.')
+  await fs.promises.mkdir(path.dirname(licensePath), { recursive: true })
+  await fs.promises.writeFile(licensePath, safeStorage.encryptString(JSON.stringify({ token: body.token })))
+  licenseToken = body.token
+  await syncLicenseToken()
+  let free
+  try { free = (await licenseRequest(`/free-entitlement?deviceId=${encodeURIComponent(licenseDeviceId)}`)).entitlement }
+  catch (error) { if (error.status !== 404) throw error }
+  const entitlement = await licenseRequest('/entitlement', { token: licenseToken })
+  return { active: true, entitlement: entitlement.entitlement ?? body.license, free }
+})
 
 async function readPreferences() {
   try {
@@ -88,6 +164,7 @@ function startBackend() {
       OPENCODE_OBSERVER_PORT: '0',
       RELAY_STATE_DIR: stateDirectory,
       WATCH_ROOT: workingDirectory,
+      RELAY_LICENSE_REQUIRED: '1',
     },
     stdio: 'pipe',
   })
@@ -96,11 +173,11 @@ function startBackend() {
 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Relay Room server did not start in time.')), 30_000)
-    backend.once('message', message => {
+    backend.on('message', message => {
       if (message?.type !== 'ready' || !message.port) return
       clearTimeout(timeout)
       serverUrl = `http://127.0.0.1:${message.port}`
-      resolve()
+      void syncLicenseToken().then(resolve, reject)
     })
     backend.once('exit', code => {
       clearTimeout(timeout)
@@ -164,7 +241,6 @@ ipcMain.handle('terminal:clipboard-write', (_event, text) => {
 ipcMain.handle('app:check-for-updates', async () => {
   if (!app.isPackaged) return { status: 'unsupported' }
   if (process.env.PORTABLE_EXECUTABLE_DIR) return { status: 'portable' }
-  manualUpdateCheck = true
   try {
     const result = await autoUpdater.checkForUpdates()
     if (!result) return { status: 'unavailable' }
@@ -174,8 +250,15 @@ ipcMain.handle('app:check-for-updates', async () => {
     }
   } catch (error) {
     return { status: 'error', message: error instanceof Error ? error.message : String(error) }
-  } finally {
-    manualUpdateCheck = false
+  }
+})
+ipcMain.handle('app:retry-update', async () => {
+  if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR) return { status: 'unsupported' }
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    return { status: result?.isUpdateAvailable ? 'available' : 'current', version: result?.updateInfo.version }
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : String(error) }
   }
 })
 app.on('web-contents-created', (_event, contents) => {
@@ -230,29 +313,28 @@ function configureAutoUpdates() {
   autoUpdater.allowDowngrade = false
   autoUpdater.on('update-available', info => {
     console.log(`[Coding Room] Update ${info.version} is available.`)
-    if (manualUpdateCheck) return
-    if (quitting || !mainWindow || mainWindow.isDestroyed()) return
-    void dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'تحديث جديد متاح',
-      message: `يتوفر الإصدار ${info.version} من Coding Room. يجري تنزيله في الخلفية، وسيُثبت عند إغلاق التطبيق.`,
-      buttons: ['حسنًا'],
-    })
+    mandatoryUpdatePending = true
+    if (!quitting && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:mandatory-update-required', { version: info.version })
+    }
+  })
+  autoUpdater.on('download-progress', info => {
+    if (mandatoryUpdatePending && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:mandatory-update-progress', { percent: Math.round(info.percent), transferred: info.transferred, total: info.total })
+    }
   })
   autoUpdater.on('update-not-available', info => console.log(`[Coding Room] Up to date (${info.version}).`))
-  autoUpdater.on('error', error => console.error('[Coding Room] Update check failed:', error))
+  autoUpdater.on('error', error => {
+    console.error('[Coding Room] Update check failed:', error)
+    if (mandatoryUpdatePending && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:mandatory-update-error', { message: error instanceof Error ? error.message : String(error) })
+    }
+  })
   autoUpdater.on('update-downloaded', info => {
     if (quitting) return
-    void dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'تحديث Coding Room جاهز',
-      message: `تم تنزيل الإصدار ${info.version}. سيُثبت عند إغلاق التطبيق.`,
-      buttons: ['أعد التشغيل الآن', 'لاحقًا'],
-      defaultId: 1,
-      cancelId: 1,
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall()
-    })
+    mandatoryUpdatePending = true
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:mandatory-update-ready', { version: info.version })
+    autoUpdater.quitAndInstall()
   })
 
   const check = () => void autoUpdater.checkForUpdates().catch(error => console.error('[Coding Room] Update check failed:', error))
@@ -264,6 +346,7 @@ app.whenReady().then(async () => {
   const window = await createWindow()
   mainWindow = window
   try {
+    await readLicense()
     await startBackend()
     configureAutoUpdates()
     await window.loadURL(serverUrl)

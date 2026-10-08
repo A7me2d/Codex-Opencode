@@ -1,6 +1,6 @@
 import { direction, setLocale, tr, useLocale } from './lib/i18n'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
-import { GripVertical } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { GripVertical, KeyRound, LoaderCircle } from 'lucide-react'
 import { AppHeader } from './components/AppHeader'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { AlertStack } from './features/alerts/AlertStack'
@@ -11,6 +11,7 @@ import { PlannerConversation } from './features/opencode/PlannerConversation'
 import { HandoffRail } from './features/opencode/HandoffRail'
 import { useRelayRoom } from './hooks/useRelayRoom'
 import { persistPreference, preferenceKeys, readHandoffVisibility } from './lib/preferences'
+import { api } from './lib/api'
 
 type PanelName = 'sessions' | 'handoff'
 type PanelSizes = Record<PanelName, number>
@@ -46,7 +47,7 @@ function loadPanelSizes(): PanelSizes {
  * `src/lib/api.ts`; every screen is one file under `src/features`. This file
  * exists to say what sits where, and nothing else.
  */
-export default function App() {
+function WorkspaceApp() {
   const room = useRelayRoom()
   const { conversation } = room
   const locale = useLocale()
@@ -309,4 +310,110 @@ export default function App() {
     </main>
     <TerminalDock cwd={room.workRoot || conversation.view.thread?.directory} />
   </div>
+}
+
+function LicenseGate() {
+  const isArabic = useLocale() === 'ar'
+  const [checking, setChecking] = useState(true)
+  const [active, setActive] = useState(false)
+  const [freeRemaining, setFreeRemaining] = useState<number | null>(null)
+  const [key, setKey] = useState('')
+  const [error, setError] = useState('')
+  const [activating, setActivating] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    void api.licenseStatus().then(result => {
+      if (!mounted) return
+      setActive(result.active || (result.free?.remaining ?? 0) > 0)
+      setFreeRemaining(result.free?.remaining ?? 0)
+    }).catch(reason => {
+      if (mounted) setError(reason instanceof Error ? reason.message : String(reason))
+    }).finally(() => { if (mounted) setChecking(false) })
+    return () => { mounted = false }
+  }, [])
+
+  const activate = async (event: FormEvent) => {
+    event.preventDefault()
+    setActivating(true)
+    setError('')
+    try {
+      const result = await api.activateLicense(key)
+      setActive(result.active)
+      setKey('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally { setActivating(false) }
+  }
+
+  if (active) return <WorkspaceApp />
+  const title = isArabic ? 'تفعيل Coding Room' : 'Activate Coding Room'
+  const description = freeRemaining !== null && freeRemaining <= 0
+    ? (isArabic ? 'انتهت الطلبات المجانية لهذا اليوم. أدخل مفتاح تفعيل للمتابعة.' : 'Your free requests for today are used. Enter an activation key to continue.')
+    : (isArabic ? 'أدخل مفتاح التفعيل أو استخدم رصيدك المجاني. كل رسالة ترسلها تستهلك طلبًا واحدًا.' : 'Enter an activation key or use your free quota. Each message uses one request.')
+  return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center bg-paper px-5 text-ink">
+    <form onSubmit={activate} className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-relay-tint text-relay-ink"><KeyRound className="h-5 w-5" /></div>
+      <h1 className="text-xl font-bold">{title}</h1>
+      <p className="mt-2 text-sm leading-6 text-ink-soft">{description}</p>
+      <label htmlFor="license-key" className="mt-6 block text-xs font-semibold">{isArabic ? 'مفتاح التفعيل' : 'Activation key'}</label>
+      <input id="license-key" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="CR-…" className="mt-2 w-full rounded-lg border border-line bg-paper px-3 py-2.5 font-mono text-sm outline-none focus:border-relay" />
+      {error ? <p role="alert" className="mt-3 rounded-lg border border-relay/30 bg-relay-tint px-3 py-2 text-xs leading-5 text-relay-ink">{error}</p> : null}
+      <button type="submit" disabled={activating || checking || !key.trim()} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-relay px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+        {activating || checking ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+        {checking ? (isArabic ? 'جارٍ التحقق…' : 'Checking…') : activating ? (isArabic ? 'جارٍ التفعيل…' : 'Activating…') : (isArabic ? 'تفعيل' : 'Activate')}
+      </button>
+    </form>
+  </main>
+}
+
+type MandatoryUpdateState = { version?: string; percent?: number; error?: string }
+
+function MandatoryUpdateGate({ children }: { children: ReactNode }) {
+  const isArabic = useLocale() === 'ar'
+  const [update, setUpdate] = useState<MandatoryUpdateState | null>(null)
+  const [retrying, setRetrying] = useState(false)
+
+  useEffect(() => {
+    const updates = window.codingRoomUpdates
+    if (!updates) return
+    const removeRequired = updates.onMandatoryUpdate(data => setUpdate({ version: data.version, percent: 0 }))
+    const removeProgress = updates.onMandatoryUpdateProgress(data => setUpdate(current => current ? { ...current, percent: data.percent, error: undefined } : current))
+    const removeError = updates.onMandatoryUpdateError(data => setUpdate(current => current ? { ...current, error: data.message } : current))
+    return () => { removeRequired(); removeProgress(); removeError() }
+  }, [])
+
+  async function retry() {
+    if (!window.codingRoomUpdates) return
+    setRetrying(true)
+    try {
+      const result = await window.codingRoomUpdates.retry()
+      if (result.status === 'current') setUpdate(null)
+      else if (result.status === 'error') setUpdate(current => current ? { ...current, error: result.message } : current)
+      else setUpdate(current => current ? { ...current, error: undefined } : current)
+    } catch (error) {
+      setUpdate(current => current ? { ...current, error: error instanceof Error ? error.message : String(error) } : current)
+    } finally { setRetrying(false) }
+  }
+
+  if (!update) return children
+  const percent = Math.max(0, Math.min(100, update.percent ?? 0))
+  return <main dir={isArabic ? 'rtl' : 'ltr'} className="fixed inset-0 z-[100] flex items-center justify-center bg-paper px-5 text-ink">
+    <section role="alertdialog" aria-labelledby="mandatory-update-title" aria-describedby="mandatory-update-description" className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-relay-tint text-relay-ink"><LoaderCircle className="h-5 w-5 animate-spin" /></div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-relay-ink">{isArabic ? 'تحديث مطلوب' : 'Update required'}</p>
+      <h1 id="mandatory-update-title" className="mt-2 text-xl font-bold">{isArabic ? 'لازم تحدّث Coding Room للمتابعة' : 'Update Coding Room to continue'}</h1>
+      <p id="mandatory-update-description" className="mt-2 text-sm leading-6 text-ink-soft">{isArabic ? `الإصدار ${update.version ?? 'الجديد'} بيتنزّل الآن، وسيُثبت التطبيق تلقائيًا بعد اكتمال التنزيل.` : `Version ${update.version ?? 'latest'} is downloading. Coding Room will restart and install it as soon as the download finishes.`}</p>
+      <div className="mt-6" aria-live="polite">
+        <div className="mb-2 flex justify-between text-xs text-ink-soft"><span>{update.error ? (isArabic ? 'تعذّر تنزيل التحديث' : 'Update download failed') : (isArabic ? 'جارٍ تنزيل التحديث' : 'Downloading update')}</span><span className="tabular-nums">{percent}%</span></div>
+        <div role="progressbar" aria-label={isArabic ? 'تقدم تنزيل التحديث' : 'Update download progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 overflow-hidden rounded-full bg-paper"><div className="h-full rounded-full bg-relay transition-[width] duration-200" style={{ width: `${percent}%` }} /></div>
+      </div>
+      {update.error ? <p role="alert" className="mt-3 break-words text-xs leading-5 text-review-ink">{update.error}</p> : null}
+      <button type="button" onClick={() => void retry()} disabled={retrying} className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-ink-soft transition-colors hover:bg-paper disabled:opacity-50">{retrying ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}{isArabic ? 'إعادة المحاولة' : 'Retry update'}</button>
+    </section>
+  </main>
+}
+
+export default function App() {
+  return <MandatoryUpdateGate><LicenseGate /></MandatoryUpdateGate>
 }

@@ -25,3 +25,15 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface Window {
+  codingRoomLicense?: {
+    status: () => Promise<{
+      active: boolean
+      entitlement?: { label?: string; dailyLimit?: number; usedToday?: number; remaining?: number; expiresAt?: string }
+      free?: { dailyLimit: number; usedToday: number; remaining: number; resetsAt: string }
+      licenseError?: string
+    }>
+    activate: (key: string) => Promise<{ active: boolean; entitlement?: { label?: string; dailyLimit?: number; usedToday?: number; remaining?: number; expiresAt?: string }; free?: { dailyLimit: number; usedToday: number; remaining: number; resetsAt: string } }>
+  }
+}
