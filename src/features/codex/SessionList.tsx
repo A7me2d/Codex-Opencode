@@ -1,6 +1,6 @@
 import { direction, tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
-import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
+import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus, UserRound } from 'lucide-react'
 import { StateDot } from '../../components/ui/StateDot'
 import { cx } from '../../lib/cx'
 import { clip, relativeTime } from '../../lib/format'
@@ -21,17 +21,26 @@ export interface SessionListProps {
   onChooseWorkRoot: () => void
   onOpenThreadFolder: (threadId: string) => void
   choosingWorkRoot: boolean
+  codexIdentity?: string
 }
 
 /** Left column: the Codex conversations Relay Room owns, plus the project scope. */
-export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot }: SessionListProps) {
+export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot, codexIdentity }: SessionListProps) {
   const [view, setView] = useState<'files' | 'chats'>('files')
   useEffect(() => { setView('files') }, [workRoot])
+  const accountName = codexIdentity?.includes('@') ? codexIdentity.split('@')[0] : codexIdentity
+  const nameParts = accountName?.split(/[\s._-]+/).filter(Boolean) ?? []
+  const accountInitials = nameParts.length > 1
+    ? nameParts.slice(0, 2).map(part => part[0]).join('').toUpperCase()
+    : nameParts[0]?.slice(0, 2).toUpperCase()
   const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} title={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
     <PanelLeft className="h-4 w-4" aria-hidden="true" />
   </button>
-  if (collapsed) return <aside dir={direction()} className="flex items-start justify-center border-b border-line bg-card py-2 lg:border-b-0 lg:border-r">
+  if (collapsed) return <aside dir={direction()} className="flex flex-col items-center gap-2 border-b border-line bg-card py-2 lg:h-full lg:border-b-0 lg:border-r">
     {toggle}
+    <span aria-label={tr("Codex account")} title={tr("Codex account")} className="mt-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
+        {accountInitials || <UserRound className="h-4 w-4" />}
+    </span>
   </aside>
   return (
     <aside dir={direction()} className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
@@ -44,10 +53,7 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
       </div>
 
       <div className="shrink-0 border-b border-line px-4 py-3">
-        <div className="mb-3 flex items-center gap-2 text-[10px] text-ink-soft">
-          <StateDot active={connected} warning={!connected} />
-          <span>{connected ? tr("Codex Desktop متصل") : tr("Codex Desktop غير متصل")}</span>
-        </div>
+       
         <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
           className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-relay/25 bg-relay-tint/60 px-3 py-2 text-xs font-bold text-relay-ink transition-colors hover:border-relay/50 hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-55">
           {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
@@ -56,10 +62,8 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
         <div className="mt-3 flex items-start gap-2 px-1">
           <FolderTree className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <span className="block text-[10px] text-ink-soft">{tr("المشروع الحالي")}</span>
             {workRoot ? <>
               <span dir="auto" className="mt-0.5 block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
-              <code dir="ltr" className="ltr mt-1 block truncate text-[10px] text-ink-soft" title={workRoot}>{workRoot}</code>
             </> : <span className="mt-1 block text-[11px] text-ink-soft">{tr("جارٍ تحديد المجلد…")}</span>}
           </div>
         </div>
@@ -122,8 +126,14 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
         )}
       </nav> : null}
 
-      <div className="shrink-0 border-t border-line px-4 py-3 text-[10px] leading-5 text-ink-soft">
-        {threads.length} {tr("محادثة مرتبطة بالمشروع الحالي.")}</div>
+      <div className="flex shrink-0 items-center gap-2.5 border-t border-line px-4 py-3">
+        <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
+          {accountInitials || <UserRound className="h-4 w-4" />}
+        </span>
+        <span dir="auto" className="min-w-0 truncate text-xs font-semibold text-ink" title={accountName || tr("Codex Desktop")}>
+          {accountName || tr("Codex Desktop")}
+        </span>
+      </div>
     </aside>
   )
 }

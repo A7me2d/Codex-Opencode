@@ -168,10 +168,6 @@ export function useRelayRoom() {
     conversation.composer.onSendText(openCodeReviewPrompt(conversation.view.handoff))
   }, [conversation.composer, conversation.view.handoff])
 
-  const refreshEverything = useCallback(() => {
-    void Promise.all([codexStatus.refresh(), openCodeStatus.refresh(), project.refresh(), threadList.refresh(), relayEvents.refresh(), openCodeSessions.refresh()])
-  }, [codexStatus, openCodeStatus, project, relayEvents, threadList, openCodeSessions])
-
   const codex = codexStatus.data as CodexStatus | null
   const openCode = openCodeStatus.data as OpenCodeStatus | null
 
@@ -180,6 +176,7 @@ export function useRelayRoom() {
     conversation,
     executorConversation,
     codexConnected: Boolean(codex?.connected),
+    codexIdentity: codex?.identity,
     codexError: codex?.error,
     openCodeOnline: Boolean(openCode?.online),
     projectDirectory: (project.data as ProjectInfo | null)?.directory,
@@ -199,7 +196,6 @@ export function useRelayRoom() {
     onOpenWorkRoot: () => void openWorkRootFolder(),
     onChooseWorkRoot: () => void chooseWorkRoot(),
     onOpenThreadFolder: openThreadFolder,
-    onRefreshAll: refreshEverything,
     onSelectThread: setSelectedId,
     onExecutePlan: executeCodexPlan,
     onReview: reviewImplementation,

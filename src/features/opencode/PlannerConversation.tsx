@@ -47,7 +47,7 @@ export function PlannerConversation(props: HandoffRailProps & { codexActive: boo
     </header>
     <McpPanel agent="opencode" busy={busy} />
     <div className="relative flex min-h-0 flex-1 flex-col"><div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5">
-      {messages.length ? <ol className="mx-auto flex max-w-3xl flex-col gap-5">{messages.map(message => <li key={message.id}><MessageBubble message={message} speaker="opencode" /></li>)}</ol> : <p className="py-10 text-center text-sm text-ink-soft">{tr("اكتب طلبك إلى OpenCode ليحلله ويجهّز خطة التنفيذ.")}</p>}
+      {messages.length ? <ol className="mx-auto flex max-w-3xl flex-col divide-y divide-line/80">{messages.map(message => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="opencode" /></li>)}</ol> : <p className="py-10 text-center text-sm text-ink-soft">{tr("اكتب طلبك إلى OpenCode ليحلله ويجهّز خطة التنفيذ.")}</p>}
       {sessionId ? forms.map(form => <QuestionForm key={form.id} sessionId={sessionId} form={form} onAnswered={props.onRefresh} onNotify={props.onNotify} />) : null}
     </div><ScrollToLatest visible={!scroll.following && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} /></div>
     <footer className="shrink-0 space-y-3 border-t border-line bg-card p-3">

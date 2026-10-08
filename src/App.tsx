@@ -10,6 +10,7 @@ import { SessionList } from './features/codex/SessionList'
 import { PlannerConversation } from './features/opencode/PlannerConversation'
 import { HandoffRail } from './features/opencode/HandoffRail'
 import { useRelayRoom } from './hooks/useRelayRoom'
+import { persistPreference, preferenceKeys, readHandoffVisibility } from './lib/preferences'
 
 type PanelName = 'sessions' | 'handoff'
 type PanelSizes = Record<PanelName, number>
@@ -17,8 +18,9 @@ type PanelSizes = Record<PanelName, number>
 const PANEL_SIZES_KEY = 'relay-room.panel-sizes'
 const DEFAULT_PANEL_SIZES: PanelSizes = { sessions: 272, handoff: 368 }
 const MIN_PANEL_SIZES: PanelSizes = { sessions: 224, handoff: 280 }
-const MAX_PANEL_SIZES: PanelSizes = { sessions: 420, handoff: 520 }
+const MAX_PANEL_SIZES: PanelSizes = { sessions: 420, handoff: 920 }
 const MIN_CONVERSATION_WIDTH = 352
+const COLLAPSED_SESSIONS_WIDTH = 52
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -51,16 +53,20 @@ export default function App() {
   const layoutRef = useRef<HTMLElement>(null)
   const [panelSizes, setPanelSizes] = useState<PanelSizes>(loadPanelSizes)
   const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
+  const [handoffVisible, setHandoffVisible] = useState(readHandoffVisibility)
 
   useEffect(() => {
-    window.localStorage.setItem(PANEL_SIZES_KEY, JSON.stringify(panelSizes))
+    persistPreference(preferenceKeys.panelSizes, JSON.stringify(panelSizes))
   }, [panelSizes])
+  useEffect(() => {
+    persistPreference(preferenceKeys.handoffVisible, String(handoffVisible))
+  }, [handoffVisible])
 
   const updatePanelSize = useCallback((panel: PanelName, nextSize: number) => {
     setPanelSizes((current) => {
       const layoutWidth = layoutRef.current?.getBoundingClientRect().width ?? window.innerWidth
       const otherPanel = panel === 'sessions' ? 'handoff' : 'sessions'
-      const available = layoutWidth - (otherPanel === 'sessions' && sessionsCollapsed ? 52 : current[otherPanel]) - MIN_CONVERSATION_WIDTH
+      const available = layoutWidth - (otherPanel === 'sessions' && sessionsCollapsed ? COLLAPSED_SESSIONS_WIDTH : current[otherPanel]) - MIN_CONVERSATION_WIDTH
       const maximum = Math.max(MIN_PANEL_SIZES[panel], Math.min(MAX_PANEL_SIZES[panel], available))
       return { ...current, [panel]: clamp(nextSize, MIN_PANEL_SIZES[panel], maximum) }
     })
@@ -108,8 +114,8 @@ export default function App() {
 
   const resetPanelSizes = useCallback(() => { setPanelSizes(DEFAULT_PANEL_SIZES); setSessionsCollapsed(false) }, [])
   const layoutStyle = {
-    '--relay-sessions-width': `${sessionsCollapsed ? 52 : panelSizes.sessions}px`,
-    '--relay-handoff-width': `${panelSizes.handoff}px`,
+    '--relay-sessions-width': `${sessionsCollapsed ? COLLAPSED_SESSIONS_WIDTH : panelSizes.sessions}px`,
+    '--relay-handoff-width': `${handoffVisible ? panelSizes.handoff : 0}px`,
   } as CSSProperties
 
   const reverse = conversation.view.thread?.workflow?.planner === 'opencode'
@@ -193,10 +199,11 @@ export default function App() {
       openCodeOnline={room.openCodeOnline}
       codexError={room.codexError}
       shellError={room.shellError}
-      onRefresh={room.onRefreshAll}
       onResetLayout={resetPanelSizes}
       locale={locale}
       onToggleLanguage={() => setLocale(locale === 'en' ? 'ar' : 'en')}
+      handoffVisible={handoffVisible}
+      onToggleHandoff={() => setHandoffVisible(value => !value)}
     />
 
     {/*
@@ -219,6 +226,7 @@ export default function App() {
           onCreate={room.onCreateThread}
           creating={room.creating}
           connected={room.codexConnected}
+          codexIdentity={room.codexIdentity}
           workRoot={room.workRoot}
           onChooseWorkRoot={room.onChooseWorkRoot}
           onOpenThreadFolder={room.onOpenThreadFolder}
@@ -231,7 +239,7 @@ export default function App() {
       </ErrorBoundary>
 
       <ErrorBoundary label={tr("مسار التفويض مش معروض صح دلوقتي.")}>
-        {reverse ? codexPane : codexToCodex ? <aside dir={direction()} className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
+        {handoffVisible ? (reverse ? codexPane : codexToCodex ? <aside dir={direction()} className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
           {executorPane ?? <div className="flex flex-1 flex-col px-5 py-6">
             <h2 className="text-sm font-bold text-ink">{tr("Codex · شات التنفيذ")}</h2>
             <p className="mt-2 text-xs leading-6 text-ink-soft">{tr("هنا هتظهر محادثة التنفيذ بعد إرسال الخطة من الشات الرئيسي.")}</p>
@@ -255,7 +263,7 @@ export default function App() {
           onRefreshSessions={room.onRefreshSessions}
           workRoot={room.workRoot}
           modelIds={(room.models.data ?? []).filter((entry) => entry.tools).map((entry) => entry.id)}
-        />}
+        />) : null}
       </ErrorBoundary>
 
       <div
@@ -292,7 +300,7 @@ export default function App() {
         onKeyDown={(event) => handleResizeKey('handoff', event)}
         onDoubleClick={resetPanelSizes}
         style={{ right: `${panelSizes.handoff - 6}px` }}
-        className="group absolute inset-y-0 z-20 hidden w-3 touch-none cursor-col-resize items-center justify-center outline-none lg:flex focus-visible:bg-relay/10"
+        className={`group absolute inset-y-0 z-20 hidden w-3 touch-none cursor-col-resize items-center justify-center outline-none focus-visible:bg-relay/10 ${handoffVisible ? 'lg:flex' : ''}`}
       >
         <span className="flex h-9 w-4 items-center justify-center rounded-full border border-line bg-card text-ink-soft opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           <GripVertical className="h-3.5 w-3.5" aria-hidden="true" />

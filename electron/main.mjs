@@ -1,8 +1,10 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, utilityProcess } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, utilityProcess } from 'electron'
 import { spawn as spawnPty } from 'node-pty'
 import electronUpdater from 'electron-updater'
 import path from 'node:path'
 import fs from 'node:fs'
+
+Menu.setApplicationMenu(null)
 
 let backend
 let serverUrl
@@ -15,11 +17,69 @@ const { autoUpdater } = electronUpdater
 
 // Keep the existing session state folder stable across this product rename.
 app.setPath('userData', path.join(app.getPath('appData'), 'Relay Room'))
+const preferencesPath = path.join(app.getPath('userData'), 'ui-preferences.json')
+const allowedPreferenceKeys = new Set([
+  'relay-room.theme',
+  'coding-room.locale',
+  'relay-room.file-icon-theme',
+  'relay-room.panel-sizes',
+  'relay-room.handoff-visible',
+])
+let preferenceWriteQueue = Promise.resolve()
+
+async function readPreferences() {
+  try {
+    const value = JSON.parse(await fs.promises.readFile(preferencesPath, 'utf8'))
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  } catch {
+    return {}
+  }
+}
+
+ipcMain.handle('preferences:get-all', readPreferences)
+ipcMain.handle('preferences:set', async (_event, key, value) => {
+  if (!allowedPreferenceKeys.has(key) || typeof value !== 'string' || value.length > 4096) {
+    throw new Error('Invalid application preference.')
+  }
+  const write = preferenceWriteQueue.then(async () => {
+    const preferences = await readPreferences()
+    preferences[key] = value
+    await fs.promises.mkdir(path.dirname(preferencesPath), { recursive: true })
+    await fs.promises.writeFile(preferencesPath, JSON.stringify(preferences, null, 2), 'utf8')
+  })
+  preferenceWriteQueue = write.catch(() => undefined)
+  await write
+})
+
+const titlebarColors = {
+  default: ['#fcfcfd', '#1b2735'],
+  'tokyo-night': ['#202230', '#c0caf5'],
+  'tokyo-storm': ['#292e42', '#c0caf5'],
+  laserwave: ['#302938', '#f1e9f4'],
+  'sea-green': ['#253832', '#d0e7dc'],
+  'pro-hacker': ['#101a13', '#c5f7d0'],
+  'huacat-pink': ['#fff4fa', '#392334'],
+  'cyberpunk-2077': ['#202020', '#f4f1e8'],
+}
+
+ipcMain.handle('window:set-theme', (event, theme) => {
+  if (process.platform !== 'win32') return
+  const [color, symbolColor] = titlebarColors[theme] ?? titlebarColors.default
+  BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay({ color, symbolColor })
+})
 
 function startBackend() {
   const serverPath = path.join(app.getAppPath(), 'server.mjs')
   const stateDirectory = path.join(app.getPath('userData'), 'relay-state')
-  const workingDirectory = process.env.WATCH_ROOT || app.getPath('documents')
+  let workingDirectory = process.env.WATCH_ROOT
+  if (!workingDirectory) {
+    try {
+      const saved = JSON.parse(fs.readFileSync(path.join(stateDirectory, 'work-root.json'), 'utf8'))
+      if (typeof saved?.directory === 'string' && fs.statSync(saved.directory).isDirectory()) workingDirectory = saved.directory
+    } catch {
+      workingDirectory = app.getPath('documents')
+    }
+  }
   backend = utilityProcess.fork(serverPath, [], {
     cwd: app.getAppPath(),
     env: {
@@ -139,6 +199,10 @@ async function createWindow() {
     show: false,
     backgroundColor: '#f4f6f8',
     icon: path.join(app.getAppPath(), 'build', 'app.ico'),
+    ...(process.platform === 'win32' ? {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { color: '#fcfcfd', symbolColor: '#1b2735', height: 38 },
+    } : {}),
     webPreferences: {
       preload: path.join(app.getAppPath(), 'electron', 'preload.cjs'),
       contextIsolation: true,
@@ -146,6 +210,9 @@ async function createWindow() {
       sandbox: true,
     },
   })
+  window.removeMenu()
+  window.setMenuBarVisibility(false)
+  window.autoHideMenuBar = true
   window.once('ready-to-show', () => window.show())
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) void shell.openExternal(url)
