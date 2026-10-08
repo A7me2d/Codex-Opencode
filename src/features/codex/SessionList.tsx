@@ -53,10 +53,7 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
       </div>
 
       <div className="shrink-0 border-b border-line px-4 py-3">
-        <div className="mb-3 flex items-center gap-2 text-[10px] text-ink-soft">
-          <StateDot active={connected} warning={!connected} />
-          <span>{connected ? tr("Codex Desktop متصل") : tr("Codex Desktop غير متصل")}</span>
-        </div>
+       
         <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
           className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-relay/25 bg-relay-tint/60 px-3 py-2 text-xs font-bold text-relay-ink transition-colors hover:border-relay/50 hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-55">
           {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
@@ -65,10 +62,8 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
         <div className="mt-3 flex items-start gap-2 px-1">
           <FolderTree className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <span className="block text-[10px] text-ink-soft">{tr("المشروع الحالي")}</span>
             {workRoot ? <>
               <span dir="auto" className="mt-0.5 block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
-              <code dir="ltr" className="ltr mt-1 block truncate text-[10px] text-ink-soft" title={workRoot}>{workRoot}</code>
             </> : <span className="mt-1 block text-[11px] text-ink-soft">{tr("جارٍ تحديد المجلد…")}</span>}
           </div>
         </div>
@@ -131,8 +126,14 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
         )}
       </nav> : null}
 
-      <div className="shrink-0 border-t border-line px-4 py-3 text-[10px] leading-5 text-ink-soft">
-        {threads.length} {tr("محادثة مرتبطة بالمشروع الحالي.")}</div>
+      <div className="flex shrink-0 items-center gap-2.5 border-t border-line px-4 py-3">
+        <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
+          {accountInitials || <UserRound className="h-4 w-4" />}
+        </span>
+        <span dir="auto" className="min-w-0 truncate text-xs font-semibold text-ink" title={accountName || tr("Codex Desktop")}>
+          {accountName || tr("Codex Desktop")}
+        </span>
+      </div>
     </aside>
   )
 }
