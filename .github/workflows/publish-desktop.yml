@@ -145,7 +145,11 @@ jobs:
               if ($response.StatusCode -ne 200) {
                 throw "HTTP $($response.StatusCode)"
               }
-              $manifest = $response.Content
+              if ($response.Content -is [byte[]]) {
+                $manifest = [System.Text.Encoding]::UTF8.GetString($response.Content)
+              } else {
+                $manifest = [string]$response.Content
+              }
             } catch {
               $downloadError = $_.Exception.Message
               Start-Sleep -Seconds 5
