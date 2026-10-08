@@ -21,6 +21,22 @@ contextBridge.exposeInMainWorld('codingRoomTerminal', {
 
 contextBridge.exposeInMainWorld('codingRoomUpdates', {
   check: () => ipcRenderer.invoke('app:check-for-updates'),
+  retry: () => ipcRenderer.invoke('app:retry-update'),
+  onMandatoryUpdate: callback => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on('app:mandatory-update-required', listener)
+    return () => ipcRenderer.removeListener('app:mandatory-update-required', listener)
+  },
+  onMandatoryUpdateProgress: callback => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on('app:mandatory-update-progress', listener)
+    return () => ipcRenderer.removeListener('app:mandatory-update-progress', listener)
+  },
+  onMandatoryUpdateError: callback => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on('app:mandatory-update-error', listener)
+    return () => ipcRenderer.removeListener('app:mandatory-update-error', listener)
+  },
 })
 
 contextBridge.exposeInMainWorld('codingRoomPreferences', {

@@ -1,5 +1,5 @@
 import { direction, setLocale, tr, useLocale } from './lib/i18n'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { GripVertical, KeyRound, LoaderCircle } from 'lucide-react'
 import { AppHeader } from './components/AppHeader'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
@@ -367,6 +367,53 @@ function LicenseGate() {
   </main>
 }
 
+type MandatoryUpdateState = { version?: string; percent?: number; error?: string }
+
+function MandatoryUpdateGate({ children }: { children: ReactNode }) {
+  const isArabic = useLocale() === 'ar'
+  const [update, setUpdate] = useState<MandatoryUpdateState | null>(null)
+  const [retrying, setRetrying] = useState(false)
+
+  useEffect(() => {
+    const updates = window.codingRoomUpdates
+    if (!updates) return
+    const removeRequired = updates.onMandatoryUpdate(data => setUpdate({ version: data.version, percent: 0 }))
+    const removeProgress = updates.onMandatoryUpdateProgress(data => setUpdate(current => current ? { ...current, percent: data.percent, error: undefined } : current))
+    const removeError = updates.onMandatoryUpdateError(data => setUpdate(current => current ? { ...current, error: data.message } : current))
+    return () => { removeRequired(); removeProgress(); removeError() }
+  }, [])
+
+  async function retry() {
+    if (!window.codingRoomUpdates) return
+    setRetrying(true)
+    try {
+      const result = await window.codingRoomUpdates.retry()
+      if (result.status === 'current') setUpdate(null)
+      else if (result.status === 'error') setUpdate(current => current ? { ...current, error: result.message } : current)
+      else setUpdate(current => current ? { ...current, error: undefined } : current)
+    } catch (error) {
+      setUpdate(current => current ? { ...current, error: error instanceof Error ? error.message : String(error) } : current)
+    } finally { setRetrying(false) }
+  }
+
+  if (!update) return children
+  const percent = Math.max(0, Math.min(100, update.percent ?? 0))
+  return <main dir={isArabic ? 'rtl' : 'ltr'} className="fixed inset-0 z-[100] flex items-center justify-center bg-paper px-5 text-ink">
+    <section role="alertdialog" aria-labelledby="mandatory-update-title" aria-describedby="mandatory-update-description" className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-relay-tint text-relay-ink"><LoaderCircle className="h-5 w-5 animate-spin" /></div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-relay-ink">{isArabic ? 'تحديث مطلوب' : 'Update required'}</p>
+      <h1 id="mandatory-update-title" className="mt-2 text-xl font-bold">{isArabic ? 'لازم تحدّث Coding Room للمتابعة' : 'Update Coding Room to continue'}</h1>
+      <p id="mandatory-update-description" className="mt-2 text-sm leading-6 text-ink-soft">{isArabic ? `الإصدار ${update.version ?? 'الجديد'} بيتنزّل الآن، وسيُثبت التطبيق تلقائيًا بعد اكتمال التنزيل.` : `Version ${update.version ?? 'latest'} is downloading. Coding Room will restart and install it as soon as the download finishes.`}</p>
+      <div className="mt-6" aria-live="polite">
+        <div className="mb-2 flex justify-between text-xs text-ink-soft"><span>{update.error ? (isArabic ? 'تعذّر تنزيل التحديث' : 'Update download failed') : (isArabic ? 'جارٍ تنزيل التحديث' : 'Downloading update')}</span><span className="tabular-nums">{percent}%</span></div>
+        <div role="progressbar" aria-label={isArabic ? 'تقدم تنزيل التحديث' : 'Update download progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 overflow-hidden rounded-full bg-paper"><div className="h-full rounded-full bg-relay transition-[width] duration-200" style={{ width: `${percent}%` }} /></div>
+      </div>
+      {update.error ? <p role="alert" className="mt-3 break-words text-xs leading-5 text-review-ink">{update.error}</p> : null}
+      <button type="button" onClick={() => void retry()} disabled={retrying} className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-semibold text-ink-soft transition-colors hover:bg-paper disabled:opacity-50">{retrying ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}{isArabic ? 'إعادة المحاولة' : 'Retry update'}</button>
+    </section>
+  </main>
+}
+
 export default function App() {
-  return <LicenseGate />
+  return <MandatoryUpdateGate><LicenseGate /></MandatoryUpdateGate>
 }

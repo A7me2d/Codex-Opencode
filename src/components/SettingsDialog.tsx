@@ -12,7 +12,13 @@ type UpdateCheckResult = { status: string; version?: string; message?: string }
 
 declare global {
   interface Window {
-    codingRoomUpdates?: { check: () => Promise<UpdateCheckResult> }
+    codingRoomUpdates?: {
+      check: () => Promise<UpdateCheckResult>
+      retry: () => Promise<UpdateCheckResult>
+      onMandatoryUpdate: (callback: (data: { version?: string }) => void) => () => void
+      onMandatoryUpdateProgress: (callback: (data: { percent: number }) => void) => () => void
+      onMandatoryUpdateError: (callback: (data: { message: string }) => void) => () => void
+    }
   }
 }
 

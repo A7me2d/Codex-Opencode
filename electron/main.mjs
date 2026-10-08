@@ -11,9 +11,9 @@ let backend
 let serverUrl
 let quitting = false
 let quitAfterBackend = false
-let manualUpdateCheck = false
 const terminals = new Map()
 let mainWindow
+let mandatoryUpdatePending = false
 const { autoUpdater } = electronUpdater
 
 // Keep the existing session state folder stable across this product rename.
@@ -241,7 +241,6 @@ ipcMain.handle('terminal:clipboard-write', (_event, text) => {
 ipcMain.handle('app:check-for-updates', async () => {
   if (!app.isPackaged) return { status: 'unsupported' }
   if (process.env.PORTABLE_EXECUTABLE_DIR) return { status: 'portable' }
-  manualUpdateCheck = true
   try {
     const result = await autoUpdater.checkForUpdates()
     if (!result) return { status: 'unavailable' }
@@ -251,8 +250,15 @@ ipcMain.handle('app:check-for-updates', async () => {
     }
   } catch (error) {
     return { status: 'error', message: error instanceof Error ? error.message : String(error) }
-  } finally {
-    manualUpdateCheck = false
+  }
+})
+ipcMain.handle('app:retry-update', async () => {
+  if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_DIR) return { status: 'unsupported' }
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    return { status: result?.isUpdateAvailable ? 'available' : 'current', version: result?.updateInfo.version }
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : String(error) }
   }
 })
 app.on('web-contents-created', (_event, contents) => {
@@ -307,29 +313,28 @@ function configureAutoUpdates() {
   autoUpdater.allowDowngrade = false
   autoUpdater.on('update-available', info => {
     console.log(`[Coding Room] Update ${info.version} is available.`)
-    if (manualUpdateCheck) return
-    if (quitting || !mainWindow || mainWindow.isDestroyed()) return
-    void dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'تحديث جديد متاح',
-      message: `يتوفر الإصدار ${info.version} من Coding Room. يجري تنزيله في الخلفية، وسيُثبت عند إغلاق التطبيق.`,
-      buttons: ['حسنًا'],
-    })
+    mandatoryUpdatePending = true
+    if (!quitting && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:mandatory-update-required', { version: info.version })
+    }
+  })
+  autoUpdater.on('download-progress', info => {
+    if (mandatoryUpdatePending && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:mandatory-update-progress', { percent: Math.round(info.percent), transferred: info.transferred, total: info.total })
+    }
   })
   autoUpdater.on('update-not-available', info => console.log(`[Coding Room] Up to date (${info.version}).`))
-  autoUpdater.on('error', error => console.error('[Coding Room] Update check failed:', error))
+  autoUpdater.on('error', error => {
+    console.error('[Coding Room] Update check failed:', error)
+    if (mandatoryUpdatePending && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:mandatory-update-error', { message: error instanceof Error ? error.message : String(error) })
+    }
+  })
   autoUpdater.on('update-downloaded', info => {
     if (quitting) return
-    void dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'تحديث Coding Room جاهز',
-      message: `تم تنزيل الإصدار ${info.version}. سيُثبت عند إغلاق التطبيق.`,
-      buttons: ['أعد التشغيل الآن', 'لاحقًا'],
-      defaultId: 1,
-      cancelId: 1,
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall()
-    })
+    mandatoryUpdatePending = true
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:mandatory-update-ready', { version: info.version })
+    autoUpdater.quitAndInstall()
   })
 
   const check = () => void autoUpdater.checkForUpdates().catch(error => console.error('[Coding Room] Update check failed:', error))
