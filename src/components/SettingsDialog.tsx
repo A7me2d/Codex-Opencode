@@ -1,5 +1,5 @@
 import { direction, tr } from '../lib/i18n'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Settings, X, Check, Brain, Wrench, Palette, SlidersHorizontal, Languages, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, Wifi, WifiOff } from 'lucide-react'
 import { api } from '../lib/api'
 import { usePolling } from '../hooks/usePolling'
@@ -89,7 +89,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
     finally { setSaving(false) }
   }
   return <>
-    <button type="button" onClick={show} aria-label={tr("الإعدادات")} title={tr("الإعدادات")} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line text-ink-soft transition-colors hover:border-relay/40 hover:bg-relay-tint hover:text-relay-ink"><Settings className="h-4 w-4" aria-hidden="true" /></button>
+    <button type="button" onClick={show} aria-label={tr("الإعدادات")} title={tr("الإعدادات")} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line text-ink-soft transition-colors hover:border-relay/40 hover:bg-relay-tint hover:text-relay-ink"><Settings className="h-4 w-4" aria-hidden="true" /></button>
     <dialog ref={dialog} onClose={() => setOpen(false)} aria-labelledby="settings-title" dir={direction()} className="fixed inset-0 m-auto w-[min(94vw,640px)] max-h-[90dvh] overflow-auto rounded-2xl border border-line bg-card p-0 text-ink shadow-xl backdrop:bg-overlay/40">
       <header className="flex items-center justify-between border-b border-line px-6 py-4"><h2 id="settings-title" className="text-base font-bold">{tr("الإعدادات")}</h2><button aria-label={tr("إغلاق الإعدادات")} onClick={() => dialog.current?.close()} className="rounded-lg p-2 hover:bg-paper"><X className="h-4 w-4" /></button></header>
       <nav aria-label={tr("أقسام الإعدادات")} className="flex flex-wrap gap-2 border-b border-line px-6 py-3">

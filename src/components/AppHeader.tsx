@@ -21,14 +21,16 @@ export interface AppHeaderProps {
 /** Minimal title bar; app controls live behind the settings button. */
 export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff }: AppHeaderProps) {
   return <header className="shrink-0 border-b border-line bg-card">
-    <div className="flex h-[38px] select-none items-center gap-2 px-5 pr-[150px] text-xs font-extrabold tracking-tight text-ink" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-user-surface text-user-ink">
+    <div className="flex h-[42px] select-none items-center justify-between gap-3 px-5 pr-[150px] text-xs font-extrabold tracking-tight text-ink" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-user-surface text-user-ink">
           <GitPullRequestArrow className="h-4 w-4" aria-hidden="true" />
         </div>
-        <span>{config.appTitle}</span>
-        <span className="ms-1 hidden text-[10px] font-medium text-ink-soft sm:inline">{tr("التخطيط والتنفيذ والمراجعة بين مساعديك")}</span>
-    </div>
-    <div className="mx-auto flex max-w-[1800px] justify-end px-4 py-2 sm:px-6">
+        <div className="flex min-w-0 flex-col items-start gap-0.5 overflow-hidden">
+        <span className="shrink-0">{config.appTitle}</span>
+        <span className="ms-1 hidden truncate text-[10px] font-medium text-ink-soft sm:inline">{tr("التخطيط والتنفيذ والمراجعة بين مساعديك")}</span>
+        </div>
+      </div>
       <SettingsDialog
         codexConnected={codexConnected}
         openCodeOnline={openCodeOnline}
