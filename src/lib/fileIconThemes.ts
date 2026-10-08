@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { persistPreference, preferenceKeys } from './preferences'
 
 export const fileIconThemeStorageKey = 'relay-room.file-icon-theme'
 export type FileIconThemeId = 'lynx-style-a' | 'classic'
@@ -11,7 +12,7 @@ export function readFileIconTheme(): FileIconThemeId {
 }
 
 export function saveFileIconTheme(theme: FileIconThemeId): boolean {
-  try { window.localStorage.setItem(fileIconThemeStorageKey, theme) } catch { return false }
+  persistPreference(preferenceKeys.fileIconTheme, theme)
   window.dispatchEvent(new Event('relay-room-file-icon-theme'))
   return true
 }

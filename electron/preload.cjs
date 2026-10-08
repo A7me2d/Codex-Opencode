@@ -22,3 +22,12 @@ contextBridge.exposeInMainWorld('codingRoomTerminal', {
 contextBridge.exposeInMainWorld('codingRoomUpdates', {
   check: () => ipcRenderer.invoke('app:check-for-updates'),
 })
+
+contextBridge.exposeInMainWorld('codingRoomPreferences', {
+  getAll: () => ipcRenderer.invoke('preferences:get-all'),
+  set: (key, value) => ipcRenderer.invoke('preferences:set', key, value),
+})
+
+contextBridge.exposeInMainWorld('codingRoomWindow', {
+  setTheme: theme => ipcRenderer.invoke('window:set-theme', theme),
+})

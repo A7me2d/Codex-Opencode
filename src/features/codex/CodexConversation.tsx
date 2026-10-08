@@ -81,10 +81,13 @@ export function CodexConversation(props: CodexConversationProps) {
       <>
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line bg-card px-4 py-3.5 sm:px-5">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-bold text-ink">
-              <Sparkles className="h-4 w-4 shrink-0 text-relay" aria-hidden="true" />
-              <span className="truncate">{thread.title ?? thread.name ?? tr("محادثة جديدة")}</span>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-relay-tint px-2 py-1 text-[9px] font-extrabold tracking-wide text-relay-ink">
+                <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
+                {tr(executorChat ? 'تنفيذ Codex' : 'محادثة Codex الرئيسية')}
+              </span>
             </div>
+            <h2 className="truncate text-base font-extrabold tracking-tight text-ink sm:text-lg">{thread.title ?? thread.name ?? tr("محادثة جديدة")}</h2>
             <p className="mt-1 text-[11px] text-ink-soft">{executorChat || thread.workflow?.planner !== 'codex' ? tr("Codex · المنفّذ — تعديل الملفات والتحقق من النتيجة.") : tr("هنا محادثة التخطيط والمراجعة مع Codex.")}</p>
             {thread.directory ? <div className="mt-2 text-[10px] text-ink-soft">
               <span>{tr("مجلد هذه الجلسة:")}{' '}</span><code dir="ltr" className="ltr inline-block max-w-full truncate align-bottom" title={thread.directory}>{thread.directory}</code>

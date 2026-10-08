@@ -1,9 +1,17 @@
 import { useSyncExternalStore } from 'react'
+import { persistPreference, preferenceKeys } from './preferences'
 
 export type AppLocale = 'en' | 'ar'
 
 const STORAGE_KEY = 'coding-room.locale'
 const english: Record<string, string> = {
+  'إخفاء مسار التفويض': 'Hide delegation panel',
+  'إظهار مسار التفويض': 'Show delegation panel',
+  'إخفاء التفويض': 'Hide delegation',
+  'إظهار التفويض': 'Show delegation',
+  'افتح Codex Desktop وسجّل الدخول. سيحاول التطبيق الاتصال تلقائيًا.': 'Open Codex Desktop and sign in. The app will reconnect automatically.',
+  'تنفيذ Codex': 'CODEX EXECUTION',
+  'محادثة Codex الرئيسية': 'MAIN CODEX CHAT',
   '$opencode ← سيظهر التفويض في المسار الجانبي': '$opencode — delegation appears in the side panel',
   'Codex · شات التنفيذ': 'Codex · Execution chat',
   'Enter للإرسال · Shift + Enter لسطر جديد': 'Enter to send · Shift + Enter for a new line',
@@ -350,7 +358,6 @@ const english: Record<string, string> = {
   'موديل الجلسة الجديدة': 'New session model',
   'التبديل إلى العربية': 'Switch to Arabic',
   'التبديل إلى الإنجليزية': 'Switch to English',
-  'تحديث البيانات': 'Refresh data',
   'التحقق من تحديثات التطبيق': 'Check for app updates',
   'تحديث بيانات المحادثات': 'Refresh conversation data',
   'جارٍ التحقق من تحديثات التطبيق…': 'Checking for app updates…',
@@ -359,7 +366,6 @@ const english: Record<string, string> = {
   'التحديث التلقائي غير متاح لنسخة Portable؛ ثبّت نسخة Setup.': 'Automatic updates are unavailable for the portable version; install the Setup version.',
   'فحص التحديثات متاح في نسخة سطح المكتب المثبّتة.': 'Update checks are available in the installed desktop app.',
   'تعذر التحقق من التحديثات: {{0}}': 'Could not check for updates: {{0}}',
-  'افتح Codex Desktop وسجّل الدخول ثم اضغط تحديث البيانات.': 'Open Codex Desktop, sign in, then select Refresh data.',
   'مظهر أيقونات الملفات': 'File icon theme',
   'اختر شكل ظهور المجلدات وأنواع الملفات في مستكشف المشروع.': 'Choose how folders and file types appear in the project explorer.',
   'النمط A': 'Style A',
@@ -394,7 +400,7 @@ export function direction(): 'rtl' | 'ltr' { return locale === 'ar' ? 'rtl' : 'l
 export function setLocale(next: AppLocale) {
   if (locale === next) return
   locale = next
-  try { localStorage.setItem(STORAGE_KEY, next) } catch { /* The in-memory preference still works. */ }
+  persistPreference(preferenceKeys.locale, next)
   if (typeof document !== 'undefined') {
     document.documentElement.lang = next
     document.documentElement.dir = direction()

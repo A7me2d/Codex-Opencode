@@ -1,4 +1,5 @@
 import { tr } from './i18n'
+import { persistPreference, preferenceKeys } from './preferences'
 
 export function getThemes() {
   return [
@@ -37,11 +38,13 @@ export function readStoredTheme(): ThemeId {
 
 export function applyTheme(theme: ThemeId) {
   document.documentElement.dataset.theme = theme
+  void window.codingRoomWindow?.setTheme(theme).catch(() => undefined)
 }
 
 export function saveTheme(theme: ThemeId): boolean {
   applyTheme(theme)
-  try { window.localStorage.setItem(themeStorageKey, theme); return true } catch { return false }
+  persistPreference(preferenceKeys.theme, theme)
+  return true
 }
 
 export function initializeTheme() {
