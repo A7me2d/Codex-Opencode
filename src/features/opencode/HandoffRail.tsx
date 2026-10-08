@@ -146,8 +146,8 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
                 {messages.length === 0 ? (
                   <p className="py-4 text-center text-xs leading-6 text-ink-soft">{tr("تم إنشاء رابط OpenCode، لكن لا توجد رسالة مرئية منه بعد. ستظهر أول رسالة فعلية هنا تلقائيًا.")}</p>
                 ) : (
-                  <ol className="space-y-4">
-                    {messages.map((message) => <li key={message.id}>
+                  <ol className="divide-y divide-line/80">
+                    {messages.map((message) => <li key={message.id} className="py-4 first:pt-0 last:pb-0">
                       <MessageBubble message={message} speaker="opencode" />
                       {message.role === 'assistant' && message.userMessageId ? <MessageChanges sessionId={sessionId} messageId={message.userMessageId} active={handoff.active} onChanged={onRefresh} /> : null}
                     </li>)}

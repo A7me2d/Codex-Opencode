@@ -12,6 +12,7 @@ const english: Record<string, string> = {
   'افتح Codex Desktop وسجّل الدخول. سيحاول التطبيق الاتصال تلقائيًا.': 'Open Codex Desktop and sign in. The app will reconnect automatically.',
   'تنفيذ Codex': 'CODEX EXECUTION',
   'محادثة Codex الرئيسية': 'MAIN CODEX CHAT',
+  'رد المساعد': 'ASSISTANT',
   '$opencode ← سيظهر التفويض في المسار الجانبي': '$opencode — delegation appears in the side panel',
   'Codex · شات التنفيذ': 'Codex · Execution chat',
   'Enter للإرسال · Shift + Enter لسطر جديد': 'Enter to send · Shift + Enter for a new line',

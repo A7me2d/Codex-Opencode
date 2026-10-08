@@ -202,8 +202,8 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
           ) : messages.length === 0 ? (
             <p className="py-6 text-center text-xs leading-6 text-ink-soft">{tr("لا توجد رسائل في هذه الجلسة بعد. اكتب أول رسالة.")}</p>
           ) : (
-              <ol className="space-y-3">
-              {messages.map((message) => <li key={message.id}>
+              <ol className="mx-auto max-w-3xl divide-y divide-line/80">
+              {messages.map((message) => <li key={message.id} className="py-4 first:pt-0 last:pb-0">
                 <MessageBubble message={message} speaker="opencode" />
                 {message.role === 'assistant' && message.userMessageId ? <MessageChanges sessionId={selected} messageId={message.userMessageId} active={running} onChanged={() => { void read(); onRefreshSessions() }} /> : null}
               </li>)}

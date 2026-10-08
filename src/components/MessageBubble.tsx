@@ -11,23 +11,24 @@ export const MessageBubble = memo(function MessageBubble({ message, speaker }: {
   const isUser = message.role === 'user'
   const lines = message.text.split('\n')
 
-  return <article className={cx('flex gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
+  return <article className={cx('flex items-start gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
     <div
       aria-hidden="true"
       className={cx(
-        'mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-inset ring-line/60',
+        'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-inset ring-line/70',
         isUser ? 'bg-user-surface text-user-ink' : speaker === 'codex' ? 'bg-relay-tint text-relay-ink' : 'bg-ready-tint text-ready-ink',
       )}
     >
       {isUser ? <UserRound className="h-3.5 w-3.5" /> : speaker === 'codex' ? <Sparkles className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
     </div>
 
-    <div className="min-w-0 max-w-[90%] text-start">
-      <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-extrabold tracking-wide text-ink-soft">
-        <span>{isUser ? tr("أنت") : agentName[speaker]}</span>
+    <div className="min-w-0 max-w-[94%] flex-1 text-start">
+      <div className="mb-2 flex min-h-6 items-center gap-2 px-1">
+        <span className="text-[11px] font-extrabold tracking-wide text-ink">{isUser ? tr("أنت") : agentName[speaker]}</span>
+        {!isUser ? <span className={cx('rounded-full px-2 py-0.5 text-[9px] font-bold', speaker === 'codex' ? 'bg-relay-tint text-relay-ink' : 'bg-ready-tint text-ready-ink')}>{tr('رد المساعد')}</span> : null}
         {message.live ? <span className="inline-flex items-center gap-1 text-relay" role="status">{tr("يكتب الآن")}<span className="h-1.5 w-1.5 animate-pulse rounded-full bg-relay" /></span> : null}
       </div>
-      <div className={cx('rounded-2xl px-4 py-3.5 text-[13px] leading-7 shadow-[0_2px_8px_rgba(25,35,48,0.06)]', isUser ? 'rounded-tr-md bg-user-surface text-user-ink' : 'rounded-tl-md border border-line bg-card text-ink')}>
+      <div className={cx('rounded-2xl px-4 py-3.5 text-[13px] leading-7 shadow-[0_2px_8px_rgba(25,35,48,0.06)] sm:px-5', isUser ? 'rounded-tr-md bg-user-surface text-user-ink' : 'rounded-tl-md border border-line bg-card text-ink')}>
         {lines.map((line, index) => {
           const heading = line.match(/^#{1,3}\s+(.+)$/)
           return heading

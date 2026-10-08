@@ -80,17 +80,16 @@ export function CodexConversation(props: CodexConversationProps) {
     {thread ? (
       <>
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line bg-card px-4 py-3.5 sm:px-5">
-          <div className="min-w-0">
+          <div className="min-w-0 flex">
             <div className="mb-1 flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-relay-tint px-2 py-1 text-[9px] font-extrabold tracking-wide text-relay-ink">
                 <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
                 {tr(executorChat ? 'تنفيذ Codex' : 'محادثة Codex الرئيسية')}
               </span>
             </div>
-            <h2 className="truncate text-base font-extrabold tracking-tight text-ink sm:text-lg">{thread.title ?? thread.name ?? tr("محادثة جديدة")}</h2>
-            <p className="mt-1 text-[11px] text-ink-soft">{executorChat || thread.workflow?.planner !== 'codex' ? tr("Codex · المنفّذ — تعديل الملفات والتحقق من النتيجة.") : tr("هنا محادثة التخطيط والمراجعة مع Codex.")}</p>
             {thread.directory ? <div className="mt-2 text-[10px] text-ink-soft">
-              <span>{tr("مجلد هذه الجلسة:")}{' '}</span><code dir="ltr" className="ltr inline-block max-w-full truncate align-bottom" title={thread.directory}>{thread.directory}</code>
+              <span>{tr("مجلد هذه الجلسة:")}{' '}</span>
+              <code dir="ltr" className="ltr inline-block max-w-full truncate align-bottom" title={thread.directory}>{thread.directory}</code>
               {props.workRoot && thread.directory.replace(/[\\/]+$/, '').toLowerCase() !== props.workRoot.replace(/[\\/]+$/, '').toLowerCase() ? <p className="mt-1 text-review-ink">{tr("هذه جلسة لمشروع مختلف. لإنشاء جلسة في المجلد المختار، اضغط «+ محادثة».")}</p> : null}
             </div> : null}
           </div>
@@ -100,7 +99,7 @@ export function CodexConversation(props: CodexConversationProps) {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-            <div className="mx-auto mb-4 max-w-3xl"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} files={props.fileChanges} /></div>
+            <div className="mx-auto mb-4"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} files={props.fileChanges} /></div>
             {loading && messages.length === 0 ? (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-ink-soft">
                 <Spinner />{tr("يتم تحميل المحادثة…")}</div>
@@ -109,8 +108,8 @@ export function CodexConversation(props: CodexConversationProps) {
                 <p className="max-w-sm text-sm leading-7 text-ink-soft">{executorChat || thread.workflow?.planner !== 'codex' ? tr("هذه محادثة التنفيذ. ستظهر هنا الخطة المرسلة من المفكّر.") : tr("هذه جلسة التخطيط. اكتب طلبك، ثم أرسل الخطة إلى شات التنفيذ عند جاهزيتها.")}</p>
               </div>
             ) : (
-              <ol className="mx-auto flex max-w-3xl flex-col gap-5">
-                {messages.map((message) => <li key={message.id}><MessageBubble message={message} speaker="codex" /></li>)}
+              <ol className="mx-auto flex flex-col divide-y divide-line/80">
+                {messages.map((message) => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="codex" /></li>)}
               </ol>
             )}
           </div>
