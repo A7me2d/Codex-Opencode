@@ -41,6 +41,10 @@ function post<T>(url: string, body?: unknown) {
   return requestJson<T>(url, { method: 'POST', body: JSON.stringify(body ?? {}) })
 }
 
+function messageId() {
+  return globalThis.crypto.randomUUID()
+}
+
 /** Most endpoints answer `{ data: ... }`; unwrap once, here. */
 function unwrap<T>(body: { data?: T }): T {
   return (body?.data ?? null) as T
@@ -50,9 +54,15 @@ function unwrap<T>(body: { data?: T }): T {
 export type ModelSelector = string
 
 export const api = {
+  licenseStatus: () => window.codingRoomLicense
+    ? window.codingRoomLicense.status()
+    : requestJson<NonNullable<Awaited<ReturnType<NonNullable<Window['codingRoomLicense']>['status']>>>>('/api/license/status'),
+  activateLicense: (key: string) => window.codingRoomLicense
+    ? window.codingRoomLicense.activate(key)
+    : post<Awaited<ReturnType<NonNullable<Window['codingRoomLicense']>['activate']>>>('/api/license/activate', { key }),
   workflow: () => requestJson<{ data: import('./types').WorkflowSettings }>('/api/workflow').then(unwrap),
   saveWorkflow: (setup: import('./types').WorkflowSetup) => post<{ data: import('./types').WorkflowSettings }>('/api/workflow', setup).then(unwrap),
-  workflowAction: (threadId: string, action: 'plan' | 'execute' | 'review', text?: string) => post<{ data: { accepted: boolean; threadId?: string } }>(`/api/codex/threads/${threadId}/workflow/${action}`, { text }).then(unwrap),
+  workflowAction: (threadId: string, action: 'plan' | 'execute' | 'review', text?: string) => post<{ data: { accepted: boolean; threadId?: string } }>(`/api/codex/threads/${threadId}/workflow/${action}`, { text, messageId: messageId() }).then(unwrap),
   mcpServers: (agent: 'codex' | 'opencode') => requestJson<{ data: McpServerInfo[] }>(`/api/${agent}/mcp`).then(unwrap),
   setMcpEnabled: (agent: 'codex' | 'opencode', name: string, enabled: boolean) => post<{ data: { servers: McpServerInfo[]; note: string } }>(`/api/${agent}/mcp`, { name, enabled }).then(unwrap),
   // Project scope
@@ -80,7 +90,7 @@ export const api = {
   codexSettings: (threadId: string) => requestJson<{ data: CodexSettings }>(`/api/codex/threads/${threadId}/settings`).then(unwrap),
   setCodexPermissions: (threadId: string, sandbox: string) => post<{ data: { sandbox: string } }>(`/api/codex/threads/${threadId}/settings`, { sandbox }).then(unwrap),
   sendMessage: (threadId: string, text: string, attachments: string[] = [], settings?: CodexSettings) =>
-    post(`/api/codex/threads/${threadId}/messages`, { text, attachments, ...settings }),
+    post(`/api/codex/threads/${threadId}/messages`, { text, attachments, ...settings, messageId: messageId() }),
   turnState: (threadId: string) => requestJson<{ data: CodexTurnState }>(`/api/codex/threads/${threadId}/status`).then(unwrap),
   stopTurn: (threadId: string) => post(`/api/codex/threads/${threadId}/stop`),
   openThreadFolder: (threadId: string) =>
@@ -88,7 +98,7 @@ export const api = {
 
   // The OpenCode side of one Codex conversation
   handoff: (threadId: string) => requestJson<{ data: HandoffData }>(`/api/codex/threads/${threadId}/handoff`).then(unwrap),
-  sendOpenCodeMessage: (threadId: string, text: string) => post(`/api/codex/threads/${threadId}/opencode/messages`, { text }),
+  sendOpenCodeMessage: (threadId: string, text: string) => post(`/api/codex/threads/${threadId}/opencode/messages`, { text, messageId: messageId() }),
   stopOpenCode: (threadId: string) => post(`/api/codex/threads/${threadId}/opencode/stop`),
 
   // OpenCode sessions belonging to this project (or already linked)
@@ -103,7 +113,7 @@ export const api = {
   revertSessionMessage: (sessionId: string, messageId: string) =>
     post<{ data: { reverted: boolean; messageID: string } }>(`/api/sessions/${sessionId}/revert`, { messageID: messageId }).then(unwrap),
   sendToOpenCodeSession: (sessionId: string, text: string) =>
-    post(`/api/sessions/${sessionId}/prompt`, { text }),
+    post(`/api/sessions/${sessionId}/prompt`, { text, messageId: messageId() }),
   stopOpenCodeSession: (sessionId: string) => post(`/api/opencode/sessions/${sessionId}/stop`),
   openSessionFolder: (sessionId: string) =>
     post<{ data: { sessionId: string; directory: string } }>(`/api/opencode/sessions/${sessionId}/open-folder`),
@@ -119,7 +129,7 @@ export const api = {
 
   // Answering a question OpenCode raised
   replyToForm: (sessionId: string, formId: string, answer: Record<string, string>) =>
-    post(`/api/sessions/${sessionId}/forms/${formId}/reply`, { answer }),
+    post(`/api/sessions/${sessionId}/forms/${formId}/reply`, { answer, messageId: messageId() }),
 }
 
 export type Api = typeof api

@@ -30,6 +30,105 @@ const postTimeoutMs = 15 * 60_000
 const defaultOpenCodeModel = process.env.OPENCODE_MODEL ?? 'opencode/big-pickle'
 /** OpenCode calls an unqualified model choice "default"; variants are opt-in. */
 const defaultModelVariant = 'default'
+const licenseApiBase = 'https://license-console-mauve.vercel.app/api/license'
+const licenseStatePath = path.join(stateDirectory, 'license-activation.json')
+const licenseDeviceIdPath = path.join(stateDirectory, 'license-device-id')
+let licenseActivationToken = ''
+let licenseDeviceId = ''
+const licenseStateReady = (async () => {
+  await mkdir(stateDirectory, { recursive: true })
+  try { licenseDeviceId = (await readFile(licenseDeviceIdPath, 'utf8')).trim() } catch { /* created below */ }
+  if (!licenseDeviceId) {
+    licenseDeviceId = randomUUID()
+    await writeFile(licenseDeviceIdPath, licenseDeviceId, 'utf8')
+  }
+  if (!process.parentPort) {
+    try { licenseActivationToken = JSON.parse(await readFile(licenseStatePath, 'utf8')).token ?? '' } catch { /* no browser activation yet */ }
+  }
+})()
+
+async function callLicenseApi(endpoint, { token, ...options } = {}) {
+  let response
+  try {
+    response = await fetch(`${licenseApiBase}${endpoint}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
+    })
+  } catch { throw new HttpError(503, 'The license service is unavailable. Check your internet connection and try again.') }
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw Object.assign(new HttpError(response.status, body.error || 'The license service rejected this request.'), { reason: body.reason })
+  return body
+}
+
+async function readLicenseStatus() {
+  await licenseStateReady
+  let free
+  try { free = (await callLicenseApi(`/free-entitlement?deviceId=${encodeURIComponent(licenseDeviceId)}`)).entitlement }
+  catch (error) { if (error.status !== 404) throw error }
+  if (!licenseActivationToken) return { active: false, free }
+  try {
+    const body = await callLicenseApi('/entitlement', { token: licenseActivationToken })
+    return { active: true, entitlement: body.entitlement, free }
+  } catch (error) {
+    if (error.status === 403) return { active: false, free, licenseError: error.message }
+    throw error
+  }
+}
+
+async function activateLicenseKey(key) {
+  await licenseStateReady
+  if (typeof key !== 'string' || key.trim().length < 20 || key.length > 256) throw new HttpError(400, 'Enter a valid activation key.')
+  const body = await callLicenseApi('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId }) })
+  if (!body.ok || typeof body.token !== 'string') throw new HttpError(403, body.reason === 'device_limit' ? 'This key has reached its device limit.' : 'This key is invalid, expired, or disabled.')
+  licenseActivationToken = body.token
+  if (!process.parentPort) await writeFile(licenseStatePath, JSON.stringify({ token: licenseActivationToken }), { mode: 0o600 })
+  return readLicenseStatus()
+}
+
+async function consumeFreeMessage(messageId) {
+  await licenseStateReady
+  if (!licenseDeviceId) throw new HttpError(403, 'Activate Coding Room or connect to the internet to use the free daily quota.')
+  let response
+  try {
+    response = await fetch(`${licenseApiBase}/consume-free`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: licenseDeviceId, messageId }),
+    })
+  } catch { throw new HttpError(503, 'The license service is unavailable. Connect to the internet and try again.') }
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok || !body.ok) throw new HttpError(response.status || 503, body.reason === 'quota' ? 'Your 50 free daily messages are used. Activate a key to continue.' : body.error || 'Could not verify the free quota. Try again.')
+  return body
+}
+
+async function consumeLicensedMessage(input = {}) {
+  if (process.env.RELAY_LICENSE_REQUIRED === '0') return
+  await licenseStateReady
+  const messageId = typeof input.messageId === 'string' && input.messageId.length >= 8 && input.messageId.length <= 200
+    ? input.messageId
+    : randomUUID()
+  if (!licenseActivationToken) return consumeFreeMessage(messageId)
+  let response
+  try {
+    response = await fetch(`${licenseApiBase}/consume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${licenseActivationToken}` },
+      body: JSON.stringify({ messageId }),
+    })
+  } catch { throw new HttpError(503, 'The license service is unavailable. Connect to the internet and try again.') }
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok || !body.ok) {
+    if (['quota', 'expired', 'invalid'].includes(body.reason)) {
+      try { return { ...(await consumeFreeMessage(messageId)), source: 'free' } }
+      catch (freeError) { if (body.reason !== 'quota' && freeError.status === 429) throw new HttpError(403, 'This license is expired or disabled, and your free daily messages are used.') ; throw freeError }
+    }
+    if (body.reason === 'quota') {
+      throw new HttpError(429, 'Daily message limit reached. Your quota resets at 00:00 UTC.')
+    }
+    if (body.reason === 'expired') throw new HttpError(403, 'This license has expired.')
+    if (body.reason === 'invalid') throw new HttpError(403, 'This license is disabled. Activate Coding Room again.')
+    throw new HttpError(response.status || 503, body.error || 'Could not verify the license. Try again.')
+  }
+}
 
 /** `providerID/modelID` -> the shape OpenCode accepts on a session. */
 function modelSelectorToPayload(selector) {
@@ -2085,6 +2184,18 @@ codexBridge.onTurnCompleted = (threadId) => relayCodexExecutorReplyToPlanner(thr
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+  if (url.pathname === '/api/license/status' && request.method === 'GET') {
+    try { sendJson(response, 200, await readLicenseStatus()) }
+    catch (error) { sendJson(response, error.status ?? 503, { error: publicError(error) }) }
+    return
+  }
+  if (url.pathname === '/api/license/activate' && request.method === 'POST') {
+    try {
+      const input = await readJson(request)
+      sendJson(response, 200, await activateLicenseKey(input.key))
+    } catch (error) { sendJson(response, error.status ?? 503, { error: publicError(error) }) }
+    return
+  }
   // Setup is a default for new conversations; existing role assignments persist.
   if (url.pathname === '/api/workflow') {
     try {
@@ -2101,7 +2212,9 @@ const server = createServer(async (request, response) => {
   if (workflowMatch) {
     try {
       if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported.')
-      sendJson(response, 202, { data: await reverseWorkflowAction(workflowMatch[1], workflowMatch[2], await readJson(request)) })
+      const input = await readJson(request)
+      await consumeLicensedMessage(input)
+      sendJson(response, 202, { data: await reverseWorkflowAction(workflowMatch[1], workflowMatch[2], input) })
     } catch (error) { sendJson(response, error.statusCode ?? error.status ?? 500, { error: publicError(error) }) }
     return
   }
@@ -2290,6 +2403,7 @@ const server = createServer(async (request, response) => {
       if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported for OpenCode messages.')
       const [, threadId] = codexOpenCodeMessagesMatch
       const input = await readJson(request)
+      await consumeLicensedMessage(input)
       sendJson(response, 202, { data: await sendOperatorOpenCodeMessage(threadId, input) })
       return
     }
@@ -2340,6 +2454,9 @@ const server = createServer(async (request, response) => {
       }
       if (request.method === 'POST') {
         const input = await readJson(request)
+        const text = String(input.text ?? '').replaceAll('\u0000', '').trim()
+        if (!text && !input.attachments?.length) throw new HttpError(400, 'Write a message before sending.')
+        await consumeLicensedMessage(input)
         const turn = await sendRelayCodexMessage(threadId, input)
         sendJson(response, 202, { data: turn })
         return
@@ -2482,6 +2599,7 @@ const server = createServer(async (request, response) => {
       const input = await readJson(request)
       if (!isFormAnswer(input.answer)) throw new HttpError(400, 'An OpenCode answer must be an object of simple field values.')
 
+      await consumeLicensedMessage(input)
       await openCodeApi('POST', `/api/session/${sessionId}/form/${safeId}/reply`, { answer: input.answer })
       await appendRelayEvent({
         role: 'operator',
@@ -2542,6 +2660,7 @@ const server = createServer(async (request, response) => {
         const text = String(input.text ?? '').replaceAll('\u0000', '').trim()
         if (!text) throw new HttpError(400, 'Write a message before delegating.')
         if (text.length > 100_000) throw new HttpError(413, 'The delegation message is too long.')
+        await consumeLicensedMessage(input)
 
         // Queueing is deliberately explicit. The previous default "steer"
         // response could interrupt an in-progress turn without creating a
@@ -2584,6 +2703,12 @@ server.listen(port, '127.0.0.1', () => {
 })
 
 process.parentPort?.on('message', event => {
+  if (event.data?.type === 'license-token') {
+    licenseActivationToken = typeof event.data.token === 'string' ? event.data.token : ''
+    licenseDeviceId = typeof event.data.deviceId === 'string' ? event.data.deviceId : ''
+    process.parentPort?.postMessage({ type: 'license-token-applied', requestId: event.data.requestId, ok: true })
+    return
+  }
   if (event.data?.type === 'shutdown' && server.listening) {
     server.close()
     void codexBridge.stop().finally(() => process.exit(0))

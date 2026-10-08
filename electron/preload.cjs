@@ -31,3 +31,8 @@ contextBridge.exposeInMainWorld('codingRoomPreferences', {
 contextBridge.exposeInMainWorld('codingRoomWindow', {
   setTheme: theme => ipcRenderer.invoke('window:set-theme', theme),
 })
+
+contextBridge.exposeInMainWorld('codingRoomLicense', {
+  status: () => ipcRenderer.invoke('license:status'),
+  activate: key => ipcRenderer.invoke('license:activate', key),
+})

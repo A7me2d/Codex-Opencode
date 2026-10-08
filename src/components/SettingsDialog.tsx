@@ -1,5 +1,5 @@
 import { direction, tr } from '../lib/i18n'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { Settings, X, Check, Brain, Wrench, Palette, SlidersHorizontal, Languages, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, Wifi, WifiOff } from 'lucide-react'
 import { api } from '../lib/api'
 import { usePolling } from '../hooks/usePolling'
@@ -40,6 +40,10 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [licenseInfo, setLicenseInfo] = useState<Awaited<ReturnType<NonNullable<Window['codingRoomLicense']>['status']>> | null>(null)
+  const [activationKey, setActivationKey] = useState('')
+  const [activatingLicense, setActivatingLicense] = useState(false)
+  const [licenseError, setLicenseError] = useState('')
   useEffect(() => {
     if (!saved.data) return
     setSetup({
@@ -56,7 +60,25 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
       setOpenCodeModels(opencode)
     })
   }, [open])
+  useEffect(() => {
+    let current = true
+    const refresh = async () => {
+      try {
+        const status = await api.licenseStatus()
+        if (current) setLicenseInfo(status)
+      } catch (failure) {
+        if (current) setLicenseError(failure instanceof Error ? failure.message : String(failure))
+      }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 15_000)
+    return () => { current = false; window.clearInterval(timer) }
+  }, [])
   function show() { setOpen(true); setError(null); setNotice(null); dialog.current?.showModal() }
+  const visibleQuota = licenseInfo?.active ? licenseInfo.entitlement?.remaining : licenseInfo?.free?.remaining
+  const usageTitle = locale === 'ar'
+    ? `الإعدادات · المتبقي ${visibleQuota ?? '…'} طلب`
+    : `Settings · ${visibleQuota ?? '…'} requests remaining`
   async function checkForUpdates() {
     if (checkingUpdates) return
     setCheckingUpdates(true)
@@ -72,6 +94,20 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
     } finally {
       setCheckingUpdates(false)
     }
+  }
+  async function activateLicense(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!activationKey.trim()) return
+    setActivatingLicense(true)
+    setLicenseError('')
+    try {
+      const activated = await api.activateLicense(activationKey)
+      setLicenseInfo(current => ({ ...current, ...activated }))
+      setActivationKey('')
+      const refreshed = await api.licenseStatus()
+      setLicenseInfo(refreshed)
+    } catch (failure) { setLicenseError(failure instanceof Error ? failure.message : String(failure)) }
+    finally { setActivatingLicense(false) }
   }
   function choose(role: 'planner' | 'executor', agent: WorkflowSetup['planner']) {
     setSetup(current => ({ ...current, [role]: agent, [`${role}Model`]: '' }))
@@ -89,7 +125,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
     finally { setSaving(false) }
   }
   return <>
-    <button type="button" onClick={show} aria-label={tr("الإعدادات")} title={tr("الإعدادات")} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line text-ink-soft transition-colors hover:border-relay/40 hover:bg-relay-tint hover:text-relay-ink"><Settings className="h-4 w-4" aria-hidden="true" /></button>
+    <button type="button" onClick={show} aria-label={usageTitle} title={usageTitle} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-line px-2 text-ink-soft transition-colors hover:border-relay/40 hover:bg-relay-tint hover:text-relay-ink"><Settings className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="text-[10px] font-bold tabular-nums text-relay-ink" aria-live="polite">{visibleQuota ?? '…'}</span></button>
     <dialog ref={dialog} onClose={() => setOpen(false)} aria-labelledby="settings-title" dir={direction()} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="fixed inset-0 m-auto w-[min(94vw,640px)] max-h-[90dvh] overflow-auto rounded-2xl border border-line bg-card p-0 text-ink shadow-xl backdrop:bg-overlay/40">
       <header className="flex items-center justify-between border-b border-line px-6 py-4"><h2 id="settings-title" className="text-base font-bold">{tr("الإعدادات")}</h2><button aria-label={tr("إغلاق الإعدادات")} onClick={() => dialog.current?.close()} className="rounded-lg p-2 hover:bg-paper"><X className="h-4 w-4" /></button></header>
       <nav aria-label={tr("أقسام الإعدادات")} className="flex flex-wrap gap-2 border-b border-line px-6 py-3">
@@ -98,6 +134,22 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
         <button onClick={() => setTab('themes')} aria-pressed={tab === 'themes'} className={cx('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold', tab === 'themes' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}><Palette className="h-4 w-4" />{tr("الثيمات")}</button>
       </nav>
       {tab === 'application' ? <section className="space-y-5 p-6">
+        <section aria-labelledby="quota-title" className="space-y-3 border-b border-line pb-5">
+          <div className="flex items-center justify-between gap-3"><div><h3 id="quota-title" className="text-sm font-bold">{locale === 'ar' ? 'الاستخدام اليومي' : 'Daily usage'}</h3><p className="mt-1 text-[10px] text-ink-soft">{locale === 'ar' ? 'يُستخدم المفتاح أولًا، ثم الرصيد المجاني إذا انتهت حصته.' : 'The key quota is used first, then free requests if needed.'}</p></div>
+            <button type="button" onClick={() => void api.licenseStatus().then(setLicenseInfo).catch(failure => setLicenseError(failure instanceof Error ? failure.message : String(failure)))} className="rounded-md p-2 text-ink-soft hover:bg-paper" aria-label={locale === 'ar' ? 'تحديث الرصيد' : 'Refresh usage'}><RefreshCw className="h-3.5 w-3.5" /></button>
+          </div>
+          <div className="divide-y divide-line rounded-lg border border-line bg-paper px-3">
+            <QuotaRow label={locale === 'ar' ? 'المجاني اليوم' : 'Free today'} remaining={licenseInfo?.free?.remaining} dailyLimit={licenseInfo?.free?.dailyLimit ?? 50} loading={!licenseInfo} />
+            {licenseInfo?.active ? <QuotaRow label={`${locale === 'ar' ? 'المفتاح المفعّل' : 'Active key'}${licenseInfo.entitlement?.label ? ` · ${licenseInfo.entitlement.label}` : ''}`} remaining={licenseInfo.entitlement?.remaining} dailyLimit={licenseInfo.entitlement?.dailyLimit} loading={false} /> : null}
+          </div>
+          {licenseInfo && !licenseInfo.free ? <p className="text-[10px] text-ink-soft">{locale === 'ar' ? 'عداد المجاني سيظهر بعد تحديث خدمة التراخيص.' : 'The free balance will appear after the licensing service is updated.'}</p> : null}
+          {licenseInfo?.active && licenseInfo.entitlement?.expiresAt ? <p className="text-[10px] text-ink-soft">{locale === 'ar' ? 'ينتهي المفتاح:' : 'Key expires:'} <time dir="ltr">{new Date(licenseInfo.entitlement.expiresAt).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US')}</time></p> : null}
+          <form onSubmit={event => void activateLicense(event)} className="flex flex-col gap-2 sm:flex-row">
+            <input aria-label={locale === 'ar' ? 'مفتاح التفعيل' : 'Activation key'} autoComplete="off" spellCheck={false} value={activationKey} onChange={event => setActivationKey(event.target.value)} placeholder={locale === 'ar' ? 'أدخل مفتاح التفعيل' : 'Enter activation key'} className="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 font-mono text-xs outline-none focus:border-relay" />
+            <button type="submit" disabled={activatingLicense || !activationKey.trim()} className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-relay px-3 py-2 text-xs font-bold text-on-accent hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-50">{activatingLicense ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : null}{activatingLicense ? (locale === 'ar' ? 'جارٍ التفعيل…' : 'Activating…') : (licenseInfo?.active ? (locale === 'ar' ? 'تغيير المفتاح' : 'Replace key') : (locale === 'ar' ? 'تفعيل المفتاح' : 'Activate key'))}</button>
+          </form>
+          {licenseError ? <p role="alert" className="text-xs text-review-ink">{licenseError}</p> : null}
+        </section>
         <div>
           <h3 className="text-sm font-bold">{tr("حالة التطبيق والاتصال")}</h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -147,4 +199,11 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
       </section>}
     </dialog>
   </>
+}
+
+function QuotaRow({ label, remaining, dailyLimit, loading }: { label: string; remaining?: number; dailyLimit?: number; loading: boolean }) {
+  return <div className="flex min-h-11 items-center justify-between gap-3 py-2 text-xs">
+    <span className="text-ink-soft">{label}</span>
+    <span className="font-semibold tabular-nums text-ink" aria-live="polite">{loading ? '…' : remaining === undefined ? '—' : `${remaining} / ${dailyLimit ?? '—'}`}</span>
+  </div>
 }
