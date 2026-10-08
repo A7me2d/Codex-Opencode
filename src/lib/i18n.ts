@@ -5,6 +5,12 @@ export type AppLocale = 'en' | 'ar'
 
 const STORAGE_KEY = 'coding-room.locale'
 const english: Record<string, string> = {
+  'عام': 'General',
+  'حالة التطبيق والاتصال': 'App and connection status',
+  'متصل': 'Connected',
+  'غير متصل': 'Disconnected',
+  'متاح': 'Available',
+  'لا يرد': 'Unavailable',
   'إخفاء مسار التفويض': 'Hide delegation panel',
   'إظهار مسار التفويض': 'Show delegation panel',
   'إخفاء التفويض': 'Hide delegation',
