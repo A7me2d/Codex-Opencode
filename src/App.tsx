@@ -18,7 +18,7 @@ type PanelSizes = Record<PanelName, number>
 const PANEL_SIZES_KEY = 'relay-room.panel-sizes'
 const DEFAULT_PANEL_SIZES: PanelSizes = { sessions: 272, handoff: 368 }
 const MIN_PANEL_SIZES: PanelSizes = { sessions: 224, handoff: 280 }
-const MAX_PANEL_SIZES: PanelSizes = { sessions: 420, handoff: 520 }
+const MAX_PANEL_SIZES: PanelSizes = { sessions: 420, handoff: 920 }
 const MIN_CONVERSATION_WIDTH = 352
 
 function clamp(value: number, min: number, max: number) {

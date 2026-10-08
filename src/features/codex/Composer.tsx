@@ -97,7 +97,6 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
     </div>
 
     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-ink-soft">
-      <span>{tr("Enter للإرسال · Shift + Enter لسطر جديد")}</span>
       {turn.active ? (
         <span role="status" className="inline-flex items-center gap-1.5 font-bold text-review-ink">
           <Spinner className="h-3.5 w-3.5" />
@@ -108,9 +107,7 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
           <Spinner className="h-3.5 w-3.5" />{tr("جارٍ بدء دور Codex…")}</span>
       ) : isDelegation ? (
         <span className="font-mono text-relay-ink">{tr("$opencode ← سيظهر التفويض في المسار الجانبي")}</span>
-      ) : (
-        <span>{implementer ? tr("Codex ينفّذ؛ OpenCode يخطط ويراجع.") : tr("Codex يفكر ويراجع؛ OpenCode لا يعمل إلا بالوسم.")}</span>
-      )}
+      ) : null}
     </div>
 
     {error ? <ErrorNote>{tr(error)}</ErrorNote> : null}
