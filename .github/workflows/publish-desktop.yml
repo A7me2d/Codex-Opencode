@@ -63,6 +63,42 @@ jobs:
               throw "Could not push release tag $tag."
             }
           }
+      - name: Prepare a single GitHub release for publishing
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v1.0.${{ github.run_number }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "User-Agent" = "CodingRoomReleasePublisher"
+          }
+          $api = "https://api.github.com/repos/A7me2d/Codex-Opencode"
+          $releases = Invoke-RestMethod -Headers $headers -Uri "$api/releases?per_page=100"
+          $matching = @($releases | Where-Object { $_.tag_name -eq $env:RELEASE_TAG })
+
+          if ($matching.Count -eq 0) {
+            $version = $env:RELEASE_TAG -replace '^v', ''
+            $body = @{
+              tag_name = $env:RELEASE_TAG
+              name = $version
+              draft = $false
+              prerelease = $false
+            } | ConvertTo-Json
+            $release = Invoke-RestMethod -Method Post -Headers $headers -ContentType 'application/json' -Body $body -Uri "$api/releases"
+            Write-Host "Created release $env:RELEASE_TAG ($($release.id)) before parallel asset uploads."
+          } else {
+            # Keep the release that already has the most artifacts so a workflow
+            # rerun preserves any completed uploads, then remove duplicate records.
+            $ordered = @($matching | Sort-Object @{ Expression = { $_.assets.Count }; Descending = $true }, @{ Expression = { $_.id }; Descending = $true })
+            $release = $ordered[0]
+            foreach ($duplicate in @($ordered | Select-Object -Skip 1)) {
+              Invoke-RestMethod -Method Delete -Headers $headers -Uri "$api/releases/$($duplicate.id)"
+              Write-Host "Removed duplicate release $($duplicate.id); assets will be republished to $($release.id)."
+            }
+            Write-Host "Using release $($release.id) for $env:RELEASE_TAG."
+          }
       - name: Build the application
         run: npm run build
       - name: Publish the Windows installer and update manifest
