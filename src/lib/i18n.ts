@@ -13,6 +13,7 @@ const english: Record<string, string> = {
   'تنفيذ Codex': 'CODEX EXECUTION',
   'محادثة Codex الرئيسية': 'MAIN CODEX CHAT',
   'رد المساعد': 'ASSISTANT',
+  'إضافة وسم $opencode إلى الرسالة': 'Insert $opencode tag into the message',
   '$opencode ← سيظهر التفويض في المسار الجانبي': '$opencode — delegation appears in the side panel',
   'Codex · شات التنفيذ': 'Codex · Execution chat',
   'Enter للإرسال · Shift + Enter لسطر جديد': 'Enter to send · Shift + Enter for a new line',

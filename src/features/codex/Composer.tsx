@@ -1,6 +1,6 @@
 import { tr } from '../../lib/i18n'
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { CircleStop, Paperclip, Send, Timer, X } from 'lucide-react'
+import { useRef, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { AtSign, CircleStop, Paperclip, Send, Timer, X } from 'lucide-react'
 import { ErrorNote } from '../../components/ui/ErrorNote'
 import { Spinner } from '../../components/ui/Spinner'
 import type { CodexTurnState } from '../../lib/types'
@@ -37,12 +37,26 @@ export interface ComposerProps {
  * leaves the second the agent goes idle.
  */
 export function Composer({ implementer = false, codexSelection, draft, onChange, onSubmit, onQueue, onCancelQueue, queued, sending, error, attachments, onAttach, onRemoveAttachment, attaching, turn, onStop }: ComposerProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const busy = sending || turn.active
   const isDelegation = /(?:^|\s)\$opencode\b/i.test(draft)
   const starting = sending && !turn.active
   const hasContent = Boolean(draft.trim() || attachments.length)
 
   const deliver = () => { if (busy) onQueue(); else onSubmit() }
+  const insertOpenCodeTag = () => {
+    if (/(?:^|\s)\$opencode\b/i.test(draft)) {
+      textareaRef.current?.focus()
+      return
+    }
+    const nextDraft = draft.trimEnd() ? `${draft.trimEnd()} $opencode` : '$opencode'
+    onChange(nextDraft)
+    requestAnimationFrame(() => {
+      const input = textareaRef.current
+      input?.focus()
+      input?.setSelectionRange(nextDraft.length, nextDraft.length)
+    })
+  }
   const submit = (event: FormEvent) => { event.preventDefault(); deliver() }
   const keyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); deliver() }
@@ -83,7 +97,11 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
         {attaching ? <Spinner className="h-4 w-4" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
       </button>
 
-      <textarea value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? tr("اكتب توجيهًا إلى Codex المنفّذ…") : tr("اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.")} className="min-h-[3.4rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
+      <button type="button" onClick={insertOpenCodeTag} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ready/25 bg-ready-tint/60 text-ready-ink transition-colors hover:border-ready/50 hover:bg-ready-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/30" aria-label={tr("إضافة وسم $opencode إلى الرسالة")} title={tr("إضافة وسم $opencode إلى الرسالة")}>
+        <AtSign className="h-4 w-4" aria-hidden="true" />
+      </button>
+
+      <textarea ref={textareaRef} value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? tr("اكتب توجيهًا إلى Codex المنفّذ…") : tr("اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.")} className="min-h-[3.4rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
 
       {turn.active ? (
         <button type="button" onClick={onStop} disabled={turn.stopping} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-review text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55" aria-label={tr("إيقاف Codex فورًا")} title={tr("إيقاف Codex فورًا")}>
