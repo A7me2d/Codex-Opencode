@@ -43,7 +43,7 @@
     "npmRebuild": false,
     "electronDist": "node_modules/electron/dist",
     "asar": false,
-    "publish": [{ "provider": "github", "owner": "A7me2d", "repo": "Codex-Opencode", "releaseType": "release" }],
+    "publish": [{ "provider": "github", "owner": "A7me2d", "repo": "Codex-Opencode", "releaseType": "release", "updaterCacheDirName": "opencode-relay-room-updater" }],
     "directories": {
       "output": "release"
     },
