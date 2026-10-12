@@ -78,16 +78,13 @@ async function licenseRequest(endpoint, { token, ...options } = {}) {
 }
 
 ipcMain.handle('license:status', async () => {
-  let free
-  try { free = (await licenseRequest(`/free-entitlement?deviceId=${encodeURIComponent(licenseDeviceId)}`)).entitlement }
-  catch (error) { if (error.status !== 404) throw error }
-  if (!licenseToken) return { active: false, free }
+  if (!licenseToken) return { active: false }
   try {
     const body = await licenseRequest('/entitlement', { token: licenseToken })
-    return { active: true, entitlement: body.entitlement, free }
+    return { active: true, entitlement: body.entitlement }
   } catch (error) {
     if (error.status !== 403) throw error
-    return { active: false, free, licenseError: error.message }
+    return { active: false, licenseError: error.message }
   }
 })
 ipcMain.handle('license:activate', async (_event, key) => {
@@ -99,11 +96,8 @@ ipcMain.handle('license:activate', async (_event, key) => {
   await fs.promises.writeFile(licensePath, safeStorage.encryptString(JSON.stringify({ token: body.token })))
   licenseToken = body.token
   await syncLicenseToken()
-  let free
-  try { free = (await licenseRequest(`/free-entitlement?deviceId=${encodeURIComponent(licenseDeviceId)}`)).entitlement }
-  catch (error) { if (error.status !== 404) throw error }
   const entitlement = await licenseRequest('/entitlement', { token: licenseToken })
-  return { active: true, entitlement: entitlement.entitlement ?? body.license, free }
+  return { active: true, entitlement: entitlement.entitlement ?? body.license }
 })
 
 async function readPreferences() {

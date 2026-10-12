@@ -82,7 +82,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
     return () => { current = false; window.clearInterval(timer) }
   }, [])
   function show() { setOpen(true); setError(null); setNotice(null); dialog.current?.showModal() }
-  const visibleQuota = licenseInfo?.active ? licenseInfo.entitlement?.remaining : licenseInfo?.free?.remaining
+  const visibleQuota = licenseInfo?.active ? licenseInfo.entitlement?.remaining : 0
   const usageTitle = locale === 'ar'
     ? `الإعدادات · المتبقي ${visibleQuota ?? '…'} طلب`
     : `Settings · ${visibleQuota ?? '…'} requests remaining`
@@ -143,14 +143,12 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
       {tab === 'application' ? <section className="space-y-5 p-6">
         <button type="button" onClick={() => { dialog.current?.close(); openSupport() }} className="w-full rounded-lg border border-line bg-relay-tint px-4 py-3 text-start text-sm font-bold text-relay-ink">{locale === 'ar' ? 'شات الدعم' : 'Support chat'}<span className="mt-1 block text-xs font-normal text-ink-soft">{locale === 'ar' ? 'اطلب مفتاح تفعيل أو تواصل مع الدعم' : 'Request an activation key or contact support'}</span></button>
         <section aria-labelledby="quota-title" className="space-y-3 border-b border-line pb-5">
-          <div className="flex items-center justify-between gap-3"><div><h3 id="quota-title" className="text-sm font-bold">{locale === 'ar' ? 'الاستخدام اليومي' : 'Daily usage'}</h3><p className="mt-1 text-[10px] text-ink-soft">{locale === 'ar' ? 'يُستخدم المفتاح أولًا، ثم الرصيد المجاني إذا انتهت حصته.' : 'The key quota is used first, then free requests if needed.'}</p></div>
+          <div className="flex items-center justify-between gap-3"><div><h3 id="quota-title" className="text-sm font-bold">{locale === 'ar' ? 'الاستخدام اليومي' : 'Daily usage'}</h3><p className="mt-1 text-[10px] text-ink-soft">{locale === 'ar' ? 'مفتاح تفعيل صالح مطلوب. الرسائل تستهلك رصيد المفتاح.' : 'A valid activation key is required. Messages use your key quota.'}</p></div>
             <button type="button" onClick={() => void api.licenseStatus().then(setLicenseInfo).catch(failure => setLicenseError(failure instanceof Error ? failure.message : String(failure)))} className="rounded-md p-2 text-ink-soft hover:bg-paper" aria-label={locale === 'ar' ? 'تحديث الرصيد' : 'Refresh usage'}><RefreshCw className="h-3.5 w-3.5" /></button>
           </div>
           <div className="divide-y divide-line rounded-lg border border-line bg-paper px-3">
-            <QuotaRow label={locale === 'ar' ? 'المجاني اليوم' : 'Free today'} remaining={licenseInfo?.free?.remaining} dailyLimit={licenseInfo?.free?.dailyLimit ?? 50} loading={!licenseInfo} />
             {licenseInfo?.active ? <QuotaRow label={`${locale === 'ar' ? 'المفتاح المفعّل' : 'Active key'}${licenseInfo.entitlement?.label ? ` · ${licenseInfo.entitlement.label}` : ''}`} remaining={licenseInfo.entitlement?.remaining} dailyLimit={licenseInfo.entitlement?.dailyLimit} loading={false} /> : null}
           </div>
-          {licenseInfo && !licenseInfo.free ? <p className="text-[10px] text-ink-soft">{locale === 'ar' ? 'عداد المجاني سيظهر بعد تحديث خدمة التراخيص.' : 'The free balance will appear after the licensing service is updated.'}</p> : null}
           {licenseInfo?.active && licenseInfo.entitlement?.expiresAt ? <p className="text-[10px] text-ink-soft">{locale === 'ar' ? 'ينتهي المفتاح:' : 'Key expires:'} <time dir="ltr">{new Date(licenseInfo.entitlement.expiresAt).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US')}</time></p> : null}
           <form onSubmit={event => void activateLicense(event)} className="flex flex-col gap-2 sm:flex-row">
             <input aria-label={locale === 'ar' ? 'مفتاح التفعيل' : 'Activation key'} autoComplete="off" spellCheck={false} value={activationKey} onChange={event => setActivationKey(event.target.value)} placeholder={locale === 'ar' ? 'أدخل مفتاح التفعيل' : 'Enter activation key'} className="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 font-mono text-xs outline-none focus:border-relay" />

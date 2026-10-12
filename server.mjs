@@ -63,15 +63,12 @@ async function callLicenseApi(endpoint, { token, ...options } = {}) {
 
 async function readLicenseStatus() {
   await licenseStateReady
-  let free
-  try { free = (await callLicenseApi(`/free-entitlement?deviceId=${encodeURIComponent(licenseDeviceId)}`)).entitlement }
-  catch (error) { if (error.status !== 404) throw error }
-  if (!licenseActivationToken) return { active: false, free }
+  if (!licenseActivationToken) return { active: false }
   try {
     const body = await callLicenseApi('/entitlement', { token: licenseActivationToken })
-    return { active: true, entitlement: body.entitlement, free }
+    return { active: true, entitlement: body.entitlement }
   } catch (error) {
-    if (error.status === 403) return { active: false, free, licenseError: error.message }
+    if (error.status === 403) return { active: false, licenseError: error.message }
     throw error
   }
 }
@@ -86,28 +83,12 @@ async function activateLicenseKey(key) {
   return readLicenseStatus()
 }
 
-async function consumeFreeMessage(messageId) {
-  await licenseStateReady
-  if (!licenseDeviceId) throw new HttpError(403, 'Activate Coding Room or connect to the internet to use the free daily quota.')
-  let response
-  try {
-    response = await fetch(`${licenseApiBase}/consume-free`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: licenseDeviceId, messageId }),
-    })
-  } catch { throw new HttpError(503, 'The license service is unavailable. Connect to the internet and try again.') }
-  const body = await response.json().catch(() => ({}))
-  if (!response.ok || !body.ok) throw new HttpError(response.status || 503, body.reason === 'quota' ? 'Your 50 free daily messages are used. Activate a key to continue.' : body.error || 'Could not verify the free quota. Try again.')
-  return body
-}
-
 async function consumeLicensedMessage(input = {}) {
-  if (process.env.RELAY_LICENSE_REQUIRED === '0') return
   await licenseStateReady
   const messageId = typeof input.messageId === 'string' && input.messageId.length >= 8 && input.messageId.length <= 200
     ? input.messageId
     : randomUUID()
-  if (!licenseActivationToken) return consumeFreeMessage(messageId)
+  if (!licenseActivationToken) throw new HttpError(403, 'Activate Coding Room with a valid license key to continue.')
   let response
   try {
     response = await fetch(`${licenseApiBase}/consume`, {
@@ -118,10 +99,6 @@ async function consumeLicensedMessage(input = {}) {
   } catch { throw new HttpError(503, 'The license service is unavailable. Connect to the internet and try again.') }
   const body = await response.json().catch(() => ({}))
   if (!response.ok || !body.ok) {
-    if (body.reason === 'quota') {
-      try { return { ...(await consumeFreeMessage(messageId)), source: 'free' } }
-      catch (freeError) { if (body.reason !== 'quota' && freeError.status === 429) throw new HttpError(403, 'This license is expired or disabled, and your free daily messages are used.') ; throw freeError }
-    }
     if (body.reason === 'quota') {
       throw new HttpError(429, 'Daily message limit reached. Your quota resets at 00:00 UTC.')
     }
