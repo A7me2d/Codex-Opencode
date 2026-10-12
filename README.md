@@ -127,6 +127,16 @@ When running the development servers separately with a custom API port, set `OPE
 
 ## Troubleshooting
 
+### Diagnose old Codex role instructions
+
+`GET /api/codex/threads/<threadId>/instructions` reports the saved role's selected instruction source, its expected text, and the last actual `thread/start` or `thread/resume` request observed by this API process. Reading this endpoint does not start Codex, resume a thread, change permissions, or interrupt a turn. `rpc-accepted` means Codex acknowledged the request; `effectiveInstructions: "unverified"` deliberately does not claim that the model's context was replaced.
+
+New instruction requests are also recorded in `.relay-state/codex-instructions.jsonl` (or `RELAY_STATE_DIR`). These records contain generated role instructions and RPC metadata, without prompts, tokens, or response bodies. An `auditWriteError` indicates that the disk audit could not be written. Requests made before this feature was installed cannot be reconstructed from that log.
+
+Run `node scripts/audit-codex-instructions.mjs <threadId>` to compare the captured request with developer messages in the saved Codex rollout. Omit the ID to inspect all locally registered threads. This reads local files only and outputs hashes, timestamps, and restriction matches instead of message contents. A historical restriction or a missing replacement in the rollout is evidence about persistence, not proof of the current model context, particularly after compaction. Keep the same session and use the next normal user turn for behavioral confirmation.
+
+### General issues
+
 | Symptom | What to check |
 | --- | --- |
 | Edits do not appear | Use `npm run dev:all` and the Vite URL. `start` serves the last build. |

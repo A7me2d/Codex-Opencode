@@ -334,6 +334,155 @@
   }
 }
 
+/* Chat-only Liquid Glass surfaces. Messages use solid fills, never per-item blur. */
+[data-theme="liquid-glass"] .chat-panel {
+  background-color: oklch(0.2 0.008 255 / 0.84);
+}
+
+[data-theme="liquid-glass"] .chat-panel > header {
+  background: oklch(0.26 0.008 255 / 0.55);
+  border-bottom-color: oklch(0.83 0.009 255 / 0.14);
+}
+
+[data-theme="liquid-glass"] .chat-composer {
+  background: linear-gradient(180deg, oklch(0.22 0.008 255 / 0.45), oklch(0.18 0.008 255 / 0.9));
+  border-top-color: oklch(0.83 0.009 255 / 0.12);
+}
+
+[data-theme="liquid-glass"] .chat-composer-row {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  padding-inline-start: 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme="liquid-glass"] .chat-composer-with-tools {
+  grid-template-columns: 34px 30px minmax(0, 1fr) 48px;
+  padding-inline-start: 12px;
+}
+
+[data-theme="liquid-glass"] .chat-composer-row::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  inset-inline-end: 60px;
+  border: 1px solid transparent;
+  border-radius: 36px;
+  background:
+    linear-gradient(150deg, oklch(0.25 0.006 255 / 0.96), oklch(0.15 0.006 255 / 0.96) 55%, oklch(0.21 0.006 255 / 0.96)) padding-box,
+    linear-gradient(145deg, oklch(0.94 0.006 255 / 0.72), oklch(0.52 0.006 255 / 0.14) 36%, oklch(0.72 0.006 255 / 0.2) 70%, oklch(0.9 0.006 255 / 0.6)) border-box;
+  box-shadow: inset 0 1px 1px oklch(0.98 0.004 255 / 0.09), 0 6px 18px oklch(0.08 0.006 255 / 0.22);
+  pointer-events: none;
+}
+
+[data-theme="liquid-glass"] .chat-composer-row:focus-within::before {
+  border-color: oklch(0.88 0.008 255 / 0.65);
+  box-shadow: inset 0 1px 1px oklch(0.98 0.004 255 / 0.14), 0 0 0 3px oklch(0.88 0.008 255 / 0.08);
+}
+
+[data-theme="liquid-glass"] .chat-composer-row textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  max-height: 160px;
+  background: transparent;
+  padding-block: 4px;
+  padding-inline: 4px 12px;
+  line-height: 24px;
+}
+
+[data-theme="liquid-glass"] .chat-composer-row > button:not(:last-child) {
+  width: 32px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-ink-soft);
+}
+
+[data-theme="liquid-glass"] .chat-composer-row > button:last-child {
+  width: 48px;
+  height: 48px;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid oklch(0.86 0.006 255 / 0.4);
+  border-radius: 50%;
+  background: linear-gradient(145deg, oklch(0.36 0.008 255), oklch(0.19 0.008 255));
+  color: var(--color-ink);
+  box-shadow: inset 0 1px 0 oklch(0.98 0.004 255 / 0.24), 0 5px 14px oklch(0.08 0.006 255 / 0.25);
+}
+
+[data-theme="liquid-glass"] .chat-composer-row > button:not(:disabled):hover {
+  background-color: oklch(0.4 0.008 255 / 0.4);
+  color: var(--color-ink);
+}
+
+[data-theme="liquid-glass"] .chat-composer-row > button:last-child:not(:disabled):hover {
+  background: linear-gradient(145deg, oklch(0.44 0.008 255), oklch(0.26 0.008 255));
+  border-color: oklch(0.94 0.006 255 / 0.75);
+}
+
+[data-theme="liquid-glass"] .chat-composer-row > button:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+[data-theme="liquid-glass"] .chat-settings > div > button {
+  border-radius: 999px;
+  background: oklch(0.29 0.008 255 / 0.55);
+  box-shadow: inset 0 1px 0 oklch(0.9 0.006 255 / 0.12);
+}
+
+[data-theme="liquid-glass"] .chat-settings > div > button[aria-expanded="true"] {
+  background: oklch(0.4 0.008 255 / 0.8);
+}
+
+[data-theme="liquid-glass"] .chat-message > div:first-child {
+  border-radius: 50%;
+}
+
+[data-theme="liquid-glass"] .chat-message > div:last-child > div:last-child {
+  box-shadow: none;
+  border-color: oklch(0.83 0.009 255 / 0.17);
+}
+
+[data-theme="liquid-glass"] .chat-tabs {
+  gap: 4px;
+  padding: 6px;
+  background: oklch(0.17 0.008 255 / 0.7);
+}
+
+[data-theme="liquid-glass"] .chat-tabs > :is(button, div) {
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+[data-theme="liquid-glass"] .chat-tabs > :is(button[aria-selected="true"], div:has([aria-selected="true"])) {
+  border-color: oklch(0.85 0.008 255 / 0.25);
+  background: oklch(0.4 0.008 255 / 0.65);
+  box-shadow: inset 0 1px 0 oklch(0.98 0.004 255 / 0.18);
+}
+
+@media (prefers-contrast: more) {
+  [data-theme="liquid-glass"] .chat-composer-row::before,
+  [data-theme="liquid-glass"] .chat-composer-row > button:last-child {
+    border-color: var(--color-ink-soft);
+  }
+}
+
 @layer base {
   html {
     color-scheme: light;

@@ -77,7 +77,7 @@ export function CodexConversation(props: CodexConversationProps) {
   const executorChat = thread?.workflowRole === 'executor'
   const scroll = useChatHistory(messages, thread?.id)
 
-  return <section dir={direction()} className="flex min-h-[32rem] min-w-0 flex-col bg-paper lg:min-h-0 lg:overflow-hidden">
+  return <section dir={direction()} className="chat-panel flex min-h-[32rem] min-w-0 flex-col bg-paper lg:min-h-0 lg:overflow-hidden">
     {thread ? (
       <>
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line bg-card px-4 py-3.5 sm:px-5">
