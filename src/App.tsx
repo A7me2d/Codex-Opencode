@@ -1,3 +1,4 @@
+import { StandaloneTitleBar } from './components/WindowControls'
 import { ProjectEditor } from './components/ProjectEditor'
 import { SupportButton, SupportChat } from './components/SupportChat'
 import { direction, setLocale, tr, useLocale } from './lib/i18n'
@@ -400,6 +401,7 @@ function LicenseGate() {
   }
 
   if (checking || !welcomeReady) return <main dir={isArabic ? 'rtl' : 'ltr'} className="fixed inset-0 flex flex-col items-center justify-center bg-[#06080f] px-6 text-[#dce7ff]">
+    <StandaloneTitleBar dark />
     <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="w-[min(320px,70vw)] rounded-3xl object-contain" />
     <h1 className="mt-5 text-xl font-bold">{isArabic ? 'أهلًا بك في Open Zero' : 'Welcome to Open Zero'}</h1>
     <p role="status" className="mt-3 flex items-center gap-2 text-sm text-[#a9b9d8]"><LoaderCircle className="h-4 w-4 animate-spin" />{isArabic ? 'جارٍ فحص مفتاح التفعيل…' : 'Checking your activation key…'}</p>
@@ -410,6 +412,7 @@ function LicenseGate() {
     ? (isArabic ? 'رصيد مفتاحك وصل إلى صفر. الإرسال متوقف حتى تجديد الرصيد اليومي أو تفعيل مفتاح آخر.' : 'Your key has zero requests remaining. Messaging is paused until the daily quota resets or you activate another key.')
     : (isArabic ? 'أدخل مفتاح تفعيل صالح لاستخدام Open Zero. كل رسالة تستهلك طلبًا من رصيد مفتاحك.' : 'Enter a valid activation key to use Open Zero. Each message uses one request from your key quota.')
   return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center overflow-y-auto bg-[#06080f] px-6 py-8 text-[#dce7ff]">
+    <StandaloneTitleBar dark />
     <form onSubmit={activate} className="w-full max-w-[380px]">
       <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="mx-auto w-[min(280px,65vw)] rounded-3xl object-contain" />
       <h1 className="mt-5 text-center text-xl font-bold tracking-tight">{title}</h1>
@@ -459,6 +462,7 @@ function MandatoryUpdateGate({ children }: { children: ReactNode }) {
   if (!update) return children
   const percent = Math.max(0, Math.min(100, update.percent ?? 0))
   return <main dir={isArabic ? 'rtl' : 'ltr'} className="fixed inset-0 z-[100] flex items-center justify-center bg-paper px-5 text-ink">
+    <StandaloneTitleBar />
     <section role="alertdialog" aria-labelledby="mandatory-update-title" aria-describedby="mandatory-update-description" className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
       <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-relay-tint text-relay-ink"><LoaderCircle className="h-5 w-5 animate-spin" /></div>
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-relay-ink">{isArabic ? 'تحديث مطلوب' : 'Update required'}</p>
