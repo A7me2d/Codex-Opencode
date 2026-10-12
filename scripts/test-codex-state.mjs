@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import vm from 'node:vm'
+import { defaultWorkflow } from '../server/workflow.mjs'
 
 const stateDirectory = await mkdtemp(path.join(tmpdir(), 'relay-state-test-'))
 const codexStatePath = path.join(stateDirectory, 'codex.json')
 const source = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
-const context = vm.createContext({ stateDirectory, codexStatePath, mkdir, readFile, rename, writeFile, randomUUID })
+const context = vm.createContext({ stateDirectory, codexStatePath, mkdir, readFile, rename, writeFile, randomUUID, defaultWorkflow })
 vm.runInContext(source.slice(source.indexOf('function emptyCodexState('), source.indexOf('function shortThreadTitle(')), context)
 try {
   await context.updateCodexState((state) => { state.links.original = { opencodeSessionId: 'ses_original' } })

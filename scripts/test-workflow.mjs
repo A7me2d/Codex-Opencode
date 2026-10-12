@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { defaultWorkflow, validateWorkflow, agentRegistry, codexExecutorInstructions, plannerPrompt, latestOpenCodeReply } from '../server/workflow.mjs'
 
-assert.deepEqual(validateWorkflow(defaultWorkflow), { planner: 'codex', executor: 'opencode' })
-assert.deepEqual(validateWorkflow({ planner: 'opencode', executor: 'codex', extra: 'ignored' }), { planner: 'opencode', executor: 'codex' })
-for (const value of [null, {}, { planner: 'codex', executor: 'codex' }, { planner: 'claude', executor: 'codex' }, { planner: 'glm', executor: 'opencode' }]) assert.throws(() => validateWorkflow(value))
+assert.deepEqual(validateWorkflow(defaultWorkflow), defaultWorkflow)
+assert.deepEqual(validateWorkflow({ planner: 'opencode', executor: 'codex', extra: 'ignored' }), { planner: 'opencode', executor: 'codex', plannerModel: '', executorModel: '' })
+assert.equal(validateWorkflow({ planner: 'codex', executor: 'codex' }).executor, 'codex')
+for (const value of [null, {}, { planner: 'claude', executor: 'codex' }, { planner: 'glm', executor: 'opencode' }]) assert.throws(() => validateWorkflow(value))
 assert.equal(agentRegistry.filter(agent => !agent.available).length, 2)
 assert.match(codexExecutorInstructions, /Do not delegate/)
 assert.match(plannerPrompt('hi'), /do not edit implementation files/)
