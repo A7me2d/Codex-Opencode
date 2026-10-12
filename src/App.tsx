@@ -1,3 +1,4 @@
+import { SupportButton, SupportChat } from './components/SupportChat'
 import { direction, setLocale, tr, useLocale } from './lib/i18n'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { GripVertical, KeyRound, LoaderCircle } from 'lucide-react'
@@ -363,6 +364,7 @@ function LicenseGate() {
         {activating || checking ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
         {checking ? (isArabic ? 'جارٍ التحقق…' : 'Checking…') : activating ? (isArabic ? 'جارٍ التفعيل…' : 'Activating…') : (isArabic ? 'تفعيل' : 'Activate')}
       </button>
+      <div className="mt-4 flex justify-center"><SupportButton /></div>
     </form>
   </main>
 }
@@ -415,5 +417,5 @@ function MandatoryUpdateGate({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  return <MandatoryUpdateGate><LicenseGate /></MandatoryUpdateGate>
+  return <MandatoryUpdateGate><LicenseGate /><SupportChat /></MandatoryUpdateGate>
 }
