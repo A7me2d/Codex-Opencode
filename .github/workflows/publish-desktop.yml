@@ -1,4 +1,4 @@
-name: Publish Coding Room desktop update
+name: Publish Open Zero desktop update
 
 on:
   push:
@@ -126,8 +126,8 @@ jobs:
           $release = $tagReleases[0]
           $version = $env:RELEASE_TAG -replace '^v', ''
           $requiredAssets = @(
-            "Coding-Room-Setup-$version.exe",
-            "Coding-Room-Setup-$version.exe.blockmap",
+            "Open-Zero-Setup-$version.exe",
+            "Open-Zero-Setup-$version.exe.blockmap",
             "latest.yml"
           )
           $assetNames = @($release.assets | ForEach-Object { $_.name })
@@ -158,6 +158,6 @@ jobs:
           if (-not $manifest) {
             throw "The updater manifest URL is not reachable: $manifestUrl ($downloadError)"
           }
-          if ($manifest -notmatch "(?m)^version:\s+$([regex]::Escape($version))\s*$" -or $manifest -notmatch [regex]::Escape("Coding-Room-Setup-$version.exe")) {
+          if ($manifest -notmatch "(?m)^version:\s+$([regex]::Escape($version))\s*$" -or $manifest -notmatch [regex]::Escape("Open-Zero-Setup-$version.exe")) {
             throw "The updater manifest does not describe release $env:RELEASE_TAG."
           }

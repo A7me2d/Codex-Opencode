@@ -30,9 +30,9 @@ interface Window {
   codingRoomLicense?: {
     status: () => Promise<{
       active: boolean
-      entitlement?: { label?: string; dailyLimit?: number; usedToday?: number; remaining?: number; expiresAt?: string }
+      entitlement?: { label?: string; dailyLimit?: number; usedToday?: number; remaining?: number; expiresAt?: string; canSend?: boolean; resetsAt?: string }
       licenseError?: string
     }>
-    activate: (key: string) => Promise<{ active: boolean; entitlement?: { label?: string; dailyLimit?: number; usedToday?: number; remaining?: number; expiresAt?: string } }>
+    activate: (key: string) => Promise<{ active: boolean; entitlement?: { label?: string; dailyLimit?: number; usedToday?: number; remaining?: number; expiresAt?: string; canSend?: boolean; resetsAt?: string } }>
   }
 }

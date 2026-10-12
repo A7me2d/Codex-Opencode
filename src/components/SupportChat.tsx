@@ -10,9 +10,9 @@ type Conversation = { name: string; messages: Message[] }
 export function openSupport(name?: string) {
   window.dispatchEvent(new CustomEvent('coding-room:open-support', { detail: { name } }))
 }
-export function SupportButton() {
+export function SupportButton({ appearance = 'default' }: { appearance?: 'default' | 'welcome' }) {
   const ar = useLocale() === 'ar'
-  return <button type="button" onClick={() => openSupport()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-3 py-2 text-xs font-bold text-relay-ink hover:bg-relay-tint"><MessageCircle className="h-4 w-4" />{ar ? 'شات الدعم · اطلب مفتاح' : 'Support chat · Request a key'}</button>
+  return <button type="button" onClick={() => openSupport()} className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition-colors ${appearance === 'welcome' ? 'text-[#a9b9d8] hover:bg-[#111b2b] hover:text-[#88dcff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#61cfff]/60' : 'border border-line text-relay-ink hover:bg-relay-tint'}`}><MessageCircle className="h-4 w-4" />{ar ? 'شات الدعم · اطلب مفتاح' : 'Support chat · Request a key'}</button>
 }
 export function SupportChat() {
   const ar = useLocale() === 'ar'

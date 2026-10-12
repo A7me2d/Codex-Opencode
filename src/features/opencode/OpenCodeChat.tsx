@@ -69,7 +69,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     setError(null)
     try {
       const created = await api.createOpenCodeSession({
-        title: `Coding Room ${new Date().toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' })}`,
+        title: `Open Zero ${new Date().toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' })}`,
         directory: workRoot,
         model: newModel || model,
       })

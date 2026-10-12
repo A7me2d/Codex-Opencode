@@ -78,7 +78,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
       }
     }
     void refresh()
-    const timer = window.setInterval(() => void refresh(), 15_000)
+    const timer = window.setInterval(() => void refresh(), 45_000)
     return () => { current = false; window.clearInterval(timer) }
   }, [])
   function show() { setOpen(true); setError(null); setNotice(null); dialog.current?.showModal() }

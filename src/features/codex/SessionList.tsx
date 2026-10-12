@@ -25,7 +25,7 @@ export interface SessionListProps {
   codexIdentity?: string
 }
 
-/** Left column: the Codex conversations Relay Room owns, plus the project scope. */
+/** Left column: the Codex conversations Open Zero owns, plus the project scope. */
 export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot, codexIdentity }: SessionListProps) {
   const [view, setView] = useState<'files' | 'chats'>('files')
   useEffect(() => { setView('files') }, [workRoot])

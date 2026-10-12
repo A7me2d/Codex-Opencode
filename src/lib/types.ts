@@ -65,11 +65,11 @@ export interface CodexThread {
   cwd?: string
   /** The folder this session belongs to; may be another project. */
   directory?: string
-  /** The folder Relay Room is currently watching. */
+  /** The folder Open Zero is currently watching. */
   inProject?: boolean
   /** Open in the local Codex right now, so its state is live. */
   active?: boolean
-  /** Not recorded by Relay Room yet; opening it registers it. */
+  /** Not recorded by Open Zero yet; opening it registers it. */
   needsRegistration?: boolean
   /** `providerID/modelID` chosen for this conversation. */
   openCodeModel?: string
@@ -95,7 +95,7 @@ export interface CodexTurnState {
 }
 
 export interface ProjectInfo {
-  /** Where Relay Room's own code lives. */
+  /** Where Open Zero's own code lives. */
   directory: string
   /** The project sessions are opened in, which the folder button opens. */
   workRoot?: string
@@ -189,7 +189,7 @@ export interface OpenCodeSession {
   createdAt?: number
   /** Running right now. */
   active: boolean
-  /** Inside the folder Relay Room watches. */
+  /** Inside the folder Open Zero watches. */
   inProject: boolean
   /** The Codex conversation this session is doing work for, if any. */
   codexThreadId: string | null

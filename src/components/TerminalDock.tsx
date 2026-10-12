@@ -97,7 +97,7 @@ function TerminalViewport({ cwd, sessionId, terminalRef }: { cwd: string; sessio
     terminal.writeln(`PS> opencode --session ${sessionId}`)
     void bridge.start(cwd, sessionId).then(({ cwd: actualCwd }) => {
       setState(tr("متصلة"))
-      terminal.writeln(`Coding Room Terminal  ·  ${actualCwd}`)
+      terminal.writeln(`Open Zero Terminal  ·  ${actualCwd}`)
     }).catch(error => {
       setState(tr("تعذر بدء الطرفية"))
       terminal.writeln(`\r\n${tr("تعذر بدء الطرفية: {{0}}", [error instanceof Error ? error.message : String(error)])}`)

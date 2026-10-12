@@ -1,4 +1,4 @@
-# Coding Room
+# Open Zero
 
 A local web app for chatting with Codex and handing implementation tasks to OpenCode. It includes project selection, model and reasoning controls, session permissions, and file-change summaries.
 
@@ -6,7 +6,7 @@ A local web app for chatting with Codex and handing implementation tasks to Open
 
 - Windows for the project-folder picker and Explorer integration.
 - Node.js 22.12+ and npm.
-- Codex Desktop installed and signed in. Relay Room uses its local `codex.exe` and app-server.
+- Codex Desktop installed and signed in. Open Zero uses its local `codex.exe` and app-server.
 - An installed, configured OpenCode CLI that supports `opencode api GET /api/model`. The app requires this API command; a CLI without it is not compatible with the current integration.
 - Access to the models you want to use through your Codex and OpenCode accounts.
 
@@ -72,7 +72,7 @@ npm ci
 npm run dist:win
 ```
 
-The output is written to `release/`. It contains a Windows installer and a portable `.exe` that launches **Coding Room** directly. Both use the app's custom icon. The installed app adds Start Menu and desktop shortcuts. Closing the app asks its local API server to shut down; session links and app settings remain in the current Windows user's app data folder.
+The output is written to `release/`. It contains a Windows installer and a portable `.exe` that launches **Open Zero** directly. Both use the app's custom icon. The installed app adds Start Menu and desktop shortcuts. Closing the app asks its local API server to shut down; session links and app settings remain in the current Windows user's app data folder.
 
 The installer does not include personal Codex or OpenCode accounts. Each computer still needs Codex Desktop signed in and the compatible OpenCode CLI installed and configured. No Node.js or npm installation is required on computers that only run the packaged app. Project builds target Windows x64.
 
@@ -105,13 +105,13 @@ Claude and GLM are listed as future integrations and cannot be selected yet. The
 
 Open **أدوات MCP · Codex** or **أدوات MCP · OpenCode** in the corresponding chat pane to see that agent's configured servers and switch them on or off. The lists load only when opened and include a manual refresh button.
 
-Codex changes are saved in its local user configuration and apply to loaded conversations with the next message. Plugin MCP switches target the individual server. `codex_apps` controls the default app-connector enablement. A project or managed configuration can override the user setting; Relay Room reports this rather than showing a successful toggle.
+Codex changes are saved in its local user configuration and apply to loaded conversations with the next message. Plugin MCP switches target the individual server. `codex_apps` controls the default app-connector enablement. A project or managed configuration can override the user setting; Open Zero reports this rather than showing a successful toggle.
 
 OpenCode switches disconnect or reconnect the server in the current project at runtime. They last until OpenCode restarts and do not rewrite its configuration or delete credentials. Wait for active work to finish before changing a switch.
 
 ## Desktop updates
 
-The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds and publishes a Windows installer whenever code is pushed to `main` or `new-models`. Installed copies check GitHub Releases after startup and every six hours, download updates automatically, and install them on exit (or restart immediately from the update notice). Share the **Coding Room Setup** installer from the latest GitHub Release; the portable executable does not support automatic updates.
+The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds and publishes a Windows installer whenever code is pushed to `main` or `new-models`. Installed copies check GitHub Releases after startup and every six hours, download updates automatically, and install them on exit (or restart immediately from the update notice). Share the **Open Zero Setup** installer from the latest GitHub Release; the portable executable does not support automatic updates.
 
 ## Commands
 
@@ -133,9 +133,9 @@ When running the development servers separately with a custom API port, set `OPE
 | API connection fails | Ensure the API is running on the configured port. Check the terminal for errors. |
 | Executable not found | Set `CODEX_EXE` or `OPENCODE_EXE` to an existing executable and restart. |
 | `codex-code-mode-host.exe` is missing | Update or repair Codex Desktop. Remove an override pointing to an incomplete installation, or point it to the complete installation. |
-| An old Codex chat cannot use the Relay tool | Create a new conversation inside Relay Room and provide the task context. |
+| An old Codex chat cannot use the Relay tool | Create a new conversation inside Open Zero and provide the task context. |
 | A new chat uses the wrong folder | Check the sidebar project folder and any `WATCH_ROOT` override before creating the chat. |
-| Port already in use | Stop the previous Relay Room terminal, or change `OPENCODE_OBSERVER_PORT` and restart. |
+| Port already in use | Stop the previous Open Zero terminal, or change `OPENCODE_OBSERVER_PORT` and restart. |
 
 Settings are documented in [.env.example](.env.example). Local session links and the selected project are saved in `.relay-state/`. Keep that folder to retain the links after restarting. `.env`, `.relay-state/`, and `dist/` are ignored by Git. Do not put secrets in `VITE_` variables; they are exposed to the browser.
 

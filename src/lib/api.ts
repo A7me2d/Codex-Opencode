@@ -19,6 +19,13 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
 
+  const remaining = response.headers.get('X-License-Remaining')
+  if (remaining !== null && Number.isFinite(Number(remaining))) {
+    window.dispatchEvent(new CustomEvent('coding-room:license-usage', { detail: { remaining: Number(remaining) } }))
+  } else if (response.status === 429 || response.status === 403) {
+    window.dispatchEvent(new Event('coding-room:license-refresh'))
+  }
+
   const raw = await response.text()
   let body: unknown
   try {
@@ -26,7 +33,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   } catch {
     // A dev server without the API proxy answers unknown paths with index.html.
     throw new Error(response.ok
-      ? tr("استجابة غير متوقعة من الخادم — شغّل Coding Room بالأمر npm run dev:api.")
+      ? tr("استجابة غير متوقعة من الخادم — شغّل Open Zero بالأمر npm run dev:api.")
       : `Request failed (${response.status}).`)
   }
 
@@ -67,6 +74,8 @@ export const api = {
   setMcpEnabled: (agent: 'codex' | 'opencode', name: string, enabled: boolean) => post<{ data: { servers: McpServerInfo[]; note: string } }>(`/api/${agent}/mcp`, { name, enabled }).then(unwrap),
   // Project scope
   project: () => requestJson<{ data: ProjectInfo }>('/api/project').then(unwrap),
+  projectFile: (root: string, path: string) => requestJson<{ data: { path: string; content: string; version: string } }>(`/api/project/file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`).then(unwrap),
+  saveProjectFile: (input: { root: string; path: string; content: string; version: string }) => post<{ data: { path: string; content: string; version: string } }>('/api/project/file', input).then(unwrap),
   projectFiles: (path = '') => requestJson<{ data: import('./types').ProjectFiles }>(`/api/project/files?path=${encodeURIComponent(path)}`).then(unwrap),
   projectSearch: (query: string) => requestJson<{ data: import('./types').ProjectSearchResults }>(`/api/project/search?q=${encodeURIComponent(query)}`).then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),

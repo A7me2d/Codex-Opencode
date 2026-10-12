@@ -39,7 +39,7 @@ export function readOpenCodeChat(messages: unknown[] | null | undefined): ChatMe
       ? record.content.filter((part) => asRecord(part).type === 'text')
       : record.content ?? record.parts
     const rawText = readText(record.text ?? content ?? record.message ?? record.summary)
-    const text = type === 'user' ? rawText.replace(/^\[Relay Room role: OpenCode is the planner and reviewer;[\s\S]*?\]\r?\n\r?\n/, '') : rawText
+    const text = type === 'user' ? rawText.replace(/^\[(?:Relay Room|OpenZero|Open Zero) role: OpenCode is the planner and reviewer;[\s\S]*?\]\r?\n\r?\n/, '') : rawText
     const id = String(record.id ?? info.id ?? `opencode-${index}`)
     const parentId = record.parentID ?? info.parentID
     return text ? [{ id, role: type, text, ...(typeof parentId === 'string' ? { userMessageId: parentId } : {}) }] : []
