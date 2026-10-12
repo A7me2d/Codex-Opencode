@@ -33,7 +33,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   } catch {
     // A dev server without the API proxy answers unknown paths with index.html.
     throw new Error(response.ok
-      ? tr("استجابة غير متوقعة من الخادم — شغّل OpenZero بالأمر npm run dev:api.")
+      ? tr("استجابة غير متوقعة من الخادم — شغّل Open Zero بالأمر npm run dev:api.")
       : `Request failed (${response.status}).`)
   }
 

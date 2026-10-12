@@ -33,7 +33,7 @@ export function ThemePanel() {
       </label>)}
     </div></fieldset>
     <p role="status" className="min-h-5 text-xs text-ready-ink">{notice ? tr(notice) : tr("الثيم الحالي: {{0}}", [themes.find(theme => theme.id === selected)?.name ?? ''])}</p>
-    {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">{tr("مصدر ألوان الثيم · الألوان مهيّأة لواجهة OpenZero")}</a> : null}
+    {themeSources[selected] ? <a href={themeSources[selected]} target="_blank" rel="noreferrer" className="inline-block text-[10px] text-ink-soft underline underline-offset-4">{tr("مصدر ألوان الثيم · الألوان مهيّأة لواجهة Open Zero")}</a> : null}
     <FileIconThemePicker />
   </section>
 }

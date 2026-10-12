@@ -4,8 +4,8 @@
   "main": "electron/main.mjs",
   "private": true,
   "type": "module",
-  "description": "OpenZero - local desktop app for Codex and OpenCode.",
-  "author": "OpenZero",
+  "description": "Open Zero - local desktop app for Codex and OpenCode.",
+  "author": "Open Zero",
   "scripts": {
     "icons": "node scripts/build-icons.mjs",
     "build": "npm run icons && tsc --noEmit && vite build",
@@ -48,7 +48,7 @@
   },
   "build": {
     "appId": "com.relayroom.desktop",
-    "productName": "OpenZero",
+    "productName": "Open Zero",
     "npmRebuild": false,
     "electronDist": "node_modules/electron/dist",
     "asar": false,
@@ -88,7 +88,7 @@
           ]
         }
       ],
-      "executableName": "OpenZero"
+      "executableName": "Open Zero"
     },
     "nsis": {
       "oneClick": false,

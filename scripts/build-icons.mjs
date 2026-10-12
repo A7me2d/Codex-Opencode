@@ -3,8 +3,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Resvg } from '@resvg/resvg-js'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const logo = await readFile(path.join(root, 'public', 'brand', 'openzero-logo.png'))
-const wordmark = await readFile(path.join(root, 'public', 'brand', 'openzero-wordmark.png'))
+const logo = await readFile(path.join(root, 'public', 'brand', 'openzero-logo-transparent.png'))
+const wordmark = await readFile(path.join(root, 'public', 'brand', 'openzero-wordmark-transparent.png'))
 function resizedPng(source, size) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 256 256"><image width="256" height="256" href="data:image/png;base64,${source.toString('base64')}"/></svg>`
   return new Resvg(svg).render().asPng()
