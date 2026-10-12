@@ -324,14 +324,39 @@ function LicenseGate() {
 
   useEffect(() => {
     let mounted = true
-    void api.licenseStatus().then(result => {
-      if (!mounted) return
-      setActive(result.active || (result.free?.remaining ?? 0) > 0)
-      setFreeRemaining(result.free?.remaining ?? 0)
-    }).catch(reason => {
-      if (mounted) setError(reason instanceof Error ? reason.message : String(reason))
-    }).finally(() => { if (mounted) setChecking(false) })
-    return () => { mounted = false }
+    let running = false
+    let revision = 0
+    const refresh = async () => {
+      if (running) return
+      running = true
+      const currentRevision = revision
+      try {
+        const result = await api.licenseStatus()
+        if (!mounted || currentRevision !== revision) return
+        setActive(!result.licenseError && (result.active || (result.free?.remaining ?? 0) > 0))
+        setFreeRemaining(result.free?.remaining ?? 0)
+        setError(result.licenseError || '')
+      } catch (reason) {
+        if (mounted && currentRevision === revision) setError(reason instanceof Error ? reason.message : String(reason))
+      } finally {
+        running = false
+        if (mounted) setChecking(false)
+      }
+    }
+    const onActivation = () => { revision++; void refresh() }
+    const onVisible = () => { if (!document.hidden) void refresh() }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 5000)
+    window.addEventListener('focus', onVisible)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('coding-room:license-activated', onActivation)
+    return () => {
+      mounted = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('coding-room:license-activated', onActivation)
+    }
   }, [])
 
   const activate = async (event: FormEvent) => {
@@ -340,6 +365,7 @@ function LicenseGate() {
     setError('')
     try {
       const result = await api.activateLicense(key)
+      window.dispatchEvent(new Event('coding-room:license-activated'))
       setActive(result.active)
       setKey('')
     } catch (reason) {

@@ -118,7 +118,7 @@ async function consumeLicensedMessage(input = {}) {
   } catch { throw new HttpError(503, 'The license service is unavailable. Connect to the internet and try again.') }
   const body = await response.json().catch(() => ({}))
   if (!response.ok || !body.ok) {
-    if (['quota', 'expired', 'invalid'].includes(body.reason)) {
+    if (body.reason === 'quota') {
       try { return { ...(await consumeFreeMessage(messageId)), source: 'free' } }
       catch (freeError) { if (body.reason !== 'quota' && freeError.status === 429) throw new HttpError(403, 'This license is expired or disabled, and your free daily messages are used.') ; throw freeError }
     }
