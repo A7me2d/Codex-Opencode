@@ -2,7 +2,7 @@ import { ProjectEditor } from './components/ProjectEditor'
 import { SupportButton, SupportChat } from './components/SupportChat'
 import { direction, setLocale, tr, useLocale } from './lib/i18n'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { GripVertical, KeyRound, LoaderCircle } from 'lucide-react'
+import { GripVertical, LoaderCircle } from 'lucide-react'
 import { AppHeader } from './components/AppHeader'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { AlertStack } from './features/alerts/AlertStack'
@@ -43,7 +43,7 @@ function loadPanelSizes(): PanelSizes {
 }
 
 /**
- * Relay Room — layout only.
+ * OpenZero — layout only.
  *
  * Every piece of state lives in `useRelayRoom`; every request is declared in
  * `src/lib/api.ts`; every screen is one file under `src/features`. This file
@@ -324,6 +324,14 @@ function LicenseGate() {
   const [key, setKey] = useState('')
   const [error, setError] = useState('')
   const [activating, setActivating] = useState(false)
+  const [welcomeReady, setWelcomeReady] = useState(false)
+  const [quotaExhausted, setQuotaExhausted] = useState(false)
+  const [resetsAt, setResetsAt] = useState<string | null>(null)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setWelcomeReady(true), 1000)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -336,7 +344,10 @@ function LicenseGate() {
       try {
         const result = await api.licenseStatus()
         if (!mounted || currentRevision !== revision) return
-        setActive(!result.licenseError && result.active)
+        const exhausted = result.active && (result.entitlement?.remaining ?? 0) <= 0
+        setQuotaExhausted(exhausted)
+        setResetsAt(result.entitlement?.resetsAt || null)
+        setActive(!result.licenseError && result.active && !exhausted)
         setError(result.licenseError || '')
       } catch (reason) {
         if (mounted && currentRevision === revision) setError(reason instanceof Error ? reason.message : String(reason))
@@ -347,17 +358,28 @@ function LicenseGate() {
     }
     const onActivation = () => { revision++; void refresh() }
     const onVisible = () => { if (!document.hidden) void refresh() }
+    const onUsage = (event: Event) => {
+      if ((event as CustomEvent<{ remaining: number }>).detail.remaining <= 0) {
+        revision++
+        setActive(false); setQuotaExhausted(true)
+      }
+      void refresh()
+    }
     void refresh()
     const timer = window.setInterval(() => void refresh(), 45_000)
     window.addEventListener('focus', onVisible)
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('coding-room:license-activated', onActivation)
+    window.addEventListener('coding-room:license-usage', onUsage)
+    window.addEventListener('coding-room:license-refresh', refresh)
     return () => {
       mounted = false
       window.clearInterval(timer)
       window.removeEventListener('focus', onVisible)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('coding-room:license-activated', onActivation)
+      window.removeEventListener('coding-room:license-usage', onUsage)
+      window.removeEventListener('coding-room:license-refresh', refresh)
     }
   }, [])
 
@@ -368,21 +390,31 @@ function LicenseGate() {
     try {
       const result = await api.activateLicense(key)
       window.dispatchEvent(new Event('coding-room:license-activated'))
-      setActive(result.active)
+      const exhausted = result.active && (result.entitlement?.remaining ?? 0) <= 0
+      setQuotaExhausted(exhausted)
+      setActive(result.active && !exhausted)
       setKey('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally { setActivating(false) }
   }
 
+  if (checking || !welcomeReady) return <main dir={isArabic ? 'rtl' : 'ltr'} className="fixed inset-0 flex flex-col items-center justify-center bg-[#06080f] px-6 text-[#dce7ff]">
+    <img src="/brand/openzero-wordmark.png" alt="OpenZero" className="w-[min(320px,70vw)] rounded-3xl object-contain" />
+    <h1 className="mt-5 text-xl font-bold">{isArabic ? 'أهلًا بك في OpenZero' : 'Welcome to OpenZero'}</h1>
+    <p role="status" className="mt-3 flex items-center gap-2 text-sm text-[#a9b9d8]"><LoaderCircle className="h-4 w-4 animate-spin" />{isArabic ? 'جارٍ فحص مفتاح التفعيل…' : 'Checking your activation key…'}</p>
+  </main>
   if (active) return <WorkspaceApp />
-  const title = isArabic ? 'تفعيل Coding Room' : 'Activate Coding Room'
-  const description = isArabic ? 'أدخل مفتاح تفعيل صالح لاستخدام Coding Room. كل رسالة تستهلك طلبًا من رصيد مفتاحك.' : 'Enter a valid activation key to use Coding Room. Each message uses one request from your key quota.'
+  const title = quotaExhausted ? (isArabic ? 'انتهى رصيد الطلبات' : 'Request quota exhausted') : (isArabic ? 'تفعيل OpenZero' : 'Activate OpenZero')
+  const description = quotaExhausted
+    ? (isArabic ? 'رصيد مفتاحك وصل إلى صفر. الإرسال متوقف حتى تجديد الرصيد اليومي أو تفعيل مفتاح آخر.' : 'Your key has zero requests remaining. Messaging is paused until the daily quota resets or you activate another key.')
+    : (isArabic ? 'أدخل مفتاح تفعيل صالح لاستخدام OpenZero. كل رسالة تستهلك طلبًا من رصيد مفتاحك.' : 'Enter a valid activation key to use OpenZero. Each message uses one request from your key quota.')
   return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center bg-paper px-5 text-ink">
     <form onSubmit={activate} className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
-      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-relay-tint text-relay-ink"><KeyRound className="h-5 w-5" /></div>
+      <img src="/brand/openzero-wordmark-256.png" alt="OpenZero" className="mb-5 h-36 w-36 rounded-2xl object-contain" />
       <h1 className="text-xl font-bold">{title}</h1>
       <p className="mt-2 text-sm leading-6 text-ink-soft">{description}</p>
+      {quotaExhausted && <p className="mt-3 text-xs font-semibold text-review-ink">{isArabic ? 'المتبقي: 0 · تجديد الرصيد:' : 'Remaining: 0 · Quota resets:'} {resetsAt ? new Date(resetsAt).toLocaleString(isArabic ? 'ar-EG' : 'en-US') : '00:00 UTC'}</p>}
       <label htmlFor="license-key" className="mt-6 block text-xs font-semibold">{isArabic ? 'مفتاح التفعيل' : 'Activation key'}</label>
       <input id="license-key" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="CR-…" className="mt-2 w-full rounded-lg border border-line bg-paper px-3 py-2.5 font-mono text-sm outline-none focus:border-relay" />
       {error ? <p role="alert" className="mt-3 rounded-lg border border-relay/30 bg-relay-tint px-3 py-2 text-xs leading-5 text-relay-ink">{error}</p> : null}
@@ -430,8 +462,8 @@ function MandatoryUpdateGate({ children }: { children: ReactNode }) {
     <section role="alertdialog" aria-labelledby="mandatory-update-title" aria-describedby="mandatory-update-description" className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
       <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-relay-tint text-relay-ink"><LoaderCircle className="h-5 w-5 animate-spin" /></div>
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-relay-ink">{isArabic ? 'تحديث مطلوب' : 'Update required'}</p>
-      <h1 id="mandatory-update-title" className="mt-2 text-xl font-bold">{isArabic ? 'لازم تحدّث Coding Room للمتابعة' : 'Update Coding Room to continue'}</h1>
-      <p id="mandatory-update-description" className="mt-2 text-sm leading-6 text-ink-soft">{isArabic ? `الإصدار ${update.version ?? 'الجديد'} بيتنزّل الآن، وسيُثبت التطبيق تلقائيًا بعد اكتمال التنزيل.` : `Version ${update.version ?? 'latest'} is downloading. Coding Room will restart and install it as soon as the download finishes.`}</p>
+      <h1 id="mandatory-update-title" className="mt-2 text-xl font-bold">{isArabic ? 'لازم تحدّث OpenZero للمتابعة' : 'Update OpenZero to continue'}</h1>
+      <p id="mandatory-update-description" className="mt-2 text-sm leading-6 text-ink-soft">{isArabic ? `الإصدار ${update.version ?? 'الجديد'} بيتنزّل الآن، وسيُثبت التطبيق تلقائيًا بعد اكتمال التنزيل.` : `Version ${update.version ?? 'latest'} is downloading. OpenZero will restart and install it as soon as the download finishes.`}</p>
       <div className="mt-6" aria-live="polite">
         <div className="mb-2 flex justify-between text-xs text-ink-soft"><span>{update.error ? (isArabic ? 'تعذّر تنزيل التحديث' : 'Update download failed') : (isArabic ? 'جارٍ تنزيل التحديث' : 'Downloading update')}</span><span className="tabular-nums">{percent}%</span></div>
         <div role="progressbar" aria-label={isArabic ? 'تقدم تنزيل التحديث' : 'Update download progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 overflow-hidden rounded-full bg-paper"><div className="h-full rounded-full bg-relay transition-[width] duration-200" style={{ width: `${percent}%` }} /></div>

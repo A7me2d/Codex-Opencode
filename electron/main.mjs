@@ -69,6 +69,7 @@ async function licenseRequest(endpoint, { token, ...options } = {}) {
   try {
     response = await fetch(`${licenseApi}${endpoint}`, {
       ...options,
+      signal: options.signal ?? AbortSignal.timeout(12000),
       headers: { 'Content-Type': 'application/json', 'X-Device-Name': encodeURIComponent(hostname()), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
     })
   } catch { throw new Error('Could not reach the license service. Check your internet connection and try again.') }
@@ -165,11 +166,11 @@ function startBackend() {
     },
     stdio: 'pipe',
   })
-  backend.stdout?.on('data', chunk => console.log(`[Relay Room] ${chunk}`))
-  backend.stderr?.on('data', chunk => console.error(`[Relay Room] ${chunk}`))
+  backend.stdout?.on('data', chunk => console.log(`[OpenZero] ${chunk}`))
+  backend.stderr?.on('data', chunk => console.error(`[OpenZero] ${chunk}`))
 
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Relay Room server did not start in time.')), 30_000)
+    const timeout = setTimeout(() => reject(new Error('OpenZero server did not start in time.')), 30_000)
     backend.on('message', message => {
       if (message?.type !== 'ready' || !message.port) return
       clearTimeout(timeout)
@@ -178,8 +179,8 @@ function startBackend() {
     })
     backend.once('exit', code => {
       clearTimeout(timeout)
-      if (!serverUrl) reject(new Error(`Relay Room server exited during startup (code ${code}).`))
-      else if (!quitting) void showBackendFailure(`Relay Room server stopped unexpectedly (code ${code}).`)
+      if (!serverUrl) reject(new Error(`OpenZero server exited during startup (code ${code}).`))
+      else if (!quitting) void showBackendFailure(`OpenZero server stopped unexpectedly (code ${code}).`)
     })
   })
 }
@@ -266,7 +267,7 @@ app.on('web-contents-created', (_event, contents) => {
 })
 
 async function showBackendFailure(message) {
-  await dialog.showMessageBox({ type: 'error', title: 'Coding Room', message })
+  await dialog.showMessageBox({ type: 'error', title: 'OpenZero', message })
   app.quit()
 }
 
@@ -298,7 +299,8 @@ async function createWindow() {
     if (url.startsWith('https://')) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  const loadingPage = `<!doctype html><html lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Coding Room</title><style>body{margin:0;height:100vh;display:grid;place-items:center;background:#211f3f;color:#f8f9ff;font:15px system-ui,sans-serif}.card{text-align:center}.mark{width:72px;height:72px;border-radius:22px;background:#71e3cf;color:#211f3f;display:grid;place-items:center;margin:auto auto 18px;font-size:28px;font-weight:800}.spinner{width:17px;height:17px;border:2px solid #ffffff40;border-top-color:#71e3cf;border-radius:50%;display:inline-block;vertical-align:middle;margin-inline-end:8px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style><body><main class="card"><div class="mark">&lt;/&gt;</div><strong>Coding Room</strong><p><span class="spinner"></span>جاري تجهيز مساحة العمل…</p></main></body></html>`
+  const loadingLogo = fs.readFileSync(path.join(app.getAppPath(), 'dist', 'brand', 'openzero-wordmark-256.png')).toString('base64')
+  const loadingPage = `<!doctype html><html lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenZero</title><style>body{margin:0;height:100vh;display:grid;place-items:center;background:#211f3f;color:#f8f9ff;font:15px system-ui,sans-serif}.card{text-align:center}.mark{width:72px;height:72px;border-radius:22px;background:#71e3cf;color:#211f3f;display:grid;place-items:center;margin:auto auto 18px;font-size:28px;font-weight:800}.spinner{width:17px;height:17px;border:2px solid #ffffff40;border-top-color:#71e3cf;border-radius:50%;display:inline-block;vertical-align:middle;margin-inline-end:8px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style><body><main class="card"><img src="data:image/png;base64,${loadingLogo}" alt="OpenZero" style="width:180px;height:180px;border-radius:20px"/><p><span class="spinner"></span>جاري تجهيز مساحة العمل…</p></main></body></html>`
   await window.loadURL(serverUrl ?? `data:text/html;charset=utf-8,${encodeURIComponent(loadingPage)}`)
   return window
 }
@@ -309,7 +311,7 @@ function configureAutoUpdates() {
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.allowDowngrade = false
   autoUpdater.on('update-available', info => {
-    console.log(`[Coding Room] Update ${info.version} is available.`)
+    console.log(`[OpenZero] Update ${info.version} is available.`)
     mandatoryUpdatePending = true
     if (!quitting && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:mandatory-update-required', { version: info.version })
@@ -320,9 +322,9 @@ function configureAutoUpdates() {
       mainWindow.webContents.send('app:mandatory-update-progress', { percent: Math.round(info.percent), transferred: info.transferred, total: info.total })
     }
   })
-  autoUpdater.on('update-not-available', info => console.log(`[Coding Room] Up to date (${info.version}).`))
+  autoUpdater.on('update-not-available', info => console.log(`[OpenZero] Up to date (${info.version}).`))
   autoUpdater.on('error', error => {
-    console.error('[Coding Room] Update check failed:', error)
+    console.error('[OpenZero] Update check failed:', error)
     if (mandatoryUpdatePending && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:mandatory-update-error', { message: error instanceof Error ? error.message : String(error) })
     }
@@ -335,7 +337,7 @@ function configureAutoUpdates() {
     autoUpdater.quitAndInstall(true, true)
   })
 
-  const check = () => void autoUpdater.checkForUpdates().catch(error => console.error('[Coding Room] Update check failed:', error))
+  const check = () => void autoUpdater.checkForUpdates().catch(error => console.error('[OpenZero] Update check failed:', error))
   setTimeout(check, 15_000)
   setInterval(check, 6 * 60 * 60 * 1000)
 }

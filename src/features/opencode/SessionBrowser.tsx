@@ -33,7 +33,7 @@ function order(sessions: OpenCodeSession[], threadDirectory?: string) {
 /**
  * The OpenCode sessions that belong to this project.
  *
- * Sessions can be started outside Relay Room or left over from earlier work, so
+ * Sessions can be started outside OpenZero or left over from earlier work, so
  * they are listed rather than hidden. Reading is always safe, and the only
  * action offered is stopping a session that is running right now: nothing else
  * here can be undone.

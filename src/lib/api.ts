@@ -19,6 +19,13 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
 
+  const remaining = response.headers.get('X-License-Remaining')
+  if (remaining !== null && Number.isFinite(Number(remaining))) {
+    window.dispatchEvent(new CustomEvent('coding-room:license-usage', { detail: { remaining: Number(remaining) } }))
+  } else if (response.status === 429 || response.status === 403) {
+    window.dispatchEvent(new Event('coding-room:license-refresh'))
+  }
+
   const raw = await response.text()
   let body: unknown
   try {
@@ -26,7 +33,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   } catch {
     // A dev server without the API proxy answers unknown paths with index.html.
     throw new Error(response.ok
-      ? tr("استجابة غير متوقعة من الخادم — شغّل Coding Room بالأمر npm run dev:api.")
+      ? tr("استجابة غير متوقعة من الخادم — شغّل OpenZero بالأمر npm run dev:api.")
       : `Request failed (${response.status}).`)
   }
 

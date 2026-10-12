@@ -1,6 +1,6 @@
 import { tr } from '../lib/i18n'
 import { type CSSProperties } from 'react'
-import { GitPullRequestArrow, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
 import { config } from '../app/config'
 import { SettingsDialog } from './SettingsDialog'
 import type { AppLocale } from '../lib/i18n'
@@ -23,9 +23,7 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
   return <header className="shrink-0 border-b border-line bg-card">
     <div className="flex h-[42px] select-none items-center justify-between gap-3 px-5 pr-[150px] text-xs font-extrabold tracking-tight text-ink" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
       <div className="flex min-w-0 items-center gap-2">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-user-surface text-user-ink">
-          <GitPullRequestArrow className="h-4 w-4" aria-hidden="true" />
-        </div>
+        <img src="/app-icon.png" alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-xl object-contain" />
         <div className="flex min-w-0 flex-col items-start gap-0.5 overflow-hidden">
         <span className="shrink-0">{config.appTitle}</span>
         <span className="ms-1 hidden truncate text-[10px] font-medium text-ink-soft sm:inline">{tr("التخطيط والتنفيذ والمراجعة بين مساعديك")}</span>
