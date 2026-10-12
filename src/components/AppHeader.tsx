@@ -4,6 +4,7 @@ import { TriangleAlert } from 'lucide-react'
 import { config } from '../app/config'
 import { SettingsDialog } from './SettingsDialog'
 import type { AppLocale } from '../lib/i18n'
+import { WindowControls } from './WindowControls'
 
 export interface AppHeaderProps {
   codexConnected: boolean
@@ -21,14 +22,15 @@ export interface AppHeaderProps {
 /** Minimal title bar; app controls live behind the settings button. */
 export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff }: AppHeaderProps) {
   return <header className="shrink-0 border-b border-line bg-card">
-    <div className="flex h-[42px] select-none items-center justify-between gap-3 px-5 pr-[150px] text-xs font-extrabold tracking-tight text-ink" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
+    <div dir="ltr" onDoubleClick={() => void window.codingRoomWindow?.toggleMaximize?.()} className="flex h-12 select-none items-center justify-between gap-3 ps-4 pe-3 text-xs font-extrabold tracking-tight text-ink" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
       <div className="flex min-w-0 items-center gap-2">
-        <img src="/app-icon.png" alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-xl object-contain" />
+        <img src="/app-icon.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0 object-contain" />
         <div className="flex min-w-0 flex-col items-start gap-0.5 overflow-hidden">
         <span className="shrink-0">{config.appTitle}</span>
         <span className="ms-1 hidden truncate text-[10px] font-medium text-ink-soft sm:inline">{tr("التخطيط والتنفيذ والمراجعة بين مساعديك")}</span>
         </div>
       </div>
+      <div className="flex shrink-0 items-center gap-3" dir="ltr" onDoubleClick={event => event.stopPropagation()}>
       <SettingsDialog
         codexConnected={codexConnected}
         openCodeOnline={openCodeOnline}
@@ -39,6 +41,9 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
         handoffVisible={handoffVisible}
         onToggleHandoff={onToggleHandoff}
       />
+      {window.codingRoomWindow?.minimize && <span className="h-5 w-px bg-line" aria-hidden="true" />}
+      <WindowControls />
+      </div>
     </div>
 
     {shellError ? (

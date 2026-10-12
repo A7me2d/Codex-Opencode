@@ -16,7 +16,14 @@ declare global {
       getAll: () => Promise<Record<string, string>>
       set: (key: string, value: string) => Promise<void>
     }
-    codingRoomWindow?: { setTheme: (theme: string) => Promise<void> }
+    codingRoomWindow?: {
+      setTheme: (theme: string) => Promise<void>
+      minimize?: () => Promise<void>
+      toggleMaximize?: () => Promise<void>
+      close?: () => Promise<void>
+      getState?: () => Promise<{ maximized: boolean }>
+      onState?: (callback: (state: { maximized: boolean }) => void) => () => void
+    }
   }
 }
 

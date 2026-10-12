@@ -136,10 +136,20 @@ const titlebarColors = {
   'cyberpunk-2077': ['#202020', '#f4f1e8'],
 }
 
+ipcMain.handle('window:minimize', event => BrowserWindow.fromWebContents(event.sender)?.minimize())
+ipcMain.handle('window:toggle-maximize', event => {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (!window) return
+  if (window.isMaximized()) window.unmaximize(); else window.maximize()
+})
+ipcMain.handle('window:close', event => BrowserWindow.fromWebContents(event.sender)?.close())
+ipcMain.handle('window:state', event => ({ maximized: BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false }))
+
 ipcMain.handle('window:set-theme', (event, theme) => {
   if (process.platform !== 'win32') return
-  const [color, symbolColor] = titlebarColors[theme] ?? titlebarColors.default
-  BrowserWindow.fromWebContents(event.sender)?.setTitleBarOverlay({ color, symbolColor })
+  const [color] = titlebarColors[theme] ?? titlebarColors.default
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (window) window.setBackgroundColor(color)
 })
 
 function startBackend() {
@@ -282,7 +292,7 @@ async function createWindow() {
     icon: path.join(app.getAppPath(), 'build', 'app.ico'),
     ...(process.platform === 'win32' ? {
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#fcfcfd', symbolColor: '#1b2735', height: 38 },
+      frame: false,
     } : {}),
     webPreferences: {
       preload: path.join(app.getAppPath(), 'electron', 'preload.cjs'),
@@ -291,6 +301,9 @@ async function createWindow() {
       sandbox: true,
     },
   })
+  const sendWindowState = () => { if (!window.isDestroyed()) window.webContents.send('window:state-changed', { maximized: window.isMaximized() }) }
+  window.on('maximize', sendWindowState)
+  window.on('unmaximize', sendWindowState)
   window.removeMenu()
   window.setMenuBarVisibility(false)
   window.autoHideMenuBar = true
@@ -300,7 +313,7 @@ async function createWindow() {
     return { action: 'deny' }
   })
   const loadingLogo = fs.readFileSync(path.join(app.getAppPath(), 'dist', 'brand', 'openzero-wordmark-256.png')).toString('base64')
-  const loadingPage = `<!doctype html><html lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Open Zero</title><style>body{margin:0;height:100vh;display:grid;place-items:center;background:#211f3f;color:#f8f9ff;font:15px system-ui,sans-serif}.card{text-align:center}.mark{width:72px;height:72px;border-radius:22px;background:#71e3cf;color:#211f3f;display:grid;place-items:center;margin:auto auto 18px;font-size:28px;font-weight:800}.spinner{width:17px;height:17px;border:2px solid #ffffff40;border-top-color:#71e3cf;border-radius:50%;display:inline-block;vertical-align:middle;margin-inline-end:8px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style><body><main class="card"><img src="data:image/png;base64,${loadingLogo}" alt="Open Zero" style="width:180px;height:180px;border-radius:20px"/><p><span class="spinner"></span>جاري تجهيز مساحة العمل…</p></main></body></html>`
+  const loadingPage = `<!doctype html><html lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Open Zero</title><style>body{margin:0;height:100vh;display:grid;place-items:center;background:#211f3f;color:#f8f9ff;font:15px system-ui,sans-serif}.card{text-align:center}.mark{width:72px;height:72px;border-radius:22px;background:#71e3cf;color:#211f3f;display:grid;place-items:center;margin:auto auto 18px;font-size:28px;font-weight:800}.spinner{width:17px;height:17px;border:2px solid #ffffff40;border-top-color:#71e3cf;border-radius:50%;display:inline-block;vertical-align:middle;margin-inline-end:8px;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style><body><header style="position:fixed;inset:0 0 auto;height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;-webkit-app-region:drag;font-size:12px"><span>Open Zero</span><div style="display:flex;gap:4px;-webkit-app-region:no-drag"><button aria-label="Minimize" onclick="window.codingRoomWindow.minimize()" style="border:0;background:transparent;color:inherit;width:40px;height:32px;cursor:pointer">&#8722;</button><button aria-label="Maximize" onclick="window.codingRoomWindow.toggleMaximize()" style="border:0;background:transparent;color:inherit;width:40px;height:32px;cursor:pointer">&#9633;</button><button aria-label="Close" onclick="window.codingRoomWindow.close()" style="border:0;background:transparent;color:inherit;width:40px;height:32px;cursor:pointer">&#215;</button></div></header><main class="card"><img src="data:image/png;base64,${loadingLogo}" alt="Open Zero" style="width:180px;height:180px;border-radius:20px"/><p><span class="spinner"></span>جاري تجهيز مساحة العمل…</p></main></body></html>`
   await window.loadURL(serverUrl ?? `data:text/html;charset=utf-8,${encodeURIComponent(loadingPage)}`)
   return window
 }
