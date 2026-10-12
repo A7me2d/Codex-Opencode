@@ -337,7 +337,8 @@ function configureAutoUpdates() {
     if (quitting) return
     mandatoryUpdatePending = true
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:mandatory-update-ready', { version: info.version })
-    autoUpdater.quitAndInstall()
+    // Install updates silently and reopen the app when the installer finishes.
+    autoUpdater.quitAndInstall(true, true)
   })
 
   const check = () => void autoUpdater.checkForUpdates().catch(error => console.error('[Coding Room] Update check failed:', error))
