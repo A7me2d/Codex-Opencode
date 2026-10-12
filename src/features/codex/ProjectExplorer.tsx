@@ -1,3 +1,4 @@
+import { openProjectFile } from '../../components/ProjectEditor'
 import { tr } from '../../lib/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
@@ -133,7 +134,7 @@ function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, icon
       <CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} />
     </div> : <div title={entry.path} className="group/entry flex min-h-8 items-center gap-0.5 rounded-md pr-1 text-[11px] text-ink-soft hover:bg-paper">
       <span className="h-3.5 w-3.5 shrink-0" /><ProjectFileIcon path={iconPath} icon={EntryIcon} color={color} />
-      <span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span>
+      <button type="button" onClick={() => openProjectFile(workRoot, entry.path)} className="min-w-0 flex-1 truncate rounded px-1 py-1.5 text-start hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40" title={entry.path}><span dir="auto">{entry.name}</span></button>
       <CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} />
     </div>}
     {isExpanded && children ? <ul className="ms-3 border-s border-line ps-1.5">{children.entries.map(child => <ProjectEntry key={child.path} entry={child} childrenByPath={childrenByPath} loadingPaths={loadingPaths} expandedPaths={expandedPaths} iconTheme={iconTheme} workRoot={workRoot} onToggle={onToggle} />)}</ul> : null}
@@ -219,5 +220,5 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
 function ProjectSearchResult({ entry, iconTheme, workRoot }: { entry: ProjectFileEntry; iconTheme: 'lynx-style-a' | 'classic'; workRoot: string }) {
   const { icon: Icon, color } = iconFor(entry, false, iconTheme)
   const iconPath = iconTheme === 'lynx-style-a' ? lynxIconPathFor(entry) : undefined
-  return <li title={entry.path} className="group/entry flex min-h-8 items-center gap-1 rounded-md px-1 text-[11px] text-ink hover:bg-paper"><span className="h-3.5 w-3.5 shrink-0" /><ProjectFileIcon path={iconPath} icon={Icon} color={color} /><span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span><code dir="ltr" className="ltr max-w-[40%] truncate text-[9px] text-ink-soft">{entry.path}</code><CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} /></li>
+  return <li title={entry.path} className="group/entry flex min-h-8 items-center gap-1 rounded-md px-1 text-[11px] text-ink hover:bg-paper"><span className="h-3.5 w-3.5 shrink-0" /><ProjectFileIcon path={iconPath} icon={Icon} color={color} /><button type="button" onClick={() => openProjectFile(workRoot, entry.path)} className="min-w-0 flex-1 truncate rounded px-1 py-1.5 text-start hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40" title={entry.path}><span dir="auto">{entry.name}</span></button><code dir="ltr" className="ltr max-w-[40%] truncate text-[9px] text-ink-soft">{entry.path}</code><CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} /></li>
 }

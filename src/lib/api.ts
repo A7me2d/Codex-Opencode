@@ -67,6 +67,8 @@ export const api = {
   setMcpEnabled: (agent: 'codex' | 'opencode', name: string, enabled: boolean) => post<{ data: { servers: McpServerInfo[]; note: string } }>(`/api/${agent}/mcp`, { name, enabled }).then(unwrap),
   // Project scope
   project: () => requestJson<{ data: ProjectInfo }>('/api/project').then(unwrap),
+  projectFile: (root: string, path: string) => requestJson<{ data: { path: string; content: string; version: string } }>(`/api/project/file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`).then(unwrap),
+  saveProjectFile: (input: { root: string; path: string; content: string; version: string }) => post<{ data: { path: string; content: string; version: string } }>('/api/project/file', input).then(unwrap),
   projectFiles: (path = '') => requestJson<{ data: import('./types').ProjectFiles }>(`/api/project/files?path=${encodeURIComponent(path)}`).then(unwrap),
   projectSearch: (query: string) => requestJson<{ data: import('./types').ProjectSearchResults }>(`/api/project/search?q=${encodeURIComponent(query)}`).then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),

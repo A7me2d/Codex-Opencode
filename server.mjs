@@ -1,3 +1,4 @@
+import { readProjectFile, saveProjectFile } from './server/project-editor.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -352,13 +353,13 @@ function sendNoContent(response) {
   response.end()
 }
 
-async function readJson(request) {
+async function readJson(request, bodyLimit = maxBodyBytes) {
   const chunks = []
   let size = 0
 
   for await (const chunk of request) {
     size += chunk.length
-    if (size > maxBodyBytes) throw new HttpError(413, 'Request body is too large.')
+    if (size > bodyLimit) throw new HttpError(413, 'Request body is too large.')
     chunks.push(chunk)
   }
 
@@ -2213,6 +2214,15 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    if (url.pathname === '/api/project/file' && request.method === 'GET') {
+      sendJson(response,200,{data:await readProjectFile(watchRoot,{root:url.searchParams.get('root'),path:url.searchParams.get('path')})})
+      return
+    }
+    if (url.pathname === '/api/project/file' && request.method === 'POST') {
+      const input=await readJson(request,4*1024*1024)
+      sendJson(response,200,{data:await saveProjectFile(watchRoot,input)})
+      return
+    }
     if (request.method === 'GET' && url.pathname === '/api/project/files') {
       const relative = url.searchParams.get('path') ?? ''
       if (relative.includes('\0') || path.isAbsolute(relative) || /^[A-Za-z]:/.test(relative)) {
@@ -2667,7 +2677,7 @@ const server = createServer(async (request, response) => {
 
     await serveStatic(request, response, url)
   } catch (error) {
-    const status = error instanceof HttpError ? error.status : 502
+    const status = error instanceof HttpError ? error.status : url.pathname === '/api/project/file' ? (error.status || (error.code === 'ENOENT' ? 404 : 500)) : 502
     sendJson(response, status, { error: publicError(error) })
   }
 })

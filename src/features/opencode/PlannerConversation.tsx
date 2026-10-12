@@ -1,5 +1,5 @@
 import { direction, tr } from '../../lib/i18n'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Send, ArrowUpRight, FileSearch, CircleStop } from 'lucide-react'
 import { api } from '../../lib/api'
 import { readOpenCodeChat } from '../../lib/chat'
@@ -15,6 +15,11 @@ import type { HandoffRailProps } from './HandoffRail'
 
 export function PlannerConversation(props: HandoffRailProps & { codexActive: boolean; codexHasReply: boolean }) {
   const [draft, setDraft] = useState('')
+  useEffect(() => {
+    const insert = (event: Event) => { const text = (event as CustomEvent<string>).detail; if (typeof text === 'string') setDraft(current => [current, text].filter(Boolean).join('\n\n')) }
+    window.addEventListener('coding-room:insert-planner-code', insert)
+    return () => window.removeEventListener('coding-room:insert-planner-code', insert)
+  }, [])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const messages = useMemo(() => readOpenCodeChat(props.handoff?.messages), [props.handoff?.messages])

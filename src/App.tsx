@@ -1,3 +1,4 @@
+import { ProjectEditor } from './components/ProjectEditor'
 import { SupportButton, SupportChat } from './components/SupportChat'
 import { direction, setLocale, tr, useLocale } from './lib/i18n'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
@@ -237,7 +238,10 @@ function WorkspaceApp() {
       </ErrorBoundary>
 
       <ErrorBoundary label={tr("محادثة Codex مش معروضة صح دلوقتي.")}>
-        {reverse ? plannerPane : codexPane}
+        <ProjectEditor root={room.workRoot} onInsert={text => {
+          if (reverse) window.dispatchEvent(new CustomEvent('coding-room:insert-planner-code', { detail: text }))
+          else conversation.composer.onDraftChange([conversation.composer.draft, text].filter(Boolean).join('\n\n'))
+        }}>{reverse ? plannerPane : codexPane}</ProjectEditor>
       </ErrorBoundary>
 
       <ErrorBoundary label={tr("مسار التفويض مش معروض صح دلوقتي.")}>
