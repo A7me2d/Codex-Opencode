@@ -1,4 +1,6 @@
 export const preferenceKeys = {
+  supportToken: 'coding-room-support-token',
+  supportName: 'coding-room-support-name',
   theme: 'relay-room.theme',
   locale: 'coding-room.locale',
   fileIconTheme: 'relay-room.file-icon-theme',

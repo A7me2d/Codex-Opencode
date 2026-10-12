@@ -1,3 +1,4 @@
+import { hostname } from 'node:os'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell, utilityProcess } from 'electron'
 import { spawn as spawnPty } from 'node-pty'
 import electronUpdater from 'electron-updater'
@@ -23,6 +24,8 @@ const licensePath = path.join(app.getPath('userData'), 'license.bin')
 const deviceIdPath = path.join(app.getPath('userData'), 'device-id')
 const licenseApi = 'https://license-console-mauve.vercel.app/api/license'
 const allowedPreferenceKeys = new Set([
+  'coding-room-support-token',
+  'coding-room-support-name',
   'relay-room.theme',
   'coding-room.locale',
   'relay-room.file-icon-theme',
@@ -66,7 +69,7 @@ async function licenseRequest(endpoint, { token, ...options } = {}) {
   try {
     response = await fetch(`${licenseApi}${endpoint}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', 'X-Device-Name': encodeURIComponent(hostname()), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
     })
   } catch { throw new Error('Could not reach the license service. Check your internet connection and try again.') }
   const body = await response.json().catch(() => ({}))
@@ -84,12 +87,12 @@ ipcMain.handle('license:status', async () => {
     return { active: true, entitlement: body.entitlement, free }
   } catch (error) {
     if (error.status !== 403) throw error
-    return { active: false, free: freeResult.entitlement, licenseError: error.message }
+    return { active: false, free, licenseError: error.message }
   }
 })
 ipcMain.handle('license:activate', async (_event, key) => {
   if (typeof key !== 'string' || key.trim().length < 20 || key.length > 256) throw new Error('Enter a valid activation key.')
-  const body = await licenseRequest('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId }) })
+  const body = await licenseRequest('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId, deviceName: hostname() }) })
   if (!body.ok || typeof body.token !== 'string') throw new Error(body.reason === 'device_limit' ? 'This key has reached its device limit.' : 'This key is invalid, expired, or disabled.')
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure license storage is unavailable on this device.')
   await fs.promises.mkdir(path.dirname(licensePath), { recursive: true })
@@ -334,7 +337,8 @@ function configureAutoUpdates() {
     if (quitting) return
     mandatoryUpdatePending = true
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:mandatory-update-ready', { version: info.version })
-    autoUpdater.quitAndInstall()
+    // Install updates silently and reopen the app when the installer finishes.
+    autoUpdater.quitAndInstall(true, true)
   })
 
   const check = () => void autoUpdater.checkForUpdates().catch(error => console.error('[Coding Room] Update check failed:', error))

@@ -1,3 +1,4 @@
+import { openSupport } from '../../components/SupportChat'
 import { direction, tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
 import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus, UserRound } from 'lucide-react'
@@ -38,9 +39,9 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
   </button>
   if (collapsed) return <aside dir={direction()} className="flex flex-col items-center gap-2 border-b border-line bg-card py-2 lg:h-full lg:border-b-0 lg:border-r">
     {toggle}
-    <span aria-label={tr("Codex account")} title={tr("Codex account")} className="mt-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
+    <button type="button" onClick={() => openSupport(accountName)} aria-label="Support chat" title={tr("Codex account")} className="mt-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
         {accountInitials || <UserRound className="h-4 w-4" />}
-    </span>
+    </button>
   </aside>
   return (
     <aside dir={direction()} className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
@@ -127,9 +128,9 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
       </nav> : null}
 
       <div className="flex shrink-0 items-center gap-2.5 border-t border-line px-4 py-3">
-        <span aria-hidden="true" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
+        <button type="button" aria-label="Support chat" onClick={() => openSupport(accountName)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
           {accountInitials || <UserRound className="h-4 w-4" />}
-        </span>
+        </button>
         <span dir="auto" className="min-w-0 truncate text-xs font-semibold text-ink" title={accountName || tr("Codex Desktop")}>
           {accountName || tr("Codex Desktop")}
         </span>
