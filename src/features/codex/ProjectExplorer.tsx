@@ -27,7 +27,7 @@ const folderIcons: Record<string, { icon: LucideIcon; color: string }> = {
 }
 
 function iconFor(entry: ProjectFileEntry, expanded = false, theme: 'lynx-style-a' | 'classic' = 'lynx-style-a'): { icon: LucideIcon; color: string } {
-  const lower = entry.name.toLocaleLowerCase()
+  const lower = entry.name.toLowerCase()
   if (theme === 'classic') {
     if (entry.kind === 'directory') return { icon: expanded ? FolderOpen : Folder, color: 'text-review' }
     return { icon: /\.(?:tsx?|jsx?|mjs|cjs|vue|svelte|py|java|go|rs|cs|cpp|h|css|scss|html|json|ya?ml|toml|sh)$/i.test(entry.name) ? FileCode2 : FileText, color: 'text-ink-soft' }
@@ -46,16 +46,19 @@ function iconFor(entry: ProjectFileEntry, expanded = false, theme: 'lynx-style-a
   if (['html', 'htm'].includes(extension)) return { icon: Code2, color: 'text-orange-500' }
   if (['css', 'scss', 'sass', 'less'].includes(extension)) return { icon: Palette, color: 'text-pink-500' }
   if (['md', 'mdx', 'txt', 'rst'].includes(extension)) return { icon: FileText, color: 'text-blue-400' }
-  if (['svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico'].includes(extension)) return { icon: FileImage, color: 'text-purple-500' }
+  if (['svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'avif', 'bmp', 'tiff', 'heic', 'psd'].includes(extension)) return { icon: FileImage, color: 'text-purple-500' }
   if (['vue', 'svelte', 'astro'].includes(extension)) return { icon: Component, color: 'text-green-500' }
-  if (['py', 'java', 'go', 'rs', 'cs', 'cpp', 'h'].includes(extension)) return { icon: FileCode2, color: 'text-cyan-600' }
+  if (['py', 'java', 'go', 'rs', 'cs', 'cpp', 'h', 'php', 'rb', 'swift', 'kt', 'kts', 'dart', 'lua', 'r', 'ex', 'exs', 'clj', 'scala', 'pl', 'cob', 'c', 'cc', 'hpp'].includes(extension)) return { icon: FileCode2, color: 'text-cyan-600' }
   if (['yaml', 'yml', 'toml', 'ini'].includes(extension)) return { icon: Settings2, color: 'text-rose-500' }
   if (['sql', 'db', 'sqlite'].includes(extension)) return { icon: Database, color: 'text-teal-600' }
-  if (['csv', 'xls', 'xlsx'].includes(extension)) return { icon: FileSpreadsheet, color: 'text-green-600' }
+  if (['csv', 'tsv', 'xls', 'xlsx', 'ods'].includes(extension)) return { icon: FileSpreadsheet, color: 'text-green-600' }
   if (['zip', '7z', 'rar', 'tar', 'gz'].includes(extension)) return { icon: FileArchive, color: 'text-amber-600' }
-  if (['mp3', 'wav', 'ogg'].includes(extension)) return { icon: FileAudio2, color: 'text-violet-500' }
-  if (['mp4', 'mov', 'webm'].includes(extension)) return { icon: FileVideo2, color: 'text-violet-500' }
+  if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'aiff', 'wma'].includes(extension)) return { icon: FileAudio2, color: 'text-violet-500' }
+  if (['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', 'wmv'].includes(extension)) return { icon: FileVideo2, color: 'text-violet-500' }
   if (['sh', 'ps1', 'bat', 'cmd'].includes(extension)) return { icon: FileType2, color: 'text-slate-600' }
+  if (extension === 'pdf') return { icon: FileText, color: 'text-red-500' }
+  if (['woff', 'woff2', 'ttf', 'otf', 'eot'].includes(extension)) return { icon: FileType2, color: 'text-rose-500' }
+  if (['exe', 'dll', 'bin', 'msi', 'wasm'].includes(extension)) return { icon: FileCog, color: 'text-slate-500' }
   return { icon: FileText, color: 'text-ink-soft' }
 }
 
@@ -63,10 +66,20 @@ function lynxIconPathFor(entry: ProjectFileEntry, expanded = false): string {
   const name = entry.name.toLocaleLowerCase()
   const extension = name.includes('.') ? name.split('.').pop() ?? '' : ''
   const languageId = ['ts', 'tsx'].includes(extension) ? 'typescript' : ['js', 'jsx', 'mjs', 'cjs'].includes(extension) ? 'javascript' : extension === 'py' ? 'python' : ['sh', 'ps1', 'bat', 'cmd'].includes(extension) ? 'shellscript' : ''
+  const extensionParts = name.split('.').slice(1)
+  const compoundIcon = extensionParts.map((_, index) => lynxIcons.fileExtensions[extensionParts.slice(index).join('.')]).find(Boolean)
+  const specialIcon = name.startsWith('.env.') ? 'tune' : /^tsconfig(?:\..+)?\.json$/.test(name) ? 'tsconfig' : undefined
   const iconId = entry.kind === 'directory'
     ? expanded ? lynxIcons.folderNamesExpanded[name] ?? 'folder-open' : lynxIcons.folderNames[name] ?? 'folder'
-    : lynxIcons.fileNames[name] ?? lynxIcons.fileExtensions[extension] ?? lynxIcons.languageIds[languageId] ?? 'file'
-  return lynxIcons.iconPaths[iconId] ?? lynxIcons.iconPaths[entry.kind === 'directory' ? 'folder' : 'file'] ?? ''
+    : lynxIcons.fileNames[name] ?? specialIcon ?? compoundIcon ?? lynxIcons.fileExtensions[extension] ?? lynxIcons.languageIds[languageId]
+  return iconId ? lynxIcons.iconPaths[iconId] ?? '' : ''
+}
+
+function ProjectFileIcon({ path, icon: Icon, color }: { path?: string; icon: LucideIcon; color: string }) {
+  const [failedPath, setFailedPath] = useState<string>()
+  return path && failedPath !== path
+    ? <img src={path} onError={() => setFailedPath(path)} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" />
+    : <Icon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />
 }
 
 function projectAbsolutePath(workRoot: string, relativePath: string) {
@@ -114,12 +127,12 @@ function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, icon
       <button type="button" onClick={() => onToggle(entry)} aria-expanded={isExpanded} title={entry.path}
       className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-start text-[11px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
       {loading ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-soft" /> : isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-soft" /> : <ChevronLeft className="h-3.5 w-3.5 shrink-0 text-ink-soft" />}
-      {iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <EntryIcon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}
+      <ProjectFileIcon path={iconPath} icon={EntryIcon} color={color} />
       <span dir="auto" className="min-w-0 truncate">{entry.name}</span>
       </button>
       <CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} />
     </div> : <div title={entry.path} className="group/entry flex min-h-8 items-center gap-0.5 rounded-md pr-1 text-[11px] text-ink-soft hover:bg-paper">
-      <span className="h-3.5 w-3.5 shrink-0" />{iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <EntryIcon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}
+      <span className="h-3.5 w-3.5 shrink-0" /><ProjectFileIcon path={iconPath} icon={EntryIcon} color={color} />
       <span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span>
       <CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} />
     </div>}
@@ -206,5 +219,5 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
 function ProjectSearchResult({ entry, iconTheme, workRoot }: { entry: ProjectFileEntry; iconTheme: 'lynx-style-a' | 'classic'; workRoot: string }) {
   const { icon: Icon, color } = iconFor(entry, false, iconTheme)
   const iconPath = iconTheme === 'lynx-style-a' ? lynxIconPathFor(entry) : undefined
-  return <li title={entry.path} className="group/entry flex min-h-8 items-center gap-1 rounded-md px-1 text-[11px] text-ink hover:bg-paper"><span className="h-3.5 w-3.5 shrink-0" />{iconPath ? <img src={iconPath} alt="" aria-hidden="true" className="h-4 w-4 shrink-0 object-contain" /> : <Icon className={`h-4 w-4 shrink-0 ${color}`} aria-hidden="true" />}<span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span><code dir="ltr" className="ltr max-w-[40%] truncate text-[9px] text-ink-soft">{entry.path}</code><CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} /></li>
+  return <li title={entry.path} className="group/entry flex min-h-8 items-center gap-1 rounded-md px-1 text-[11px] text-ink hover:bg-paper"><span className="h-3.5 w-3.5 shrink-0" /><ProjectFileIcon path={iconPath} icon={Icon} color={color} /><span dir="auto" className="min-w-0 flex-1 truncate">{entry.name}</span><code dir="ltr" className="ltr max-w-[40%] truncate text-[9px] text-ink-soft">{entry.path}</code><CopyPathButton path={projectAbsolutePath(workRoot, entry.path)} /></li>
 }
