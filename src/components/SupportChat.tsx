@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { MessageCircle, Send, X, RefreshCw } from 'lucide-react'
 import { useLocale } from '../lib/i18n'
+import { persistPreference, preferenceKeys } from '../lib/preferences'
 
 const endpoint = (import.meta.env.VITE_SUPPORT_API_URL || 'https://license-console-mauve.vercel.app/api/support/messages').replace(/\/$/, '')
 const storageKey = 'coding-room-support-token'
@@ -30,7 +31,7 @@ export function SupportChat() {
     const show = (event: Event) => {
       try {
         token.current = localStorage.getItem(storageKey) || Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')
-        localStorage.setItem(storageKey, token.current)
+        persistPreference(preferenceKeys.supportToken, token.current)
         setName(localStorage.getItem('coding-room-support-name') || (event as CustomEvent<{ name?: string }>).detail?.name || '')
         setError(''); nameEdited.current = false
       } catch { setError(ar ? 'اسمح بحفظ البيانات المحلية لمتابعة المحادثة.' : 'Allow local storage to keep this conversation.'); return }
@@ -65,7 +66,7 @@ export function SupportChat() {
     setBusy(true); setError('')
     try {
       const result = await request({ name: name.trim(), text: draft.trim() })
-      localStorage.setItem('coding-room-support-name', name.trim())
+      persistPreference(preferenceKeys.supportName, name.trim())
       setMessages(result.messages); setDraft('')
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
     finally { setBusy(false) }

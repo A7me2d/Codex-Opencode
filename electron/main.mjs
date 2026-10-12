@@ -23,6 +23,8 @@ const licensePath = path.join(app.getPath('userData'), 'license.bin')
 const deviceIdPath = path.join(app.getPath('userData'), 'device-id')
 const licenseApi = 'https://license-console-mauve.vercel.app/api/license'
 const allowedPreferenceKeys = new Set([
+  'coding-room-support-token',
+  'coding-room-support-name',
   'relay-room.theme',
   'coding-room.locale',
   'relay-room.file-icon-theme',
