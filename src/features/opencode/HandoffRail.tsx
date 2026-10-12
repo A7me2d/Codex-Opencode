@@ -1,3 +1,4 @@
+import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { direction, tr } from '../../lib/i18n'
 import { useMemo } from 'react'
 import { ArrowUpRight, Bot, FileSearch, TerminalSquare, TriangleAlert } from 'lucide-react'
@@ -8,7 +9,7 @@ import { ScrollToLatest } from '../../components/ui/ScrollToLatest'
 import { Spinner } from '../../components/ui/Spinner'
 import { StateDot } from '../../components/ui/StateDot'
 import { StatusPill } from '../../components/ui/StatusPill'
-import { useStickyScroll } from '../../hooks/useStickyScroll'
+import { useChatHistory } from '../../hooks/useChatHistory'
 import type { Notify } from '../../hooks/useAgentAlerts'
 import { readOpenCodeChat } from '../../lib/chat'
 import { asArray } from '../../lib/guards'
@@ -56,7 +57,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
   const messages = useMemo(() => readOpenCodeChat(handoff?.messages), [handoff?.messages])
   const forms = useMemo(() => readForms(handoff?.forms), [handoff?.forms])
   const activity = handoff?.activity ?? idleActivity()
-  const scroll = useStickyScroll(messages, handoff?.link?.opencodeSessionId)
+  const scroll = useChatHistory(messages, handoff?.link?.opencodeSessionId)
 
   const handoffs = useMemo(() => asArray<RelayEvent>(events)
     .filter((event) => event.codexThreadId === thread?.id && event.kind === 'handoff-sent')
@@ -129,7 +130,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
           ) : null}
 
           <div className="relative flex min-h-0 flex-1 flex-col">
-            <div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto">
+            <div ref={scroll.ref} onScroll={scroll.handleScroll} onWheel={scroll.handleWheel} className="thin-scroll min-h-0 flex-1 overflow-y-auto">
               <div className="space-y-4 px-4 py-4">
                 {handoffs.length > 0 ? (
                   <section className="border-b border-line pb-4">
@@ -143,11 +144,12 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
                   </section>
                 ) : null}
 
+                <EarlierMessages count={scroll.hiddenCount} onLoad={scroll.loadOlder} />
                 {messages.length === 0 ? (
                   <p className="py-4 text-center text-xs leading-6 text-ink-soft">{tr("تم إنشاء رابط OpenCode، لكن لا توجد رسالة مرئية منه بعد. ستظهر أول رسالة فعلية هنا تلقائيًا.")}</p>
                 ) : (
                   <ol className="divide-y divide-line/80">
-                    {messages.map((message) => <li key={message.id} className="py-4 first:pt-0 last:pb-0">
+                    {scroll.visibleMessages.map((message) => <li key={message.id} className="py-4 first:pt-0 last:pb-0">
                       <MessageBubble message={message} speaker="opencode" />
                       {message.role === 'assistant' && message.userMessageId ? <MessageChanges sessionId={sessionId} messageId={message.userMessageId} active={handoff.active} onChanged={onRefresh} /> : null}
                     </li>)}

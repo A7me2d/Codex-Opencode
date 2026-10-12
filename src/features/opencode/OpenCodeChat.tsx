@@ -1,3 +1,6 @@
+import { useChatHistory } from '../../hooks/useChatHistory'
+import { EarlierMessages } from '../../components/ui/EarlierMessages'
+import { ScrollToLatest } from '../../components/ui/ScrollToLatest'
 import { tr } from '../../lib/i18n'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, CircleStop, Plus, Send } from 'lucide-react'
@@ -60,6 +63,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
 
   const transcript = usePolling(selected ? () => api.sessionMessages(selected) : null, running ? 2_500 : 15_000, { resetKey: selected })
   const messages = useMemo(() => readOpenCodeChat(transcript.data), [transcript.data])
+  const scroll = useChatHistory(messages, selected)
   const loading = transcript.status === 'loading'
   const read = transcript.refresh
 
@@ -196,14 +200,15 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
         {tr("اختر جلسة من القائمة، أو ابدأ جلسة جديدة، لتتحدث مع OpenCode مباشرة بدون Codex.")}</p>
     ) : (
       <>
-        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="relative flex min-h-0 flex-1 flex-col"><div ref={scroll.ref} onScroll={scroll.handleScroll} onWheel={scroll.handleWheel} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <EarlierMessages count={scroll.hiddenCount} onLoad={scroll.loadOlder} />
           {loading && messages.length === 0 ? (
             <p className="flex items-center justify-center gap-2 py-6 text-xs text-ink-soft"><Spinner />{tr("يتم قراءة الرسائل…")}</p>
           ) : messages.length === 0 ? (
             <p className="py-6 text-center text-xs leading-6 text-ink-soft">{tr("لا توجد رسائل في هذه الجلسة بعد. اكتب أول رسالة.")}</p>
           ) : (
               <ol className="mx-auto max-w-3xl divide-y divide-line/80">
-              {messages.map((message) => <li key={message.id} className="py-4 first:pt-0 last:pb-0">
+              {scroll.visibleMessages.map((message) => <li key={message.id} className="py-4 first:pt-0 last:pb-0">
                 <MessageBubble message={message} speaker="opencode" />
                 {message.role === 'assistant' && message.userMessageId ? <MessageChanges sessionId={selected} messageId={message.userMessageId} active={running} onChanged={() => { void read(); onRefreshSessions() }} /> : null}
               </li>)}
@@ -211,6 +216,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
           )}
         </div>
 
+        <ScrollToLatest visible={!scroll.following && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} /></div>
         <div className="shrink-0 border-t border-line bg-card p-3">
           <div className="flex items-end gap-2 rounded-xl border border-line bg-paper p-2 focus-within:border-ready/55 focus-within:ring-2 focus-within:ring-ready/10">
             <textarea

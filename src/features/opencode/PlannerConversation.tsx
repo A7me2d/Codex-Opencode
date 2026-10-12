@@ -1,3 +1,4 @@
+import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { direction, tr } from '../../lib/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { Send, ArrowUpRight, FileSearch, CircleStop } from 'lucide-react'
@@ -8,7 +9,7 @@ import { MessageBubble } from '../../components/MessageBubble'
 import { McpPanel } from '../../components/McpPanel'
 import { Spinner } from '../../components/ui/Spinner'
 import { ScrollToLatest } from '../../components/ui/ScrollToLatest'
-import { useStickyScroll } from '../../hooks/useStickyScroll'
+import { useChatHistory } from '../../hooks/useChatHistory'
 import { ModelPicker } from './ModelPicker'
 import { QuestionForm } from './QuestionForm'
 import type { HandoffRailProps } from './HandoffRail'
@@ -24,7 +25,7 @@ export function PlannerConversation(props: HandoffRailProps & { codexActive: boo
   const [error, setError] = useState<string | null>(null)
   const messages = useMemo(() => readOpenCodeChat(props.handoff?.messages), [props.handoff?.messages])
   const forms = useMemo(() => readForms(props.handoff?.forms), [props.handoff?.forms])
-  const scroll = useStickyScroll(messages, props.thread?.id)
+  const scroll = useChatHistory(messages, props.thread?.id)
   const active = props.handoff?.active ?? false
   const busy = sending || active || props.codexActive
   const sessionId = props.handoff?.link?.opencodeSessionId
@@ -51,8 +52,9 @@ export function PlannerConversation(props: HandoffRailProps & { codexActive: boo
       <details className="mt-3 rounded-lg border border-line bg-paper"><summary className="cursor-pointer px-3 py-2 text-xs font-bold">{tr("موديل OpenCode")}</summary><div className="p-2"><ModelPicker models={props.models} selected={props.model} onSelect={props.onModelChange} disabled={busy || props.changingModel} />{props.modelError ? <p role="alert" className="text-xs text-review-ink">{props.modelError}</p> : null}</div></details>
     </header>
     <McpPanel agent="opencode" busy={busy} />
-    <div className="relative flex min-h-0 flex-1 flex-col"><div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5">
-      {messages.length ? <ol className="mx-auto flex max-w-3xl flex-col divide-y divide-line/80">{messages.map(message => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="opencode" /></li>)}</ol> : <p className="py-10 text-center text-sm text-ink-soft">{tr("اكتب طلبك إلى OpenCode ليحلله ويجهّز خطة التنفيذ.")}</p>}
+    <div className="relative flex min-h-0 flex-1 flex-col"><div ref={scroll.ref} onScroll={scroll.handleScroll} onWheel={scroll.handleWheel} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5">
+      <EarlierMessages count={scroll.hiddenCount} onLoad={scroll.loadOlder} />
+      {messages.length ? <ol className="mx-auto flex max-w-3xl flex-col divide-y divide-line/80">{scroll.visibleMessages.map(message => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="opencode" /></li>)}</ol> : <p className="py-10 text-center text-sm text-ink-soft">{tr("اكتب طلبك إلى OpenCode ليحلله ويجهّز خطة التنفيذ.")}</p>}
       {sessionId ? forms.map(form => <QuestionForm key={form.id} sessionId={sessionId} form={form} onAnswered={props.onRefresh} onNotify={props.onNotify} />) : null}
     </div><ScrollToLatest visible={!scroll.following && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} /></div>
     <footer className="shrink-0 space-y-3 border-t border-line bg-card p-3">
