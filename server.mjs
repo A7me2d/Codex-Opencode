@@ -2,7 +2,7 @@ import { readProjectFile, saveProjectFile } from './server/project-editor.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -606,6 +606,11 @@ class CodexAppServerBridge {
     this.activeThreads = new Set()
     this.resumingThreads = new Map()
     this.threadInstructions = new Map()
+    // What this client sent and what the RPC acknowledged, never a claim about
+    // the model's effective context. Keep this separate from the resume cache.
+    this.instructionRequests = new Map()
+    this.instructionAuditWrites = Promise.resolve()
+    this.instructionAuditError = null
     this.runningTurns = new Map()
     this.completedTurns = new Map()
     this.onTurnCompleted = null
@@ -681,14 +686,53 @@ class CodexAppServerBridge {
     }
 
     const id = this.nextId++
-    return new Promise((resolve, reject) => {
+    const tracksInstructions = ['thread/start', 'thread/resume'].includes(method)
+      && typeof params?.developerInstructions === 'string'
+    const audit = tracksInstructions ? {
+      requestId: id, threadId: params.threadId ?? null, method,
+      requestedAt: new Date().toISOString(), developerInstructions: params.developerInstructions,
+      status: 'sent', effectiveInstructions: 'unverified',
+      permissionsOverridden: 'sandbox' in params || 'approvalPolicy' in params,
+    } : null
+    const request = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(String(id))
         reject(new Error(`Codex app-server did not answer ${method} in time.`))
       }, timeoutMs)
       this.pending.set(String(id), { resolve, reject, timer })
-      this.write({ jsonrpc: '2.0', id, method, params })
+      try {
+        this.write({ jsonrpc: '2.0', id, method, params })
+        if (audit) this.recordInstructionRequest(audit)
+      } catch (error) {
+        clearTimeout(timer)
+        this.pending.delete(String(id))
+        reject(error)
+      }
     })
+    return request.then((response) => {
+      if (audit) this.recordInstructionRequest({ ...audit,
+        threadId: audit.threadId ?? response?.thread?.id ?? response?.data?.id ?? response?.id ?? null,
+        status: 'rpc-accepted', completedAt: new Date().toISOString(),
+      })
+      return response
+    }, (error) => {
+      if (audit) this.recordInstructionRequest({ ...audit, status: 'rpc-failed', completedAt: new Date().toISOString() })
+      throw error
+    })
+  }
+
+  recordInstructionRequest(record) {
+    const key = record.threadId ?? `request:${record.requestId}`
+    if (record.threadId) this.instructionRequests.delete(`request:${record.requestId}`)
+    this.instructionRequests.set(key, record)
+    if (this.instructionRequests.size > 200) this.instructionRequests.delete(this.instructionRequests.keys().next().value)
+    // Logging must never block a user turn. Only role instructions and RPC
+    // metadata are recorded; no prompts, credentials, or response bodies.
+    this.instructionAuditWrites = this.instructionAuditWrites.then(async () => {
+      await mkdir(stateDirectory, { recursive: true })
+      await appendFile(path.join(stateDirectory, 'codex-instructions.jsonl'), `${JSON.stringify(record)}\n`, { mode: 0o600 })
+      this.instructionAuditError = null
+    }).catch((error) => { this.instructionAuditError = error.code ?? 'write-failed' })
   }
 
   write(message) {
@@ -892,8 +936,8 @@ class CodexAppServerBridge {
 
     const resume = (async () => {
       if (active) {
-        // Warm resume ignores overrides while subscribed. Unsubscribe allows
-        // Codex to rebuild an idle session from its existing persisted rollout.
+        // Request a cold resume of this idle thread. RPC acceptance is not proof
+        // that Codex replaced developer messages in the model context.
         await this.call('thread/unsubscribe', { threadId })
         this.activeThreads.delete(threadId)
         this.threadInstructions.delete(threadId)
@@ -954,6 +998,19 @@ class CodexAppServerBridge {
 }
 
 const codexBridge = new CodexAppServerBridge()
+
+function threadInstructionSelection(saved) {
+  if (saved.workflowRole === 'executor' && saved.workflow?.planner === 'codex') {
+    return { source: 'codexToCodexExecutorInstructions', text: codexToCodexExecutorInstructions }
+  }
+  if (saved.workflowRole === 'executor' || (saved.workflow?.planner === 'opencode' && saved.workflow?.executor === 'codex')) {
+    return { source: 'codexExecutorInstructions', text: codexExecutorInstructions }
+  }
+  if (saved.workflow?.planner === 'codex' && saved.workflow?.executor === 'codex') {
+    return { source: 'codexPlannerInstructions', text: codexPlannerInstructions }
+  }
+  return { source: 'relayCodexInstructions', text: relayCodexInstructions }
+}
 
 function codexSandboxMode(value) {
   return ({ readOnly: 'read-only', workspaceWrite: 'workspace-write', dangerFullAccess: 'danger-full-access' })[value] ?? value ?? ''
@@ -1089,11 +1146,7 @@ async function ensureRelayCodexThreadLoaded(threadId) {
       cwd,
       // Preserve the existing thread's permissions and approval policy.
       // Opening a conversation in Open Zero must not downgrade its sandbox.
-      developerInstructions: saved.workflowRole === 'executor' && saved.workflow?.planner === 'codex'
-        ? codexToCodexExecutorInstructions
-        : saved.workflowRole === 'executor' || (saved.workflow?.planner === 'opencode' && saved.workflow?.executor === 'codex')
-          ? codexExecutorInstructions
-        : saved.workflow?.planner === 'codex' && saved.workflow?.executor === 'codex' ? codexPlannerInstructions : relayCodexInstructions,
+      developerInstructions: threadInstructionSelection(saved).text,
       excludeTurns: true,
     })
     if (resumed?.model) {
@@ -2376,6 +2429,24 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'GET' && url.pathname === '/api/codex/models') {
       sendJson(response, 200, { data: await listCodexModels() })
+      return
+    }
+
+    const codexInstructionsMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/instructions$/)
+    if (request.method === 'GET' && codexInstructionsMatch) {
+      const threadId = codexInstructionsMatch[1]
+      const saved = (await readCodexState()).threads[threadId]
+      if (!saved) throw new HttpError(404, 'This Codex session is not registered in Open Zero.')
+      const selected = threadInstructionSelection(saved)
+      const lastRequest = codexBridge.instructionRequests.get(threadId) ?? null
+      sendJson(response, 200, { data: {
+        threadId, source: selected.source, expectedInstructions: selected.text,
+        lastRequest, active: codexBridge.activeThreads.has(threadId),
+        auditWriteError: codexBridge.instructionAuditError,
+        updatePending: codexBridge.threadInstructions.get(threadId) !== selected.text,
+        deferredUntilIdle: codexBridge.getTurnState(threadId).active,
+        effectiveInstructions: 'unverified',
+      } })
       return
     }
 

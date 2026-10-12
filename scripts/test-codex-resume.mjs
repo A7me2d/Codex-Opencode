@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { appendFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import vm from 'node:vm'
 import { codexPlannerInstructions, codexExecutorInstructions, codexToCodexExecutorInstructions } from '../server/workflow.mjs'
 
@@ -57,3 +60,53 @@ for (const instructions of [codexPlannerInstructions, codexExecutorInstructions,
   assert.match(instructions, /authorized/)
 }
 console.log('Passed: instruction refresh, busy deferral, same-history resume, permissions preserved, concurrency, retry, fresh threads, workflow execution instructions.')
+
+// Verify capture at the actual transport boundary, rather than the resume cache.
+const transport = vm.runInContext('new CodexAppServerBridge()', context)
+context.setTimeout = setTimeout
+context.clearTimeout = clearTimeout
+transport.child = { stdin: { writable: true } }
+const records = []
+transport.recordInstructionRequest = record => records.push(record)
+let packet
+transport.write = message => { packet = message }
+const accepted = transport.requestRaw('thread/resume', { threadId: 'existing', ...params }, 1000)
+assert.equal(packet.params.developerInstructions, params.developerInstructions)
+assert.equal(records[0].status, 'sent')
+const waiting = transport.pending.get(String(packet.id))
+clearTimeout(waiting.timer)
+transport.pending.delete(String(packet.id))
+waiting.resolve({ thread: { id: 'existing' } })
+await accepted
+assert.equal(records.at(-1).status, 'rpc-accepted')
+assert.equal(records.at(-1).effectiveInstructions, 'unverified')
+assert.equal(records.at(-1).permissionsOverridden, false)
+transport.write = () => { throw new Error('broken pipe') }
+await assert.rejects(transport.requestRaw('thread/resume', { threadId: 'existing', ...params }, 1000), /broken pipe/)
+assert.equal(transport.pending.size, 0)
+assert.equal(records.at(-1).status, 'rpc-failed')
+console.log('Passed: actual outbound instructions captured; RPC acceptance is not effective-context proof; transport failure clears pending requests.')
+
+Object.assign(context, { codexPlannerInstructions, codexExecutorInstructions, codexToCodexExecutorInstructions, relayCodexInstructions: 'relay instructions' })
+vm.runInContext(source.slice(source.indexOf('function threadInstructionSelection('), source.indexOf('function codexSandboxMode(')), context)
+assert.equal(context.threadInstructionSelection({}).source, 'relayCodexInstructions')
+assert.equal(context.threadInstructionSelection({ workflow: { planner: 'codex', executor: 'codex' } }).text, codexPlannerInstructions)
+assert.equal(context.threadInstructionSelection({ workflow: { planner: 'opencode', executor: 'codex' } }).text, codexExecutorInstructions)
+assert.equal(context.threadInstructionSelection({ workflowRole: 'executor', workflow: { planner: 'codex', executor: 'codex' } }).text, codexToCodexExecutorInstructions)
+
+// Persist only synthetic instructions in isolated storage, never the real state.
+const auditRoot = await mkdtemp(path.join(tmpdir(), 'openzero-instruction-audit-'))
+try {
+  Object.assign(context, { appendFile, mkdir, path, stateDirectory: auditRoot })
+  const diskBridge = vm.runInContext('new CodexAppServerBridge()', context)
+  diskBridge.recordInstructionRequest(records[0])
+  diskBridge.recordInstructionRequest(records[1])
+  await diskBridge.instructionAuditWrites
+  assert.equal(diskBridge.instructionAuditError, null)
+  const lines = (await readFile(path.join(auditRoot, 'codex-instructions.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse)
+  assert.equal(lines.length, 2)
+  assert.equal(lines[0].developerInstructions, params.developerInstructions)
+  assert.equal(lines[1].status, 'rpc-accepted')
+  assert.equal(lines[1].effectiveInstructions, 'unverified')
+} finally { await rm(auditRoot, { recursive: true, force: true }) }
+console.log('Passed: all four saved-role instruction sources and ordered audit persistence in isolated storage.')

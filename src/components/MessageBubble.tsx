@@ -11,7 +11,7 @@ export const MessageBubble = memo(function MessageBubble({ message, speaker }: {
   const isUser = message.role === 'user'
   const lines = message.text.split('\n')
 
-  return <article className={cx('flex items-start gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
+  return <article className={cx('chat-message flex items-start gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
     <div
       aria-hidden="true"
       className={cx(

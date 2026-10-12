@@ -83,7 +83,7 @@ function Picker({ label, icon: Icon, value, options, disabled, onChange }: {
 
 export function CodexSettingsPicker({ selection, disabled }: { selection: CodexSelection; disabled: boolean }) {
   const model = selection.models.find((entry) => entry.model === selection.current.model)
-  return <div className="mb-3 flex flex-wrap items-center gap-1.5">
+  return <div className="chat-settings mb-3 flex flex-wrap items-center gap-1.5">
     <Picker label={tr("موديل Codex")} icon={Bot} value={selection.current.model}
       options={selection.models.map((entry) => ({ value: entry.model, label: entry.displayName || entry.model, detail: entry.model }))}
       disabled={disabled || selection.loading} onChange={selection.onModelChange} />

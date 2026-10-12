@@ -69,7 +69,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
   // Show the provider's own name so the rail says what is really running.
   const modelLabel = models.find((entry) => entry.id === model)?.name ?? model ?? 'OpenCode'
 
-  return <aside dir={direction()} className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
+  return <aside dir={direction()} className="chat-panel flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
     <div className="shrink-0 border-b border-line px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm font-bold text-ink">

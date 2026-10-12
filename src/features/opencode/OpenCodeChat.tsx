@@ -125,7 +125,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     }
   }
 
-  return <section aria-label={tr("شات مباشر مع OpenCode")} className={cx('min-h-0 border-t border-line', minimized ? 'mt-auto shrink-0' : 'flex flex-1 flex-col')}>
+  return <section aria-label={tr("شات مباشر مع OpenCode")} className={cx('chat-panel min-h-0 border-t border-line', minimized ? 'mt-auto shrink-0' : 'flex flex-1 flex-col')}>
     <div className={cx('shrink-0 bg-paper px-3 py-2.5', minimized ? '' : 'space-y-2 border-b border-line')}>
       <button
         type="button"
@@ -217,9 +217,10 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
         </div>
 
         <ScrollToLatest visible={!scroll.following && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} /></div>
-        <div className="shrink-0 border-t border-line bg-card p-3">
-          <div className="flex items-end gap-2 rounded-xl border border-line bg-paper p-2 focus-within:border-ready/55 focus-within:ring-2 focus-within:ring-ready/10">
+        <div className="chat-composer shrink-0 border-t border-line bg-card p-3">
+          <div className="chat-composer-row flex items-end gap-2 rounded-xl border border-line bg-paper p-2 focus-within:border-ready/55 focus-within:ring-2 focus-within:ring-ready/10">
             <textarea
+              aria-label={tr("إرسال إلى OpenCode")}
               ref={box}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
@@ -228,7 +229,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
               }}
               rows={2}
               placeholder={running ? tr("اكتب تصحيحًا، سيصل إلى العمل الجاري…") : tr("اكتب إلى OpenCode…")}
-              className="min-h-[3rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75"
+              className="min-w-0 min-h-[3rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75"
             />
             <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ready text-on-accent transition-colors hover:bg-ready-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={tr("إرسال إلى OpenCode")}>
               {sending ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" aria-hidden="true" />}

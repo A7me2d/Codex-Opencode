@@ -62,7 +62,7 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); deliver() }
   }
 
-  return <form onSubmit={submit} className="shrink-0 border-t border-line bg-card p-3 sm:p-4">
+  return <form onSubmit={submit} className="chat-composer shrink-0 border-t border-line bg-card p-3 sm:p-4">
     <CodexSettingsPicker selection={codexSelection} disabled={busy || Boolean(queued)} />
     {codexSelection.error ? <ErrorNote>{tr(codexSelection.error)}</ErrorNote> : null}
     {queued ? (
@@ -92,7 +92,7 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
       </div>
     ) : null}
 
-    <div className="flex items-end gap-2 rounded-xl border border-line bg-paper p-2 focus-within:border-relay/60 focus-within:ring-2 focus-within:ring-relay/10">
+    <div className="chat-composer-row chat-composer-with-tools flex items-end gap-2 rounded-xl border border-line bg-paper p-2 focus-within:border-relay/60 focus-within:ring-2 focus-within:ring-relay/10">
       <button type="button" onClick={onAttach} disabled={busy || attaching} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-ink-soft transition-colors hover:border-relay/40 hover:text-relay-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={tr("اختيار ملف من المشروع وإرسال مساره فقط")} title={tr("إرسال مسار ملف فقط")}>
         {attaching ? <Spinner className="h-4 w-4" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
       </button>
@@ -101,7 +101,7 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
         <AtSign className="h-4 w-4" aria-hidden="true" />
       </button>
 
-      <textarea ref={textareaRef} value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? tr("اكتب توجيهًا إلى Codex المنفّذ…") : tr("اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.")} className="min-h-[3.4rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
+      <textarea aria-label={tr("اكتب إلى Codex…")} ref={textareaRef} value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? tr("اكتب توجيهًا إلى Codex المنفّذ…") : tr("اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.")} className="min-w-0 min-h-[3.4rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
 
       {turn.active ? (
         <button type="button" onClick={onStop} disabled={turn.stopping} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-review text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55" aria-label={tr("إيقاف Codex فورًا")} title={tr("إيقاف Codex فورًا")}>
