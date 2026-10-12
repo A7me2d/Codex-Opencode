@@ -317,21 +317,44 @@ function LicenseGate() {
   const isArabic = useLocale() === 'ar'
   const [checking, setChecking] = useState(true)
   const [active, setActive] = useState(false)
-  const [freeRemaining, setFreeRemaining] = useState<number | null>(null)
   const [key, setKey] = useState('')
   const [error, setError] = useState('')
   const [activating, setActivating] = useState(false)
 
   useEffect(() => {
     let mounted = true
-    void api.licenseStatus().then(result => {
-      if (!mounted) return
-      setActive(result.active || (result.free?.remaining ?? 0) > 0)
-      setFreeRemaining(result.free?.remaining ?? 0)
-    }).catch(reason => {
-      if (mounted) setError(reason instanceof Error ? reason.message : String(reason))
-    }).finally(() => { if (mounted) setChecking(false) })
-    return () => { mounted = false }
+    let running = false
+    let revision = 0
+    const refresh = async () => {
+      if (running) return
+      running = true
+      const currentRevision = revision
+      try {
+        const result = await api.licenseStatus()
+        if (!mounted || currentRevision !== revision) return
+        setActive(!result.licenseError && result.active)
+        setError(result.licenseError || '')
+      } catch (reason) {
+        if (mounted && currentRevision === revision) setError(reason instanceof Error ? reason.message : String(reason))
+      } finally {
+        running = false
+        if (mounted) setChecking(false)
+      }
+    }
+    const onActivation = () => { revision++; void refresh() }
+    const onVisible = () => { if (!document.hidden) void refresh() }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 45_000)
+    window.addEventListener('focus', onVisible)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('coding-room:license-activated', onActivation)
+    return () => {
+      mounted = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('coding-room:license-activated', onActivation)
+    }
   }, [])
 
   const activate = async (event: FormEvent) => {
@@ -340,6 +363,7 @@ function LicenseGate() {
     setError('')
     try {
       const result = await api.activateLicense(key)
+      window.dispatchEvent(new Event('coding-room:license-activated'))
       setActive(result.active)
       setKey('')
     } catch (reason) {
@@ -349,9 +373,7 @@ function LicenseGate() {
 
   if (active) return <WorkspaceApp />
   const title = isArabic ? 'تفعيل Coding Room' : 'Activate Coding Room'
-  const description = freeRemaining !== null && freeRemaining <= 0
-    ? (isArabic ? 'انتهت الطلبات المجانية لهذا اليوم. أدخل مفتاح تفعيل للمتابعة.' : 'Your free requests for today are used. Enter an activation key to continue.')
-    : (isArabic ? 'أدخل مفتاح التفعيل أو استخدم رصيدك المجاني. كل رسالة ترسلها تستهلك طلبًا واحدًا.' : 'Enter an activation key or use your free quota. Each message uses one request.')
+  const description = isArabic ? 'أدخل مفتاح تفعيل صالح لاستخدام Coding Room. كل رسالة تستهلك طلبًا من رصيد مفتاحك.' : 'Enter a valid activation key to use Coding Room. Each message uses one request from your key quota.'
   return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center bg-paper px-5 text-ink">
     <form onSubmit={activate} className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
       <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-relay-tint text-relay-ink"><KeyRound className="h-5 w-5" /></div>
