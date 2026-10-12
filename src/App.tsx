@@ -195,7 +195,7 @@ function WorkspaceApp() {
     onStop={executorConversation.composer.onStop}
   /> : null
 
-  return <div dir={direction()} className="flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+  return <div dir={direction()} className="openzero-workspace flex min-h-screen flex-col bg-paper text-ink lg:h-dvh lg:min-h-0 lg:overflow-hidden">
     <AlertStack alerts={room.alerts.list} onDismiss={room.alerts.onDismiss} />
 
     <AppHeader

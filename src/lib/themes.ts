@@ -3,6 +3,7 @@ import { persistPreference, preferenceKeys } from './preferences'
 
 export function getThemes() {
   return [
+    { id: 'liquid-glass', name: 'Liquid Glass Design', description: tr('زجاج داكن، حواف فضية ولمعة ناعمة مع نص واضح.') },
     { id: 'default', name: tr("الأساسي"), description: tr("نفس الاستايل الأصلي الفاتح.") },
     { id: 'tokyo-night', name: 'Tokyo Night', description: tr("خلفية داكنة وألوان أزرق وبنفسجي.") },
     { id: 'tokyo-storm', name: 'Tokyo Night Storm', description: tr("درجات كحلي مائلة للبنفسجي.") },
