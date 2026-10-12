@@ -118,6 +118,8 @@ const english: Record<string, string> = {
   'مسار التفويض': 'Delegation',
   'مسح': 'Clear',
   'مصدر ألوان الثيم · الألوان مهيّأة لواجهة Open Zero': 'Theme color source · colors adapted for Open Zero',
+  'زجاج شفاف، إضاءة ناعمة وألوان هادئة مع نص واضح.': 'Translucent glass, soft light, and calm colors with clear text.',
+  'زجاج داكن، حواف فضية ولمعة ناعمة مع نص واضح.': 'Dark glass, silver edges, and soft highlights with clear text.',
   'ملف متبقٍ)': ' file(s) remaining)',
   'ملف مرتبط بالرسالة': 'File attached to this message',
   'موديل OpenCode': 'OpenCode model',

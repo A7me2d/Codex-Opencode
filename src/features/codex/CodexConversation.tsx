@@ -1,3 +1,4 @@
+import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { direction, tr } from '../../lib/i18n'
 import { ArrowUpRight, CircleDot, Plus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
@@ -5,7 +6,7 @@ import { MessageBubble } from '../../components/MessageBubble'
 import { ScrollToLatest } from '../../components/ui/ScrollToLatest'
 import { Spinner } from '../../components/ui/Spinner'
 import { StatusPill } from '../../components/ui/StatusPill'
-import { useStickyScroll } from '../../hooks/useStickyScroll'
+import { useChatHistory } from '../../hooks/useChatHistory'
 import type { ChatMessage, CodexThread, CodexTurnState } from '../../lib/types'
 import type { SessionFileDiff } from '../../lib/types'
 import { Composer } from './Composer'
@@ -74,7 +75,7 @@ export function CodexConversation(props: CodexConversationProps) {
   const [executingPlan, setExecutingPlan] = useState(false)
   const [executionError, setExecutionError] = useState<string | null>(null)
   const executorChat = thread?.workflowRole === 'executor'
-  const scroll = useStickyScroll(messages, thread?.id)
+  const scroll = useChatHistory(messages, thread?.id)
 
   return <section dir={direction()} className="flex min-h-[32rem] min-w-0 flex-col bg-paper lg:min-h-0 lg:overflow-hidden">
     {thread ? (
@@ -98,7 +99,8 @@ export function CodexConversation(props: CodexConversationProps) {
         <McpPanel agent="codex" busy={turn.active || sending} />
 
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div ref={scroll.ref} onScroll={scroll.handleScroll} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          <div ref={scroll.ref} onScroll={scroll.handleScroll} onWheel={scroll.handleWheel} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+            <EarlierMessages count={scroll.hiddenCount} onLoad={scroll.loadOlder} />
             <div className="mx-auto mb-4"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} files={props.fileChanges} /></div>
             {loading && messages.length === 0 ? (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-ink-soft">
@@ -109,7 +111,7 @@ export function CodexConversation(props: CodexConversationProps) {
               </div>
             ) : (
               <ol className="mx-auto flex flex-col divide-y divide-line/80">
-                {messages.map((message) => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="codex" /></li>)}
+                {scroll.visibleMessages.map((message) => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="codex" /></li>)}
               </ol>
             )}
           </div>

@@ -126,6 +126,7 @@ ipcMain.handle('preferences:set', async (_event, key, value) => {
 })
 
 const titlebarColors = {
+  'liquid-glass': ['#16191e', '#edf0f5'],
   default: ['#fcfcfd', '#1b2735'],
   'tokyo-night': ['#202230', '#c0caf5'],
   'tokyo-storm': ['#292e42', '#c0caf5'],
