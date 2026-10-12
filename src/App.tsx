@@ -344,7 +344,7 @@ function LicenseGate() {
     const onActivation = () => { revision++; void refresh() }
     const onVisible = () => { if (!document.hidden) void refresh() }
     void refresh()
-    const timer = window.setInterval(() => void refresh(), 5000)
+    const timer = window.setInterval(() => void refresh(), 45_000)
     window.addEventListener('focus', onVisible)
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('coding-room:license-activated', onActivation)
