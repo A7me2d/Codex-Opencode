@@ -605,6 +605,7 @@ class CodexAppServerBridge {
     this.delegationGrants = new Map()
     this.activeThreads = new Set()
     this.resumingThreads = new Map()
+    this.threadInstructions = new Map()
     this.runningTurns = new Map()
     this.completedTurns = new Map()
     this.onTurnCompleted = null
@@ -634,6 +635,7 @@ class CodexAppServerBridge {
     this.stderr = ''
     this.activeThreads.clear()
     this.resumingThreads.clear()
+    this.threadInstructions.clear()
     this.runningTurns.clear()
     this.completedTurns.clear()
     child.stdout.on('data', (chunk) => this.consumeStdout(chunk.toString()))
@@ -755,6 +757,15 @@ class CodexAppServerBridge {
 
   handleNotification(packet) {
     const params = packet.params ?? {}
+    if (packet.method === 'turn/started') {
+      this.markTurnRunning(params.threadId, params.turn?.id ?? params.turnId)
+      return
+    }
+    if (packet.method === 'thread/closed') {
+      this.activeThreads.delete(params.threadId)
+      this.threadInstructions.delete(params.threadId)
+      return
+    }
     if (packet.method === 'item/started' || packet.method === 'thread/realtime/item/started' || packet.method === 'thread/realtime/itemAdded') {
       this.recordLiveItem(params.threadId, params.item)
       return
@@ -809,8 +820,10 @@ class CodexAppServerBridge {
     return Array.from(this.liveMessages.get(threadId)?.values() ?? [])
   }
 
-  markThreadActive(threadId) {
-    if (safeCodexThreadId(threadId)) this.activeThreads.add(threadId)
+  markThreadActive(threadId, developerInstructions) {
+    if (!safeCodexThreadId(threadId)) return
+    this.activeThreads.add(threadId)
+    if (typeof developerInstructions === 'string') this.threadInstructions.set(threadId, developerInstructions)
   }
 
   markTurnRunning(threadId, turnId) {
@@ -864,13 +877,31 @@ class CodexAppServerBridge {
   }
 
   async resumeThread(threadId, params) {
-    if (this.activeThreads.has(threadId)) return
+    await this.ensureStarted()
     const pending = this.resumingThreads.get(threadId)
-    if (pending) return pending
+    if (pending) {
+      await pending
+      return this.resumeThread(threadId, params)
+    }
+    const active = this.activeThreads.has(threadId)
+    const changed = typeof params.developerInstructions === 'string'
+      && this.threadInstructions.get(threadId) !== params.developerInstructions
+    // Keep receiving events for an in-flight turn. Retry the update on the next
+    // load/send after completion, without interrupting or replacing its history.
+    if (this.runningTurns.has(threadId) || (active && !changed)) return
 
-    const resume = this.call('thread/resume', { threadId, ...params })
+    const resume = (async () => {
+      if (active) {
+        // Warm resume ignores overrides while subscribed. Unsubscribe allows
+        // Codex to rebuild an idle session from its existing persisted rollout.
+        await this.call('thread/unsubscribe', { threadId })
+        this.activeThreads.delete(threadId)
+        this.threadInstructions.delete(threadId)
+      }
+      return this.call('thread/resume', { threadId, ...params })
+    })()
       .then((response) => {
-        this.activeThreads.add(threadId)
+        this.markThreadActive(threadId, params.developerInstructions)
         return response
       })
       .finally(() => this.resumingThreads.delete(threadId))
@@ -914,6 +945,7 @@ class CodexAppServerBridge {
     this.started = null
     this.activeThreads.clear()
     this.resumingThreads.clear()
+    this.threadInstructions.clear()
     this.runningTurns.clear()
     this.completedTurns.clear()
     this.failAll(new Error('Open Zero stopped the Codex app-server.'))
@@ -1193,7 +1225,7 @@ async function createRelayCodexThread(input) {
       state.threads[saved.id].codexEffort = ''
     }
   })
-  codexBridge.markThreadActive(saved.id)
+  codexBridge.markThreadActive(saved.id, codexIsOnlyExecutor ? codexExecutorInstructions : codexIsPlannerOnly ? codexPlannerInstructions : relayCodexInstructions)
 
   try {
     await codexBridge.call('thread/name/set', { threadId: saved.id, name: title })
@@ -1334,7 +1366,7 @@ async function createCodexExecutorThread(workflow, title) {
     state.threads[saved.id].codexModel = workflow.executorModel || ''
     state.threads[saved.id].codexEffort = ''
   })
-  codexBridge.markThreadActive(saved.id)
+  codexBridge.markThreadActive(saved.id, codexToCodexExecutorInstructions)
   try { await codexBridge.call('thread/name/set', { threadId: saved.id, name }) } catch { /* cosmetic */ }
   return { ...thread, ...saved, id: saved.id, title: name, workflow }
 }
