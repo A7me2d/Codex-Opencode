@@ -409,20 +409,20 @@ function LicenseGate() {
   const description = quotaExhausted
     ? (isArabic ? 'رصيد مفتاحك وصل إلى صفر. الإرسال متوقف حتى تجديد الرصيد اليومي أو تفعيل مفتاح آخر.' : 'Your key has zero requests remaining. Messaging is paused until the daily quota resets or you activate another key.')
     : (isArabic ? 'أدخل مفتاح تفعيل صالح لاستخدام OpenZero. كل رسالة تستهلك طلبًا من رصيد مفتاحك.' : 'Enter a valid activation key to use OpenZero. Each message uses one request from your key quota.')
-  return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center bg-paper px-5 text-ink">
-    <form onSubmit={activate} className="w-full max-w-md rounded-2xl border border-line bg-card p-7 shadow-xl shadow-black/5">
-      <img src="/brand/openzero-wordmark-256.png" alt="OpenZero" className="mb-5 h-36 w-36 rounded-2xl object-contain" />
-      <h1 className="text-xl font-bold">{title}</h1>
-      <p className="mt-2 text-sm leading-6 text-ink-soft">{description}</p>
-      {quotaExhausted && <p className="mt-3 text-xs font-semibold text-review-ink">{isArabic ? 'المتبقي: 0 · تجديد الرصيد:' : 'Remaining: 0 · Quota resets:'} {resetsAt ? new Date(resetsAt).toLocaleString(isArabic ? 'ar-EG' : 'en-US') : '00:00 UTC'}</p>}
-      <label htmlFor="license-key" className="mt-6 block text-xs font-semibold">{isArabic ? 'مفتاح التفعيل' : 'Activation key'}</label>
-      <input id="license-key" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="CR-…" className="mt-2 w-full rounded-lg border border-line bg-paper px-3 py-2.5 font-mono text-sm outline-none focus:border-relay" />
-      {error ? <p role="alert" className="mt-3 rounded-lg border border-relay/30 bg-relay-tint px-3 py-2 text-xs leading-5 text-relay-ink">{error}</p> : null}
-      <button type="submit" disabled={activating || checking || !key.trim()} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-relay px-4 py-2.5 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+  return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center overflow-y-auto bg-[#06080f] px-6 py-8 text-[#dce7ff]">
+    <form onSubmit={activate} className="w-full max-w-[380px]">
+      <img src="/brand/openzero-wordmark.png" alt="OpenZero" className="mx-auto w-[min(280px,65vw)] rounded-3xl object-contain" />
+      <h1 className="mt-5 text-center text-xl font-bold tracking-tight">{title}</h1>
+      <p className="mt-3 text-center text-sm leading-6 text-[#a9b9d8]">{description}</p>
+      {quotaExhausted && <p className="mt-4 rounded-xl border border-[#e9b36c]/25 bg-[#e9b36c]/10 px-4 py-3 text-xs font-semibold leading-6 text-[#f5cc99]">{isArabic ? 'المتبقي: 0 · تجديد الرصيد:' : 'Remaining: 0 · Quota resets:'} {resetsAt ? new Date(resetsAt).toLocaleString(isArabic ? 'ar-EG' : 'en-US') : '00:00 UTC'}</p>}
+      <label htmlFor="license-key" className="mt-7 block text-xs font-semibold text-[#becce4]">{isArabic ? 'مفتاح التفعيل' : 'Activation key'}</label>
+      <input id="license-key" dir="ltr" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="CR-…" aria-invalid={Boolean(error)} aria-describedby={error ? 'activation-error' : undefined} className="mt-2 h-12 w-full rounded-xl border border-[#253149] bg-[#0d1320] px-4 font-mono text-sm text-[#eef3ff] outline-none transition placeholder:text-[#667895] hover:border-[#394c6a] focus:border-[#61cfff] focus:ring-4 focus:ring-[#61cfff]/10" />
+      {error ? <p id="activation-error" role="alert" className="mt-3 rounded-xl border border-[#f59aab]/25 bg-[#f59aab]/10 px-4 py-3 text-xs leading-5 text-[#ffc1cf]">{isArabic && error === 'License is invalid, expired, or disabled.' ? 'المفتاح غير صالح، أو انتهت مدته، أو تم تعطيله. أدخل مفتاحًا آخر أو تواصل مع الدعم.' : error}</p> : null}
+      <button type="submit" disabled={activating || checking || !key.trim()} className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6868ee] to-[#279fca] px-4 text-sm font-bold text-[#f4f7ff] shadow-[0_6px_24px_rgba(71,116,225,0.18)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86d9ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#06080f] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none">
         {activating || checking ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
         {checking ? (isArabic ? 'جارٍ التحقق…' : 'Checking…') : activating ? (isArabic ? 'جارٍ التفعيل…' : 'Activating…') : (isArabic ? 'تفعيل' : 'Activate')}
       </button>
-      <div className="mt-4 flex justify-center"><SupportButton /></div>
+      <div className="mt-6 flex justify-center border-t border-[#253149]/60 pt-5"><SupportButton appearance="welcome" /></div>
     </form>
   </main>
 }
