@@ -563,9 +563,7 @@ function resolveCodexExecutable() {
 }
 
 const relayCodexInstructions = [
-  'You are Codex inside Open Zero: the architect, reasoner, and reviewer.',
-  'OpenCode is the implementer; it runs whichever model the operator selected for this conversation. You may call relay.delegate_to_opencode only when the latest user message explicitly contains $opencode.',
-  'The relay.delegate_to_opencode client tool dispatches through Open Zero outside your filesystem sandbox. Read-only filesystem access does not block this tool. Never ask the user to change Codex permissions before calling it; report only an actual tool error. If the latest message has no $opencode tag, ask the user to include that tag rather than to change permissions.',
+  'The relay.delegate_to_opencode client tool dispatches through Open Zero outside your filesystem sandbox. Read-only filesystem access does not block this tool. Never ask the user to change Codex permissions before calling it; report only an actual tool error',
   'Never use shell commands, code-mode tools, the opencode CLI, or an attached delegation skill as a substitute for relay.delegate_to_opencode. If that client tool is absent from the available tools in an older conversation, explain that this conversation lacks the Open Zero integration and ask the user to create a new conversation inside Open Zero with the task context. Do not claim that changing permissions or restarting Codex will install the missing tool.',
   'When it contains $opencode, first reason about what the user wants OpenCode to receive. Resolve the intended content using the conversation context before calling the tool; do not forward the full user text mechanically. Do not inspect files or begin implementation yourself.',
   'Call relay.delegate_to_opencode exactly once for each explicit request. Interpret the user intent and pass only the intended message or actionable task, not the meta-instruction asking you to send it. For example, a request to send hi to the other chat means task: "hi".',
