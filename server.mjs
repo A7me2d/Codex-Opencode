@@ -1,3 +1,4 @@
+import { hostname } from 'node:os'
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
@@ -52,7 +53,7 @@ async function callLicenseApi(endpoint, { token, ...options } = {}) {
   try {
     response = await fetch(`${licenseApiBase}${endpoint}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', 'X-Device-Name': encodeURIComponent(hostname()), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
     })
   } catch { throw new HttpError(503, 'The license service is unavailable. Check your internet connection and try again.') }
   const body = await response.json().catch(() => ({}))
@@ -78,7 +79,7 @@ async function readLicenseStatus() {
 async function activateLicenseKey(key) {
   await licenseStateReady
   if (typeof key !== 'string' || key.trim().length < 20 || key.length > 256) throw new HttpError(400, 'Enter a valid activation key.')
-  const body = await callLicenseApi('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId }) })
+  const body = await callLicenseApi('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId, deviceName: hostname() }) })
   if (!body.ok || typeof body.token !== 'string') throw new HttpError(403, body.reason === 'device_limit' ? 'This key has reached its device limit.' : 'This key is invalid, expired, or disabled.')
   licenseActivationToken = body.token
   if (!process.parentPort) await writeFile(licenseStatePath, JSON.stringify({ token: licenseActivationToken }), { mode: 0o600 })

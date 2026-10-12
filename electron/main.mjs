@@ -1,3 +1,4 @@
+import { hostname } from 'node:os'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell, utilityProcess } from 'electron'
 import { spawn as spawnPty } from 'node-pty'
 import electronUpdater from 'electron-updater'
@@ -68,7 +69,7 @@ async function licenseRequest(endpoint, { token, ...options } = {}) {
   try {
     response = await fetch(`${licenseApi}${endpoint}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', 'X-Device-Name': encodeURIComponent(hostname()), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers ?? {}) },
     })
   } catch { throw new Error('Could not reach the license service. Check your internet connection and try again.') }
   const body = await response.json().catch(() => ({}))
@@ -86,12 +87,12 @@ ipcMain.handle('license:status', async () => {
     return { active: true, entitlement: body.entitlement, free }
   } catch (error) {
     if (error.status !== 403) throw error
-    return { active: false, free: freeResult.entitlement, licenseError: error.message }
+    return { active: false, free, licenseError: error.message }
   }
 })
 ipcMain.handle('license:activate', async (_event, key) => {
   if (typeof key !== 'string' || key.trim().length < 20 || key.length > 256) throw new Error('Enter a valid activation key.')
-  const body = await licenseRequest('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId }) })
+  const body = await licenseRequest('/activate', { method: 'POST', body: JSON.stringify({ key: key.trim(), deviceId: licenseDeviceId, deviceName: hostname() }) })
   if (!body.ok || typeof body.token !== 'string') throw new Error(body.reason === 'device_limit' ? 'This key has reached its device limit.' : 'This key is invalid, expired, or disabled.')
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure license storage is unavailable on this device.')
   await fs.promises.mkdir(path.dirname(licensePath), { recursive: true })
