@@ -19,7 +19,7 @@ export function ThemePanel() {
     setSelected(theme)
     setNotice(saved ? tr("تم تطبيق الثيم وحفظه لهذا المتصفح.") : tr("تم تطبيق الثيم. تعذّر حفظ الاختيار في هذا المتصفح."))
   }
-  return <section aria-label={tr("الثيمات")} className="space-y-4 p-6">
+  return <section aria-label={tr("الثيمات")} className="space-y-4">
     <div><h3 className="text-sm font-bold">{tr("الثيمات")}</h3><p className="mt-1 text-xs leading-6 text-ink-soft">{tr("اختَر المظهر المناسب لك. يتطبّق فورًا على الواجهة ويُحفظ تلقائيًا.")}</p></div>
     <fieldset><legend className="sr-only">{tr("اختر ثيم الواجهة")}</legend><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {themes.map(theme => <label key={theme.id} className={cx('min-w-0 cursor-pointer rounded-xl border p-2 transition-colors', selected === theme.id ? 'border-relay ring-1 ring-relay' : 'border-line hover:border-relay/50')}>
