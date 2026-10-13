@@ -246,6 +246,7 @@ function WorkspaceApp() {
           onCreate={room.onCreateThread}
           creating={room.creating}
           connected={room.codexConnected}
+          commitModel={conversation.codexSelection.current.model}
           codexIdentity={room.codexIdentity}
           workRoot={room.workRoot}
           onChooseWorkRoot={room.onChooseWorkRoot}

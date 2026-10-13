@@ -1,6 +1,8 @@
 import { readProjectFile, saveProjectFile } from './server/project-editor.mjs'
 import { codexWeeklyQuota } from './server/codex-weekly-quota.mjs'
 import { searchProjectContents } from './server/project-content-search.mjs'
+import { SourceControl } from './server/source-control.mjs'
+import { generateCommitMessage } from './server/commit-message.mjs'
 import { ExtensionWorkbench, workbenchPath, trustedExtensionRequest } from './server/extension-workbench.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
@@ -23,6 +25,8 @@ const stateDirectory = process.env.RELAY_STATE_DIR
   : path.join(appDirectory, '.relay-state')
 const eventsPath = path.join(stateDirectory, 'events.json')
 const extensionWorkbench = new ExtensionWorkbench(stateDirectory)
+const sourceControl = new SourceControl()
+const commitMessageJobs = new Set()
 const codexStatePath = path.join(stateDirectory, 'codex.json')
 const workRootStatePath = path.join(stateDirectory, 'work-root.json')
 const maxBodyBytes = 256 * 1024
@@ -616,6 +620,7 @@ class CodexAppServerBridge {
     this.instructionAuditError = null
     this.runningTurns = new Map()
     this.completedTurns = new Map()
+    this.notificationListeners = new Set()
     this.onTurnCompleted = null
     this.rateLimitsSnapshot = null
     this.rateLimitsReadAt = 0
@@ -808,6 +813,7 @@ class CodexAppServerBridge {
   }
 
   handleNotification(packet) {
+    for (const listener of this.notificationListeners ?? []) listener(packet)
     const params = packet.params ?? {}
     if (packet.method === 'account/rateLimits/updated') {
       const incoming = params.rateLimits
@@ -2318,6 +2324,7 @@ async function relayCodexExecutorReplyToPlanner(executorThreadId) {
 }
 
 codexBridge.onTurnCompleted = async (threadId) => {
+  if (!(await readCodexState()).threads[threadId]) return
   await updateCodexState(state => { if (state.threads[threadId]) state.threads[threadId].lastMessageAt = Date.now() })
   return relayCodexExecutorReplyToPlanner(threadId)
 }
@@ -2399,6 +2406,33 @@ const server = createServer(async (request, response) => {
         const body = await readJson(request)
         sendJson(response, 200, { data: await setMcpEnabled(mcpMatch[1], body.name, body.enabled) })
       } else throw new HttpError(405, 'Only GET and POST are supported.')
+      return
+    }
+    if (url.pathname.startsWith('/api/source-control')) {
+      if (!trustedExtensionRequest(request)) throw new HttpError(403, 'Open Source Control from Open Zero.')
+      try {
+        if (request.method === 'GET' && url.pathname === '/api/source-control') {
+          sendJson(response, 200, { data: await sourceControl.status(watchRoot, url.searchParams.get('root')) })
+        } else if (request.method === 'GET' && url.pathname === '/api/source-control/diff') {
+          sendJson(response, 200, { data: await sourceControl.diff(watchRoot, { root: url.searchParams.get('root'), path: url.searchParams.get('path'), staged: url.searchParams.get('staged') === 'true' }) })
+        } else if (request.method === 'POST' && url.pathname === '/api/source-control/commit-message') {
+          const input = await readJson(request)
+          const context = await sourceControl.commitContext(watchRoot, input)
+          if (commitMessageJobs.has(context.root)) throw new HttpError(409, 'Commit message generation is already running.')
+          commitMessageJobs.add(context.root)
+          try {
+          const models = await listCodexModels()
+          const model = input.model ? models.find(model => model.model === input.model) : models.find(model => model.isDefault) ?? models[0]
+          if (!model) throw new HttpError(400, 'Choose an available Codex model for Generate Commit Message.')
+          const result = await generateCommitMessage(codexBridge, context, model, () => consumeLicensedMessage(input, response))
+          const current = await sourceControl.status(watchRoot, input.root)
+          if (!current.repository || current.stagedVersion !== context.stagedVersion) throw new HttpError(409, 'Staged Changes changed while generating the message. Refresh and generate it again.')
+          sendJson(response, 200, { data: result })
+          } finally { commitMessageJobs.delete(context.root) }
+        } else if (request.method === 'POST' && url.pathname === '/api/source-control') {
+          sendJson(response, 200, { data: await sourceControl.action(watchRoot, await readJson(request)) })
+        } else throw new HttpError(405, 'Unsupported Source Control request.')
+      } catch (error) { sendJson(response, error.status ?? 500, { error: error.message }) }
       return
     }
     if (request.method === 'GET' && url.pathname === '/api/project') {

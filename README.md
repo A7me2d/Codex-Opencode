@@ -117,6 +117,10 @@ The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds an
 
 ### Reviewing Codex changes
 
+The sidebar's Git branch tab opens **Source Control** (`Ctrl+Shift+G`). **Changes**, **Staged Changes** and **Merge Changes** follow VS Code naming. Select a file to preview its diff, use **Stage Changes** / **Unstage Changes** per file or for a group, enter a message, and select **Commit**. Commit records only the staged snapshot; **Push** uploads the current branch to its upstream. Without an upstream, **Publish Branch** uses a configured remote. No force push, automatic staging, fetch, commit or upload runs when opening the view. Git must be installed and the selected folder must be the repository root. Push uses your existing Git authentication; Source Control does not store credentials. Saves in the editor must reach disk before staging.
+
+The sparkle button **Generate Commit Message** uses the current Codex model (or the account default) and only the staged diff. It runs in a separate ephemeral read-only thread, with structured output and a one-minute generation timeout. Each generation consumes one licensed request using the existing message-ID accounting. It fills the editable message field, leaving Commit and Push as separate explicit actions. Generation errors preserve your existing draft; changed staging is rejected so the message is not applied to a different snapshot. The selected Codex chat's history, permissions and active turn are untouched.
+
 File tabs use a solid VS Code Dark+ inspired editor palette with syntax highlighting, line numbers, selections, search matches and completion menus. The editor palette stays independent of Liquid Glass and the surrounding chat theme.
 
 The editor toolbar's **Auto Save** switch is off by default and remembers your choice. When enabled, dirty file tabs save after an 800 ms typing pause, one request at a time. Edits typed during a save remain dirty and save next. Version checks prevent overwriting external edits; an automatic save failure pauses Auto Save and displays the error. The footer shows Draft, Saving or Saved.

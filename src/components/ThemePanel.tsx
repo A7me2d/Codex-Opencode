@@ -4,6 +4,7 @@ import { Check } from 'lucide-react'
 import { getThemes, themeSources, readStoredTheme, saveTheme, themeStorageKey, type ThemeId } from '../lib/themes'
 import { saveFileIconTheme, useFileIconTheme, type FileIconThemeId } from '../lib/fileIconThemes'
 import { cx } from '../lib/cx'
+import { SettingsSelect } from './ui/SettingsSelect'
 
 export function ThemePanel() {
   const themes = getThemes()
@@ -19,7 +20,7 @@ export function ThemePanel() {
     setSelected(theme)
     setNotice(saved ? tr("تم تطبيق الثيم وحفظه لهذا المتصفح.") : tr("تم تطبيق الثيم. تعذّر حفظ الاختيار في هذا المتصفح."))
   }
-  return <section aria-label={tr("الثيمات")} className="space-y-4 p-6">
+  return <section aria-label={tr("الثيمات")} className="space-y-4">
     <div><h3 className="text-sm font-bold">{tr("الثيمات")}</h3><p className="mt-1 text-xs leading-6 text-ink-soft">{tr("اختَر المظهر المناسب لك. يتطبّق فورًا على الواجهة ويُحفظ تلقائيًا.")}</p></div>
     <fieldset><legend className="sr-only">{tr("اختر ثيم الواجهة")}</legend><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {themes.map(theme => <label key={theme.id} className={cx('min-w-0 cursor-pointer rounded-xl border p-2 transition-colors', selected === theme.id ? 'border-relay ring-1 ring-relay' : 'border-line hover:border-relay/50')}>
@@ -44,10 +45,8 @@ function FileIconThemePicker() {
   return <div className="max-w-md border-t border-line pt-5">
     <label htmlFor="file-icon-theme" className="block text-xs font-bold">{tr("مظهر أيقونات الملفات")}</label>
     <p className="mt-1 text-[10px] leading-5 text-ink-soft">{tr("اختر شكل ظهور المجلدات وأنواع الملفات في مستكشف المشروع.")}</p>
-    <select id="file-icon-theme" value={selected} onChange={event => choose(event.target.value as FileIconThemeId)} className="mt-2 h-10 w-full rounded-lg border border-line bg-card px-3 text-xs font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
-      <option value="lynx-style-a">Lynx — {tr("النمط A")}</option>
-      <option value="classic">{tr("كلاسيكي")}</option>
-    </select>
+    <SettingsSelect id="file-icon-theme" label={tr('مظهر أيقونات الملفات')} value={selected} onChange={value => choose(value as FileIconThemeId)}
+      options={[{ value: 'lynx-style-a', label: `Lynx — ${tr('النمط A')}` }, { value: 'classic', label: tr('كلاسيكي') }]} />
     <p role="status" className="mt-2 text-[10px] text-ready-ink">{tr("مظهر أيقونات الملفات الحالي:")} {selected === 'lynx-style-a' ? `Lynx — ${tr("النمط A")}` : tr("كلاسيكي")}</p>
   </div>
 }

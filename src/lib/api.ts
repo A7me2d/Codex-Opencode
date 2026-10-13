@@ -85,6 +85,10 @@ export const api = {
   projectFiles: (path = '') => requestJson<{ data: import('./types').ProjectFiles }>(`/api/project/files?path=${encodeURIComponent(path)}`).then(unwrap),
   projectSearch: (query: string) => requestJson<{ data: import('./types').ProjectSearchResults }>(`/api/project/search?q=${encodeURIComponent(query)}`).then(unwrap),
   projectContentSearch: (query: string, signal?: AbortSignal) => requestJson<{ data: import('./types').ProjectContentSearchResults }>(`/api/project/search-content?q=${encodeURIComponent(query)}`, { signal }).then(unwrap),
+  sourceControl: (root: string) => requestJson<{ data: import('./types').SourceControlStatus }>(`/api/source-control?root=${encodeURIComponent(root)}`).then(unwrap),
+  sourceControlAction: (input: { root: string; action: 'stage' | 'unstage' | 'commit' | 'push' | 'publish'; paths?: string[]; message?: string; stagedVersion?: string; head?: string; branch?: string; remote?: string }) => post<{ data: import('./types').SourceControlStatus }>('/api/source-control', input).then(unwrap),
+  sourceControlDiff: (root: string, path: string, staged: boolean) => requestJson<{ data: import('./types').GitDiffPreview }>(`/api/source-control/diff?${new URLSearchParams({ root, path, staged: String(staged) })}`).then(unwrap),
+  generateCommitMessage: (input: { root: string; stagedVersion: string; model?: string; messageId: string }) => post<{ data: { message: string; model: string; stagedVersion: string } }>('/api/source-control/commit-message', input).then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),
   openWorkRoot: () => post<{ data: { directory: string } }>('/api/project/open-work-root'),
   selectProjectFolder: () =>
