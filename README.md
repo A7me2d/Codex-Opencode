@@ -2,6 +2,8 @@
 
 A local web app for chatting with Codex and handing implementation tasks to OpenCode. It includes project selection, model and reasoning controls, session permissions, and file-change summaries.
 
+The **Auto** switch beside **Agent / IDE** enables visible automatic project previews. It opens a random source file and scrolls to a random position immediately, then every 30 seconds, using one reusable clean preview tab. Unsaved drafts pause navigation; switching to IDE or turning the switch off stops it. It starts disabled each launch, skips generated folders and common sensitive filenames, and does not edit files or capture screenshots.
+
 ## Requirements
 
 - Windows for the project-folder picker and Explorer integration.

@@ -14,6 +14,7 @@ import { SessionList } from './features/codex/SessionList'
 import { PlannerConversation } from './features/opencode/PlannerConversation'
 import { HandoffRail } from './features/opencode/HandoffRail'
 import { useRelayRoom } from './hooks/useRelayRoom'
+import { useAutomaticPreview } from './hooks/useAutomaticPreview'
 import { persistPreference, preferenceKeys, readHandoffVisibility } from './lib/preferences'
 import { api } from './lib/api'
 
@@ -60,6 +61,12 @@ function WorkspaceApp() {
   const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
   const [handoffVisible, setHandoffVisible] = useState(readHandoffVisibility)
   const [extensionsOpen, setExtensionsOpen] = useState(false)
+  const [automaticPreview, setAutomaticPreview] = useState(false)
+  const [automaticError, setAutomaticError] = useState('')
+  useAutomaticPreview(automaticPreview && !extensionsOpen, room.workRoot, message => {
+    setAutomaticPreview(false)
+    setAutomaticError(locale === 'ar' && message === 'No suitable source files were found for automatic preview.' ? 'لا توجد ملفات كود مناسبة للمعاينة الآلية في المشروع الحالي.' : message)
+  })
 
   useEffect(() => {
     persistPreference(preferenceKeys.panelSizes, JSON.stringify(panelSizes))
@@ -206,15 +213,22 @@ function WorkspaceApp() {
       codexConnected={room.codexConnected}
       openCodeOnline={room.openCodeOnline}
       codexError={room.codexError}
-      shellError={room.shellError}
+      shellError={room.shellError || automaticError || null}
       onResetLayout={resetPanelSizes}
       locale={locale}
       onToggleLanguage={() => setLocale(locale === 'en' ? 'ar' : 'en')}
       handoffVisible={handoffVisible}
       onToggleHandoff={() => setHandoffVisible(value => !value)}
-      onOpenExtensions={() => setExtensionsOpen(true)}
+      onOpenExtensions={() => { setAutomaticPreview(false); setExtensionsOpen(true) }}
       mode={extensionsOpen ? 'ide' : 'agent'}
-      onChangeMode={mode => setExtensionsOpen(mode === 'ide')}
+      onChangeMode={mode => { if (mode === 'ide') setAutomaticPreview(false); setExtensionsOpen(mode === 'ide') }}
+      automaticPreview={automaticPreview}
+      automaticAvailable={Boolean(room.workRoot)}
+      onToggleAutomaticPreview={() => {
+        setAutomaticError('')
+        if (!automaticPreview) setExtensionsOpen(false)
+        setAutomaticPreview(value => !value)
+      }}
     />
 
     {/*
@@ -256,7 +270,7 @@ function WorkspaceApp() {
       </ErrorBoundary>
 
       <ErrorBoundary label={tr("محادثة Codex مش معروضة صح دلوقتي.")}>
-        <ProjectEditor root={room.workRoot} onInsert={text => {
+        <ProjectEditor root={room.workRoot} automatic={automaticPreview && !extensionsOpen} onInsert={text => {
           if (reverse) window.dispatchEvent(new CustomEvent('coding-room:insert-planner-code', { detail: text }))
           else conversation.composer.onDraftChange([conversation.composer.draft, text].filter(Boolean).join('\n\n'))
         }}>{reverse ? plannerPane : codexPane}</ProjectEditor>

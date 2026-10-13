@@ -1,6 +1,6 @@
 import { tr } from '../lib/i18n'
 import { type CSSProperties } from 'react'
-import { TriangleAlert } from 'lucide-react'
+import { Shuffle, TriangleAlert } from 'lucide-react'
 import { config } from '../app/config'
 import { SettingsDialog } from './SettingsDialog'
 import type { AppLocale } from '../lib/i18n'
@@ -20,10 +20,13 @@ export interface AppHeaderProps {
   onOpenExtensions: () => void
   mode: 'agent' | 'ide'
   onChangeMode: (mode: 'agent' | 'ide') => void
+  automaticPreview: boolean
+  automaticAvailable: boolean
+  onToggleAutomaticPreview: () => void
 }
 
 /** Minimal title bar; app controls live behind the settings button. */
-export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff, onOpenExtensions, mode, onChangeMode }: AppHeaderProps) {
+export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff, onOpenExtensions, mode, onChangeMode, automaticPreview, automaticAvailable, onToggleAutomaticPreview }: AppHeaderProps) {
   return <header className="shrink-0 border-b border-line bg-card">
     <div dir="ltr" onDoubleClick={() => void window.codingRoomWindow?.toggleMaximize?.()} className="flex h-12 select-none items-center justify-between gap-3 ps-4 pe-3 text-xs font-extrabold tracking-tight text-ink" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
       <div className="flex min-w-0 items-center gap-2">
@@ -43,6 +46,15 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
             onChangeMode(next); document.getElementById(`workspace-mode-${next}`)?.focus()
           }} className={`rounded-full px-4 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 ${mode === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink'}`}>{value === 'agent' ? 'Agent' : 'IDE'}</button>)}
       </div>
+      <button type="button" role="switch" aria-checked={automaticPreview} disabled={!automaticAvailable}
+        aria-label={locale === 'ar' ? 'النظام الآلي' : 'Automatic preview'}
+        title={locale === 'ar' ? 'معاينة آلية: ملف وتمرير عشوائي كل 30 ثانية. تتوقف أثناء وجود تعديل غير محفوظ.' : 'Automatic preview: random file and scrolling every 30 seconds. Pauses while edits are unsaved.'}
+        onClick={onToggleAutomaticPreview} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
+        className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:opacity-40 ${automaticPreview ? 'border-relay/40 bg-relay-tint text-relay-ink' : 'border-line bg-paper text-ink-soft hover:text-ink'}`}>
+        <Shuffle className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>{locale === 'ar' ? 'آلي' : 'Auto'}</span>
+        <span aria-hidden="true" className={`relative h-3.5 w-6 rounded-full transition-colors ${automaticPreview ? 'bg-relay' : 'bg-ink-soft/25'}`}><span className={`absolute left-0 top-0.5 h-2.5 w-2.5 rounded-full bg-card shadow-sm transition-transform ${automaticPreview ? 'translate-x-3' : 'translate-x-0.5'}`} /></span>
+      </button>
       <SettingsDialog
         codexConnected={codexConnected}
         openCodeOnline={openCodeOnline}
