@@ -30,6 +30,7 @@ const allowedPreferenceKeys = new Set([
   'coding-room.locale',
   'relay-room.file-icon-theme',
   'relay-room.editor-auto-save',
+  'relay-room.editor-chat-layout',
   'relay-room.panel-sizes',
   'relay-room.handoff-visible',
 ])

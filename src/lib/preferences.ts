@@ -5,6 +5,7 @@ export const preferenceKeys = {
   locale: 'coding-room.locale',
   fileIconTheme: 'relay-room.file-icon-theme',
   editorAutoSave: 'relay-room.editor-auto-save',
+  editorChatLayout: 'relay-room.editor-chat-layout',
   panelSizes: 'relay-room.panel-sizes',
   handoffVisible: 'relay-room.handoff-visible',
 } as const
