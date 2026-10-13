@@ -1,12 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Code2, MessageCircle, Puzzle, RefreshCw, Save, Send, X } from 'lucide-react'
+import { Code2, RefreshCw, Save, Send, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useLocale } from '../lib/i18n'
 
 export type FileTab = { path: string; content: string; saved: string; version: string }
 const CodeEditor = lazy(() => import('./CodeEditorView'))
-const ExtensionsPanel = lazy(() => import('./ExtensionsPanel'))
-const extensionsTab = '\u0000extensions' // cannot collide with a real file path
 export interface CodeEditorHandle { focus: () => void; measure: () => void; gotoLine: (line: number) => void; position: () => { line: number; column: number }; selection: () => { text: string; startLine: number; endLine: number } }
 export function openProjectFile(root: string, path: string) {
   window.dispatchEvent(new CustomEvent('coding-room:open-file', { detail: { root, path } }))
@@ -15,7 +13,6 @@ export function openProjectFile(root: string, path: string) {
 export function ProjectEditor({ root, children, onInsert }: { root?: string; children: ReactNode; onInsert: (text: string) => void }) {
   const ar = useLocale() === 'ar'
   const [tabs, setTabs] = useState<FileTab[]>([]), [selected, setSelected] = useState('')
-  const [extensionsOpened, setExtensionsOpened] = useState(false)
   const [error, setError] = useState(''), [loading, setLoading] = useState(false), [busy, setBusy] = useState('')
   const [position, setPosition] = useState({ line: 1, column: 1 }), [goTo, setGoTo] = useState('')
   const tabsRef = useRef(tabs), views = useRef(new Map<string, CodeEditorHandle>()), opening = useRef(new Set<string>()), generation = useRef(0)
@@ -106,14 +103,12 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
     setSelected('')
   }
   return <div className="flex min-h-[22rem] min-w-0 flex-col overflow-hidden bg-card lg:h-full lg:min-h-0">
-    <><div role="tablist" aria-label={ar ? 'تبويبات مساحة العمل' : 'Workspace tabs'} className="chat-tabs flex shrink-0 overflow-x-auto border-b border-line bg-paper">
-      <button role="tab" aria-selected={!selected} onClick={() => setSelected('')} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-bold ${!selected ? 'border-relay text-relay-ink' : 'border-transparent text-ink-soft'}`}><MessageCircle className="h-3.5 w-3.5" />{ar ? 'الشات' : 'Chat'}</button>
-      <button type="button" role="tab" aria-selected={selected === extensionsTab} onClick={() => { setExtensionsOpened(true); setSelected(extensionsTab) }} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-xs font-bold ${selected === extensionsTab ? 'border-relay text-relay-ink' : 'border-transparent text-ink-soft'}`}><Puzzle className="h-3.5 w-3.5" aria-hidden="true" />{ar ? 'الإضافات' : 'Extensions'}</button>
+    <><div role="tablist" aria-label={ar ? 'تبويبات مساحة العمل' : 'Workspace tabs'} className={tabs.length ? 'chat-tabs flex shrink-0 overflow-x-auto border-b border-line bg-paper' : 'hidden'}>
+      <button role="tab" aria-label={ar ? 'العودة للمحادثة' : 'Back to conversation'} aria-selected={!selected} onClick={() => setSelected('')} className={`inline-flex shrink-0 items-center justify-center border-b-2 px-4 py-3 text-xs font-semibold ${!selected ? 'border-relay text-relay-ink' : 'border-transparent text-ink-soft'}`}>Agent</button>
       {tabs.map(tab => <div key={tab.path} className={`flex shrink-0 items-center border-b-2 ${selected === tab.path ? 'border-relay bg-card' : 'border-transparent'}`}><button role="tab" aria-selected={selected === tab.path} title={tab.path} onClick={() => { setSelected(tab.path); setGoTo('') }} className="inline-flex items-center gap-2 px-3 py-3 text-xs"><Code2 className="h-3.5 w-3.5 text-relay-ink" />{tab.path.split('/').pop()}{tab.content !== tab.saved && <span aria-label={ar ? 'تعديلات غير محفوظة' : 'Unsaved edits'} className="h-1.5 w-1.5 rounded-full bg-review" />}</button><button disabled={Boolean(busy)} aria-label={`${ar ? 'إغلاق' : 'Close'} ${tab.path}`} onClick={() => close(tab.path)} className="me-2 rounded p-1 text-ink-soft hover:bg-paper"><X className="h-3 w-3" /></button></div>)}
       {loading && <RefreshCw className="m-3 h-4 w-4 shrink-0 animate-spin text-ink-soft" />}
     </div>{error && <p role="alert" className="flex shrink-0 items-center justify-between gap-2 border-b border-line bg-review-tint px-4 py-2 text-xs text-review-ink">{error}<button onClick={() => setError('')} aria-label={ar ? 'إخفاء الخطأ' : 'Dismiss error'}><X className="h-3 w-3" /></button></p>}</>
     <div className={selected ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>{children}</div>
-    {extensionsOpened && <div className={selected === extensionsTab ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}><Suspense fallback={<div className="p-5 text-sm text-ink-soft">{ar ? 'جارٍ تحميل الإضافات…' : 'Loading extensions…'}</div>}><ExtensionsPanel root={root} visible={selected === extensionsTab} /></Suspense></div>}
     {file && <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2">
       <button disabled={Boolean(busy) || file.content === file.saved} onClick={() => void save(file.path)} className="inline-flex items-center gap-1.5 rounded-md bg-relay px-3 py-2 text-xs font-bold text-on-accent disabled:opacity-40"><Save className="h-3.5 w-3.5" />{ar ? 'حفظ' : 'Save'}</button>
       <button disabled={Boolean(busy)} onClick={() => void reload()} className="rounded-md border border-line p-2 text-ink-soft" title={ar ? 'إعادة تحميل الملف' : 'Reload file'} aria-label={ar ? 'إعادة تحميل الملف' : 'Reload file'}><RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} /></button>

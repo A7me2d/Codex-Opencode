@@ -2,7 +2,7 @@ import { openProjectFile } from '../../components/ProjectEditor'
 import { tr } from '../../lib/i18n'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import { BookOpen, Braces, Boxes, Check, ChevronDown, ChevronLeft, Code2, Component, Copy, Database, FileArchive, FileAudio2, FileCode2, FileCog, FileImage, FileJson2, FileLock2, FileSpreadsheet, FileText, FileType2, FileVideo2, FlaskConical, Folder, FolderOpen, Globe2, Image, Layers3, LoaderCircle, Package, Palette, Search, Settings2, TestTube2, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import { BookOpen, Braces, Boxes, Check, ChevronDown, ChevronRight, Code2, Component, Copy, Database, FileArchive, FileAudio2, FileCode2, FileCog, FileImage, FileJson2, FileLock2, FileSpreadsheet, FileText, FileType2, FileVideo2, FlaskConical, Folder, FolderOpen, Globe2, Image, Layers3, LoaderCircle, Package, Palette, Search, Settings2, TestTube2, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { api } from '../../lib/api'
 import type { ProjectFileEntry, ProjectFiles } from '../../lib/types'
 import { useFileIconTheme } from '../../lib/fileIconThemes'
@@ -127,7 +127,7 @@ function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, icon
     {directory ? <div className="group/entry flex min-h-8 items-center gap-0.5 rounded-md pr-1 hover:bg-paper">
       <button type="button" onClick={() => onToggle(entry)} aria-expanded={isExpanded} title={entry.path}
       className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-start text-[11px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
-      {loading ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-soft" /> : isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-soft" /> : <ChevronLeft className="h-3.5 w-3.5 shrink-0 text-ink-soft" />}
+      {loading ? <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-soft" /> : isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-soft" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-soft" />}
       <ProjectFileIcon path={iconPath} icon={EntryIcon} color={color} />
       <span dir="auto" className="min-w-0 truncate">{entry.name}</span>
       </button>
@@ -201,7 +201,7 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
       <input value={query} onChange={event => setQuery(event.target.value)} placeholder={tr("ابحث باسم الملف…")} aria-label={tr("ابحث باسم الملف")} className="h-9 min-w-0 flex-1 bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-soft" />
       {query ? <button type="button" onClick={() => setQuery('')} aria-label={tr("مسح البحث")} className="rounded p-1 text-ink-soft hover:bg-card hover:text-ink"><X className="h-3.5 w-3.5" /></button> : null}
     </label>
-    <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
+    <div dir="ltr" className="thin-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
       {query.trim() ? <>
         {searchResults.length ? <ul className="space-y-0.5">{searchResults.map(entry => <ProjectSearchResult key={entry.path} entry={entry} iconTheme={iconTheme} workRoot={workRoot} />)}</ul> : !searching ? <p className="px-3 py-6 text-center text-[11px] text-ink-soft">{tr("لا توجد نتائج مطابقة.")}</p> : null}
         {searching ? <p className="px-3 py-2 text-center text-[10px] text-ink-soft">{tr("جارٍ البحث في ملفات المشروع…")}</p> : null}

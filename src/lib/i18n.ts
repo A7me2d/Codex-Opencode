@@ -6,8 +6,12 @@ export type AppLocale = 'en' | 'ar'
 const STORAGE_KEY = 'coding-room.locale'
 const english: Record<string, string> = {
   'أوامر': 'Commands',
+  'اكتب أمرًا': 'Enter a command',
+  'تشغيل': 'Run',
   'جلسة OpenCode': 'OpenCode session',
   'رصيد Codex الأسبوعي غير متاح': 'Codex weekly allowance is unavailable',
+  '5 س': '5h',
+  'المتبقي من رصيد Codex لكل 5 ساعات: {{0}}%': 'Codex 5-hour allowance remaining: {{0}}%',
   'المتبقي من رصيد Codex الأسبوعي: {{0}}%': 'Codex weekly allowance remaining: {{0}}%',
   'قبول التعديلات': 'Accept changes',
   'جارٍ قبول التعديلات…': 'Accepting changes…',
@@ -335,6 +339,7 @@ const english: Record<string, string> = {
   'متوقفة': 'Stopped',
   'مجلد الطرفية: {{0}}': 'Terminal folder: {{0}}',
   'محادثات المشروع': 'Project conversations',
+  'المحادثات': 'Chats',
   'محادثة Codex': 'Codex conversation',
   'محادثة Codex مش معروضة صح دلوقتي.': 'The Codex conversation is not displayed correctly right now.',
   'محتوى المشروع': 'Project contents',

@@ -17,10 +17,13 @@ export interface AppHeaderProps {
   onToggleLanguage: () => void
   handoffVisible: boolean
   onToggleHandoff: () => void
+  onOpenExtensions: () => void
+  mode: 'agent' | 'ide'
+  onChangeMode: (mode: 'agent' | 'ide') => void
 }
 
 /** Minimal title bar; app controls live behind the settings button. */
-export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff }: AppHeaderProps) {
+export function AppHeader({ codexConnected, openCodeOnline, codexError, shellError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff, onOpenExtensions, mode, onChangeMode }: AppHeaderProps) {
   return <header className="shrink-0 border-b border-line bg-card">
     <div dir="ltr" onDoubleClick={() => void window.codingRoomWindow?.toggleMaximize?.()} className="flex h-12 select-none items-center justify-between gap-3 ps-4 pe-3 text-xs font-extrabold tracking-tight text-ink" style={{ WebkitAppRegion: 'drag' } as CSSProperties}>
       <div className="flex min-w-0 items-center gap-2">
@@ -31,6 +34,15 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-3" dir="ltr" onDoubleClick={event => event.stopPropagation()}>
+      <div role="tablist" aria-label={locale === 'ar' ? 'وضع مساحة العمل' : 'Workspace mode'} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="flex rounded-full border border-line bg-paper p-1">
+        {(['agent', 'ide'] as const).map(value => <button key={value} type="button" role="tab" id={`workspace-mode-${value}`} aria-controls={`workspace-${value}`} aria-selected={mode === value} tabIndex={mode === value ? 0 : -1}
+          onClick={() => onChangeMode(value)} onKeyDown={event => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            event.preventDefault()
+            const next = value === 'agent' ? 'ide' : 'agent'
+            onChangeMode(next); document.getElementById(`workspace-mode-${next}`)?.focus()
+          }} className={`rounded-full px-4 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 ${mode === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink'}`}>{value === 'agent' ? 'Agent' : 'IDE'}</button>)}
+      </div>
       <SettingsDialog
         codexConnected={codexConnected}
         openCodeOnline={openCodeOnline}
@@ -40,6 +52,7 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
         onToggleLanguage={onToggleLanguage}
         handoffVisible={handoffVisible}
         onToggleHandoff={onToggleHandoff}
+        onOpenExtensions={onOpenExtensions}
       />
       {window.codingRoomWindow?.minimize && <span className="h-5 w-px bg-line" aria-hidden="true" />}
       <WindowControls />

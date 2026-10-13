@@ -1,7 +1,7 @@
 import { openSupport } from './SupportChat'
 import { direction, tr } from '../lib/i18n'
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { Settings, X, Check, Brain, Wrench, Palette, SlidersHorizontal, Languages, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, Wifi, WifiOff } from 'lucide-react'
+import { Settings, X, Check, Brain, Wrench, Palette, Puzzle, SlidersHorizontal, Languages, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, Wifi, WifiOff } from 'lucide-react'
 import { api } from '../lib/api'
 import { usePolling } from '../hooks/usePolling'
 import { cx } from '../lib/cx'
@@ -32,9 +32,10 @@ interface SettingsDialogProps {
   onToggleLanguage: () => void
   handoffVisible: boolean
   onToggleHandoff: () => void
+  onOpenExtensions: () => void
 }
 
-export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff }: SettingsDialogProps) {
+export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff, onOpenExtensions }: SettingsDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'application' | 'setup' | 'themes'>('application')
@@ -141,6 +142,9 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
         <button onClick={() => setTab('themes')} aria-pressed={tab === 'themes'} className={cx('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold', tab === 'themes' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}><Palette className="h-4 w-4" />{tr("الثيمات")}</button>
       </nav>
       {tab === 'application' ? <section className="space-y-5 p-6">
+        <button type="button" onClick={() => { dialog.current?.close(); onOpenExtensions() }} className="flex w-full items-center gap-3 rounded-xl border border-line bg-paper px-4 py-3 text-start hover:border-relay/40 hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+          <Puzzle className="h-5 w-5 shrink-0 text-relay-ink" aria-hidden="true" /><span><span className="block text-sm font-bold">{locale === 'ar' ? 'الإضافات وNx Console' : 'Extensions & Nx Console'}</span><span className="mt-1 block text-xs text-ink-soft">{locale === 'ar' ? 'افتح مساحة مستقلة للمحرر وإدارة إضافات مشروعك' : 'Open a dedicated workspace for your editor and extensions'}</span></span>
+        </button>
         <button type="button" onClick={() => { dialog.current?.close(); openSupport() }} className="w-full rounded-lg border border-line bg-relay-tint px-4 py-3 text-start text-sm font-bold text-relay-ink">{locale === 'ar' ? 'شات الدعم' : 'Support chat'}<span className="mt-1 block text-xs font-normal text-ink-soft">{locale === 'ar' ? 'اطلب مفتاح تفعيل أو تواصل مع الدعم' : 'Request an activation key or contact support'}</span></button>
         <section aria-labelledby="quota-title" className="space-y-3 border-b border-line pb-5">
           <div className="flex items-center justify-between gap-3"><div><h3 id="quota-title" className="text-sm font-bold">{locale === 'ar' ? 'الاستخدام اليومي' : 'Daily usage'}</h3><p className="mt-1 text-[10px] text-ink-soft">{locale === 'ar' ? 'مفتاح تفعيل صالح مطلوب. الرسائل تستهلك رصيد المفتاح.' : 'A valid activation key is required. Messages use your key quota.'}</p></div>

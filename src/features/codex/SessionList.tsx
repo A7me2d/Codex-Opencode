@@ -78,14 +78,25 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
         </div>
       </div>
 
-      <div role="tablist" aria-label={tr("محتوى المشروع")} className="grid shrink-0 grid-cols-2 gap-1 border-b border-line px-3 py-2">
-        <button type="button" role="tab" aria-selected={view === 'files'} onClick={() => setView('files')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'files' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr("الملفات")}</button>
-        <button type="button" role="tab" aria-selected={view === 'chats'} onClick={() => setView('chats')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'chats' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr("محادثات المشروع (")}{threads.length})</button>
+      <div className="shrink-0 border-b border-line px-3 py-2">
+        <div role="tablist" aria-label={tr('محتوى المشروع')} className="grid grid-cols-2 gap-1 rounded-full border border-line bg-paper p-1">
+          {(['files', 'chats'] as const).map(value => <button key={value} type="button" role="tab" id={`project-tab-${value}`} aria-controls={`project-panel-${value}`} aria-selected={view === value} tabIndex={view === value ? 0 : -1}
+            aria-label={tr(value === 'files' ? 'الملفات' : 'محادثات المشروع')} onClick={() => setView(value)} onKeyDown={event => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+              event.preventDefault()
+              const next = value === 'files' ? 'chats' : 'files'
+              setView(next); document.getElementById(`project-tab-${next}`)?.focus()
+            }} className={cx('inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}>
+            {tr(value === 'files' ? 'الملفات' : 'المحادثات')}
+            {value === 'chats' ? <span className="text-[10px] tabular-nums text-ink-soft">{threads.length}</span> : null}
+          </button>)}
+        </div>
       </div>
 
-      {view === 'files' && workRoot ? <ProjectExplorer key={workRoot.toLowerCase()} workRoot={workRoot} /> : null}
-      {view === 'files' && !workRoot ? <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">{tr("اختَر مجلد مشروع لعرض ملفاته هنا.")}</div> : null}
-      {view === 'chats' ? <nav aria-label={tr("محادثات المشروع")} className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
+      {view === 'files' ? <div id="project-panel-files" role="tabpanel" aria-labelledby="project-tab-files" className="flex min-h-0 flex-1 flex-col">
+        {workRoot ? <ProjectExplorer key={workRoot.toLowerCase()} workRoot={workRoot} /> : <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">{tr("اختَر مجلد مشروع لعرض ملفاته هنا.")}</div>}
+      </div> : null}
+      {view === 'chats' ? <nav id="project-panel-chats" role="tabpanel" aria-labelledby="project-tab-chats" className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
         <div className="mb-2 flex gap-1">
           <button type="button" aria-pressed={!showArchived} onClick={() => onShowArchived(false)} className={cx('flex-1 rounded-lg px-2 py-2 text-[10px] font-bold', !showArchived ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr('المحادثات الحالية')}</button>
           <button type="button" aria-pressed={showArchived} onClick={() => onShowArchived(true)} className={cx('flex-1 rounded-lg px-2 py-2 text-[10px] font-bold', showArchived ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr('المؤرشفة')}</button>

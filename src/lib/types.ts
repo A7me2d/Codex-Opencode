@@ -8,7 +8,8 @@
 
 export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
 
-export interface CodexWeeklyQuota { available: boolean; remainingPercent: number | null; resetsAt: number | null }
+export interface CodexAllowance { available: boolean; remainingPercent: number | null; resetsAt: number | null }
+export interface CodexWeeklyQuota extends CodexAllowance { fiveHour?: CodexAllowance }
 
 export interface ExtensionWorkspaceStatus {
   phase: 'stopped' | 'starting' | 'downloading' | 'ready' | 'error'

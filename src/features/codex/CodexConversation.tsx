@@ -122,7 +122,7 @@ export function CodexConversation(props: CodexConversationProps) {
             )}
             <div className="mx-auto mt-4"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} files={props.fileChanges} /></div>
           </div>
-          <ScrollToLatest aboveComposer visible={!scroll.following && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} />
+          <ScrollToLatest aboveComposer visible={!scroll.atLatest && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} />
         <Composer
           implementer={executorChat || (thread.workflow?.planner !== 'codex' && thread.workflow?.executor === 'codex')}
           codexSelection={props.codexSelection}
