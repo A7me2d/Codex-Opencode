@@ -55,37 +55,48 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
     <aside dir={direction()} className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
       <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-4">
         <div className="flex items-center gap-2 text-sm font-bold text-ink">
-          {toggle} {tr("جلسات Codex")}</div>
+          {toggle}</div>
         <button type="button" onClick={onCreate} disabled={!connected || creating} className="inline-flex items-center gap-1.5 rounded-lg bg-relay px-2.5 py-1.5 text-xs font-bold text-on-accent transition-colors hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-45">
           {creating ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
           {tr("محادثة")}</button>
       </div>
 
-      <div className="shrink-0 border-b border-line px-4 py-3">
-       
-        <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
-          className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-relay/25 bg-relay-tint/60 px-3 py-2 text-xs font-bold text-relay-ink transition-colors hover:border-relay/50 hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-55">
-          {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
-          {choosingWorkRoot ? tr("جارٍ اختيار المشروع…") : tr("فتح مجلد مشروع جديد")}
-        </button>
-        <div className="mt-3 flex items-start gap-2 px-1">
-          <FolderTree className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
+      <div className="shrink-0 border-b border-line px-4 py-2">
+        <div className="flex items-center gap-2">
+          <FolderTree className="h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             {workRoot ? <>
-              <span dir="auto" className="mt-0.5 block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
-            </> : <span className="mt-1 block text-[11px] text-ink-soft">{tr("جارٍ تحديد المجلد…")}</span>}
+              <span dir="auto" title={workRoot} className="block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
+            </> : <span className="block text-[11px] text-ink-soft">{tr("جارٍ تحديد المجلد…")}</span>}
           </div>
+          <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
+            aria-label={choosingWorkRoot ? tr('جارٍ اختيار المشروع…') : tr('فتح مجلد مشروع جديد')}
+            title={choosingWorkRoot ? tr('جارٍ اختيار المشروع…') : tr('فتح مجلد مشروع جديد')}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-wait disabled:opacity-55">
+            {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
+          </button>
         </div>
       </div>
 
-      <div role="tablist" aria-label={tr("محتوى المشروع")} className="grid shrink-0 grid-cols-2 gap-1 border-b border-line px-3 py-2">
-        <button type="button" role="tab" aria-selected={view === 'files'} onClick={() => setView('files')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'files' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr("الملفات")}</button>
-        <button type="button" role="tab" aria-selected={view === 'chats'} onClick={() => setView('chats')} className={cx('rounded-lg px-3 py-2 text-[11px] font-bold transition-colors', view === 'chats' ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr("محادثات المشروع (")}{threads.length})</button>
+      <div className="shrink-0 border-b border-line px-3 py-2">
+        <div role="tablist" aria-label={tr('محتوى المشروع')} className="grid grid-cols-2 gap-1 rounded-full border border-line bg-paper p-1">
+          {(['files', 'chats'] as const).map(value => <button key={value} type="button" role="tab" id={`project-tab-${value}`} aria-controls={`project-panel-${value}`} aria-selected={view === value} tabIndex={view === value ? 0 : -1}
+            aria-label={tr(value === 'files' ? 'الملفات' : 'محادثات المشروع')} onClick={() => setView(value)} onKeyDown={event => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+              event.preventDefault()
+              const next = value === 'files' ? 'chats' : 'files'
+              setView(next); document.getElementById(`project-tab-${next}`)?.focus()
+            }} className={cx('inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}>
+            {tr(value === 'files' ? 'الملفات' : 'المحادثات')}
+            {value === 'chats' ? <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-relay-tint px-1 text-[9px] leading-4 tabular-nums text-relay-ink">{threads.length}</span> : null}
+          </button>)}
+        </div>
       </div>
 
-      {view === 'files' && workRoot ? <ProjectExplorer key={workRoot.toLowerCase()} workRoot={workRoot} /> : null}
-      {view === 'files' && !workRoot ? <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">{tr("اختَر مجلد مشروع لعرض ملفاته هنا.")}</div> : null}
-      {view === 'chats' ? <nav aria-label={tr("محادثات المشروع")} className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
+      {view === 'files' ? <div id="project-panel-files" role="tabpanel" aria-labelledby="project-tab-files" className="flex min-h-0 flex-1 flex-col">
+        {workRoot ? <ProjectExplorer key={workRoot.toLowerCase()} workRoot={workRoot} /> : <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">{tr("اختَر مجلد مشروع لعرض ملفاته هنا.")}</div>}
+      </div> : null}
+      {view === 'chats' ? <nav id="project-panel-chats" role="tabpanel" aria-labelledby="project-tab-chats" className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
         <div className="mb-2 flex gap-1">
           <button type="button" aria-pressed={!showArchived} onClick={() => onShowArchived(false)} className={cx('flex-1 rounded-lg px-2 py-2 text-[10px] font-bold', !showArchived ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr('المحادثات الحالية')}</button>
           <button type="button" aria-pressed={showArchived} onClick={() => onShowArchived(true)} className={cx('flex-1 rounded-lg px-2 py-2 text-[10px] font-bold', showArchived ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr('المؤرشفة')}</button>

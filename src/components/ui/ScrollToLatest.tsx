@@ -12,6 +12,7 @@ export function ScrollToLatest({ visible, onClick, tone = 'relay', aboveComposer
   tone?: 'relay' | 'ready'
   aboveComposer?: boolean
 }) {
+  if (!visible) return null
   return <button
     type="button"
     onClick={onClick}

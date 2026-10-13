@@ -7,6 +7,7 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
   const ref = useRef<HTMLDivElement>(null)
   const [boundary, setBoundary] = useState<{ key: string; id: string | null }>({ key: resetKey, id: null })
   const [following, setFollowing] = useState(true)
+  const [atLatest, setAtLatest] = useState(true)
   const followingRef = useRef(true)
   const pending = useRef<{ height: number; top: number } | null>(null)
   const previousTop = useRef(0)
@@ -14,6 +15,10 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
   const found = id ? messages.findIndex(message => message.id === id) : -1
   const start = found >= 0 ? found : Math.max(0, messages.length - batchSize)
   const visibleMessages = useMemo(() => messages.slice(start), [messages, start])
+  const measureLatest = useCallback(() => {
+    const element = ref.current
+    if (element) setAtLatest(element.scrollHeight - element.scrollTop - element.clientHeight <= Math.max(2, config.stickyScrollThresholdPx))
+  }, [])
 
   useLayoutEffect(() => {
     pending.current = null
@@ -22,6 +27,7 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
     followingRef.current = true
     const element = ref.current
     if (element) { element.style.overflowAnchor = 'none'; element.scrollTop = element.scrollHeight; previousTop.current = element.scrollTop }
+    measureLatest()
   }, [resetKey])
 
   useLayoutEffect(() => {
@@ -33,6 +39,7 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
       pending.current = null
     } else if (following) element.scrollTop = element.scrollHeight
     previousTop.current = element.scrollTop
+    measureLatest()
   }, [visibleMessages, following])
 
   useLayoutEffect(() => {
@@ -42,9 +49,12 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
     const followGrowth = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        if (!followingRef.current || pending.current) return
-        element.scrollTop = element.scrollHeight
-        previousTop.current = element.scrollTop
+        if (pending.current) return
+        if (followingRef.current) {
+          element.scrollTop = element.scrollHeight
+          previousTop.current = element.scrollTop
+        }
+        measureLatest()
       })
     }
     const resize = new ResizeObserver(followGrowth)
@@ -72,6 +82,7 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
     const element = ref.current
     if (!element || pending.current) return
     const movingUp = element.scrollTop < previousTop.current - 1
+    measureLatest()
     previousTop.current = element.scrollTop
     if (movingUp && element.scrollTop <= 72 && start > 0) { loadOlder(); return }
     if (movingUp && id === null && messages[start]) setBoundary({ key: resetKey, id: messages[start].id })
@@ -82,6 +93,7 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
     if (event.deltaY < 0) {
+      measureLatest()
       followingRef.current = false
       setFollowing(false)
       if ((ref.current?.scrollTop ?? Infinity) <= 72) loadOlder()
@@ -98,9 +110,10 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
       if (element) {
         element.scrollTo({ top: element.scrollHeight, behavior: smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto' })
         previousTop.current = element.scrollTop
+        measureLatest()
       }
     })
   }, [resetKey])
 
-  return { ref, following, visibleMessages, hiddenCount: start, loadOlder, handleScroll, handleWheel, scrollToLatest }
+  return { ref, following, atLatest, visibleMessages, hiddenCount: start, loadOlder, handleScroll, handleWheel, scrollToLatest }
 }

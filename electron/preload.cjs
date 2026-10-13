@@ -1,19 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('codingRoomTerminal', {
-  start: (directory, sessionId) => ipcRenderer.invoke('terminal:start', { directory, sessionId }),
-  write: data => ipcRenderer.send('terminal:write', data),
-  resize: (cols, rows) => ipcRenderer.send('terminal:resize', { cols, rows }),
-  stop: () => ipcRenderer.send('terminal:stop'),
+  start: (directory, sessionId, channel) => ipcRenderer.invoke('terminal:start', { directory, sessionId, channel }),
+  write: (data, channel) => ipcRenderer.send('terminal:write', data, channel),
+  resize: (cols, rows, channel) => ipcRenderer.send('terminal:resize', { cols, rows }, channel),
+  stop: channel => ipcRenderer.send('terminal:stop', channel),
   readClipboard: () => ipcRenderer.invoke('terminal:clipboard-read'),
   writeClipboard: text => ipcRenderer.invoke('terminal:clipboard-write', text),
-  onData: callback => {
-    const listener = (_event, data) => callback(data)
+  onData: (callback, channel) => {
+    const listener = (_event, data, source) => { if (source === channel) callback(data) }
     ipcRenderer.on('terminal:data', listener)
     return () => ipcRenderer.removeListener('terminal:data', listener)
   },
-  onExit: callback => {
-    const listener = (_event, code) => callback(code)
+  onExit: (callback, channel) => {
+    const listener = (_event, code, source) => { if (source === channel) callback(code) }
     ipcRenderer.on('terminal:exit', listener)
     return () => ipcRenderer.removeListener('terminal:exit', listener)
   },

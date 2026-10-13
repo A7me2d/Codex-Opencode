@@ -29,6 +29,7 @@ const allowedPreferenceKeys = new Set([
   'relay-room.theme',
   'coding-room.locale',
   'relay-room.file-icon-theme',
+  'relay-room.editor-auto-save',
   'relay-room.panel-sizes',
   'relay-room.handoff-visible',
 ])
@@ -197,8 +198,11 @@ function startBackend() {
 }
 
 ipcMain.handle('terminal:start', (event, input) => {
+  const channel = input?.channel === 'opencode' ? 'opencode' : 'shell'
+  const key = `${event.sender.id}:${channel}`
   const requestedDirectory = input?.directory
   const sessionId = String(input?.sessionId ?? '').trim()
+  if (channel === 'opencode' && !sessionId) throw new Error('أدخل معرّف جلسة OpenCode صالحًا.')
   if (sessionId && !/^ses_[A-Za-z0-9]+$/.test(sessionId)) throw new Error('أدخل معرّف جلسة OpenCode صالحًا.')
   const directory = typeof requestedDirectory === 'string' && requestedDirectory.trim()
     ? path.resolve(requestedDirectory)
@@ -207,7 +211,7 @@ ipcMain.handle('terminal:start', (event, input) => {
     throw new Error('مجلد العمل غير موجود.')
   }
 
-  terminals.get(event.sender.id)?.kill()
+  terminals.get(key)?.kill()
   const powershell = process.env.WINDIR
     ? path.join(process.env.WINDIR, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
     : 'powershell.exe'
@@ -221,30 +225,31 @@ ipcMain.handle('terminal:start', (event, input) => {
     cwd: directory,
     env: { ...process.env, TERM: 'xterm-256color' },
   })
-  terminals.set(event.sender.id, terminal)
-  terminal.onData(data => event.sender.send('terminal:data', data))
+  terminals.set(key, terminal)
+  terminal.onData(data => { if (terminals.get(key) === terminal) event.sender.send('terminal:data', data, channel) })
   terminal.onExit(({ exitCode }) => {
-    if (terminals.get(event.sender.id) === terminal) {
-      terminals.delete(event.sender.id)
-      event.sender.send('terminal:exit', exitCode)
+    if (terminals.get(key) === terminal) {
+      terminals.delete(key)
+      event.sender.send('terminal:exit', exitCode, channel)
     }
   })
   return { cwd: directory, command }
 })
 
-ipcMain.on('terminal:write', (event, data) => {
-  const terminal = terminals.get(event.sender.id)
+ipcMain.on('terminal:write', (event, data, channel) => {
+  const terminal = terminals.get(`${event.sender.id}:${channel === 'opencode' ? 'opencode' : 'shell'}`)
   if (terminal && typeof data === 'string' && data.length <= 16_384) terminal.write(data)
 })
-ipcMain.on('terminal:resize', (event, size) => {
-  const terminal = terminals.get(event.sender.id)
+ipcMain.on('terminal:resize', (event, size, channel) => {
+  const terminal = terminals.get(`${event.sender.id}:${channel === 'opencode' ? 'opencode' : 'shell'}`)
   if (terminal && Number.isInteger(size?.cols) && Number.isInteger(size?.rows)) {
     terminal.resize(Math.min(400, Math.max(20, size.cols)), Math.min(120, Math.max(5, size.rows)))
   }
 })
-ipcMain.on('terminal:stop', event => {
-  terminals.get(event.sender.id)?.kill()
-  terminals.delete(event.sender.id)
+ipcMain.on('terminal:stop', (event, channel) => {
+  const key = `${event.sender.id}:${channel === 'opencode' ? 'opencode' : 'shell'}`
+  terminals.get(key)?.kill()
+  terminals.delete(key)
 })
 ipcMain.handle('terminal:clipboard-read', () => clipboard.readText())
 ipcMain.handle('terminal:clipboard-write', (_event, text) => {
@@ -275,8 +280,11 @@ ipcMain.handle('app:retry-update', async () => {
 })
 app.on('web-contents-created', (_event, contents) => {
   contents.once('destroyed', () => {
-    terminals.get(contents.id)?.kill()
-    terminals.delete(contents.id)
+    for (const channel of ['shell', 'opencode']) {
+      const key = `${contents.id}:${channel}`
+      terminals.get(key)?.kill()
+      terminals.delete(key)
+    }
   })
 })
 

@@ -84,6 +84,7 @@ export const api = {
   saveProjectFile: (input: { root: string; path: string; content: string; version: string }) => post<{ data: { path: string; content: string; version: string } }>('/api/project/file', input).then(unwrap),
   projectFiles: (path = '') => requestJson<{ data: import('./types').ProjectFiles }>(`/api/project/files?path=${encodeURIComponent(path)}`).then(unwrap),
   projectSearch: (query: string) => requestJson<{ data: import('./types').ProjectSearchResults }>(`/api/project/search?q=${encodeURIComponent(query)}`).then(unwrap),
+  projectContentSearch: (query: string, signal?: AbortSignal) => requestJson<{ data: import('./types').ProjectContentSearchResults }>(`/api/project/search-content?q=${encodeURIComponent(query)}`, { signal }).then(unwrap),
   openProjectFolder: () => post<{ data: ProjectInfo }>('/api/project/open'),
   openWorkRoot: () => post<{ data: { directory: string } }>('/api/project/open-work-root'),
   selectProjectFolder: () =>

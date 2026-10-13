@@ -1,5 +1,6 @@
 import { StandaloneTitleBar } from './components/WindowControls'
 import { ProjectEditor } from './components/ProjectEditor'
+import { ExtensionsWorkspace } from './components/ExtensionsWorkspace'
 import { SupportButton, SupportChat } from './components/SupportChat'
 import { direction, setLocale, tr, useLocale } from './lib/i18n'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
@@ -58,6 +59,7 @@ function WorkspaceApp() {
   const [panelSizes, setPanelSizes] = useState<PanelSizes>(loadPanelSizes)
   const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
   const [handoffVisible, setHandoffVisible] = useState(readHandoffVisibility)
+  const [extensionsOpen, setExtensionsOpen] = useState(false)
 
   useEffect(() => {
     persistPreference(preferenceKeys.panelSizes, JSON.stringify(panelSizes))
@@ -210,6 +212,9 @@ function WorkspaceApp() {
       onToggleLanguage={() => setLocale(locale === 'en' ? 'ar' : 'en')}
       handoffVisible={handoffVisible}
       onToggleHandoff={() => setHandoffVisible(value => !value)}
+      onOpenExtensions={() => setExtensionsOpen(true)}
+      mode={extensionsOpen ? 'ide' : 'agent'}
+      onChangeMode={mode => setExtensionsOpen(mode === 'ide')}
     />
 
     {/*
@@ -217,9 +222,10 @@ function WorkspaceApp() {
       left-to-right (sessions · chat · handoff) while every column renders RTL.
     */}
     <main
+      id="workspace-agent" role="tabpanel" aria-labelledby="workspace-mode-agent"
       ref={layoutRef}
       dir="ltr"
-      style={layoutStyle}
+      style={{ ...layoutStyle, ...(extensionsOpen ? { display: 'none' } : {}) }}
       className="relative mx-auto grid w-full max-w-[1800px] flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[var(--relay-sessions-width)_minmax(22rem,1fr)_var(--relay-handoff-width)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
     >
       <ErrorBoundary label={tr("قائمة الجلسات مش معروضة صح دلوقتي.")}>
@@ -324,6 +330,7 @@ function WorkspaceApp() {
         </span>
       </div>
     </main>
+    <ExtensionsWorkspace root={room.workRoot} open={extensionsOpen} />
     <TerminalDock cwd={room.workRoot || conversation.view.thread?.directory} />
   </div>
 }

@@ -4,10 +4,16 @@ import { codexWeeklyQuota } from '../server/codex-weekly-quota.mjs'
 const weekly = { windowDurationMins: 10080, usedPercent: 28.5, resetsAt: 1800000000 }
 const short = { windowDurationMins: 300, usedPercent: 90 }
 assert.deepEqual(codexWeeklyQuota({ rateLimits: { primary: short, secondary: weekly } }),
-  { available: true, remainingPercent: 71.5, resetsAt: 1800000000 })
+  { available: true, remainingPercent: 71.5, resetsAt: 1800000000,
+    fiveHour: { available: true, remainingPercent: 10, resetsAt: null } })
 assert.equal(codexWeeklyQuota({ rateLimitsByLimitId: { codex: { primary: weekly } }, rateLimits: { limitId: 'other', secondary: short } }).remainingPercent, 71.5)
 for (const response of [null, {}, { rateLimits: { secondary: short } }, { rateLimits: { limitId: 'other', secondary: weekly } }, { rateLimits: { secondary: { ...weekly, usedPercent: NaN } } }]) {
   assert.equal(codexWeeklyQuota(response).available, false, 'missing weekly Codex quota must not substitute other usage')
 }
 assert.equal(codexWeeklyQuota({ rateLimits: { secondary: { ...weekly, usedPercent: 100 } } }).remainingPercent, 0)
+assert.equal(codexWeeklyQuota({ rateLimits: { primary: weekly, secondary: short } }).fiveHour.remainingPercent, 10, '5-hour quota is independent of bucket order')
+assert.equal(codexWeeklyQuota({ rateLimits: { primary: short } }).fiveHour.available, true, '5-hour allowance can exist without weekly allowance')
+assert.equal(codexWeeklyQuota({ rateLimits: { secondary: weekly } }).fiveHour.available, false)
+assert.equal(codexWeeklyQuota({ rateLimits: { primary: { ...short, windowDurationMins: 60 } } }).fiveHour.available, false, 'another duration must not appear as 5-hour usage')
+assert.equal(codexWeeklyQuota({ rateLimits: { primary: { ...short, usedPercent: 100 } } }).fiveHour.remainingPercent, 0)
 console.log('Passed: weekly remaining allowance, multiple buckets, missing data and exhausted quota.')
