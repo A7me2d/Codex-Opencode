@@ -8,6 +8,23 @@
 
 export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+export interface CodexWeeklyQuota { available: boolean; remainingPercent: number | null; resetsAt: number | null }
+
+export interface ExtensionWorkspaceStatus {
+  phase: 'stopped' | 'starting' | 'downloading' | 'ready' | 'error'
+  downloadPercent: number | null
+  directory: string
+  available: boolean
+  running: boolean
+  starting: boolean
+  runtimeReady: boolean
+  installing: boolean
+  nxInstalled: boolean
+  nxWorkspace: boolean
+  error: string | null
+  path: string | null
+}
+
 export interface RequestState<T> {
   data: T | null
   error: string | null
@@ -54,6 +71,8 @@ export interface ProjectFiles { path: string; entries: ProjectFileEntry[]; trunc
 export interface ProjectSearchResults { entries: ProjectFileEntry[]; truncated: boolean }
 
 export interface CodexThread {
+  archived?: boolean
+  running?: boolean
   workflow?: WorkflowSetup
   workflowRole?: 'planner' | 'executor'
   executorThreadId?: string
@@ -156,6 +175,8 @@ export interface ChatMessage {
 export type Speaker = 'codex' | 'opencode'
 
 export interface SessionFileDiff {
+  /** The completed Codex edit events contributing to this file's patch. */
+  changeIds?: string[]
   file: string
   patch: string
   additions: number

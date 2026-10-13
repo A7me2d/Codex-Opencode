@@ -4,7 +4,10 @@ import vm from 'node:vm'
 
 const source = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
 const slice = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)))
-const context = vm.createContext({ safeCodexThreadId: (id) => id, publicError: (error) => error.message, ensureRelayCodexThreadLoaded: async () => {} })
+const context = vm.createContext({ safeCodexThreadId: (id) => id, publicError: (error) => error.message,
+  requireRelayCodexThread: async id => ({ id, saved: {} }),
+  ensureRelayCodexThreadLoaded: async () => { throw new Error('already has an active writer') },
+})
 vm.runInContext(`class Bridge { constructor() { this.liveMessages = new Map() } completeTurn() {} clearDelegationGrant() {} ${slice('  handleNotification(packet)', '  markThreadActive(')} }; const codexBridge = new Bridge(); globalThis.bridge = codexBridge`, context)
 vm.runInContext(slice('async function listRelayCodexMessages(', '\nfunction extractOpenCodeTask('), context)
 const bridge = context.bridge
@@ -15,6 +18,7 @@ bridge.handleNotification({ method: 'item/completed', params: { threadId: 'threa
 assert.equal(bridge.getLiveMessages('thread')[0].live, false)
 const calls = []
 bridge.call = async (_method, params) => {
+  assert.equal(_method, 'thread/items/list', 'reading messages must not resume, unsubscribe, or claim writer ownership')
   calls.push(params)
   return params.cursor ? { data: [{ item: { id: 'last-user', type: 'userMessage' } }], nextCursor: null }
     : { data: Array.from({ length: 200 }, (_, index) => ({ item: { id: `old-${index}`, type: 'agentMessage' } })), nextCursor: 'next' }
@@ -28,3 +32,4 @@ bridge.call = async () => ({ data: [{ item: { id: 'reply', type: 'agentMessage',
 assert.equal((await context.listRelayCodexMessages('thread')).length, 1)
 assert.equal(bridge.getLiveMessages('thread').length, 0)
 console.log('Passed: old chats paginate past 200 items; standard live events render; completed replies survive persistence delay and are deduplicated once saved.')
+console.log('Passed: transcript reads never resume a thread, including one whose resume would fail because another application owns its writer.')

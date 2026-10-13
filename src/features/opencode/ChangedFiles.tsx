@@ -1,5 +1,5 @@
 import { tr } from '../../lib/i18n'
-import { FileCode2, ChevronDown } from 'lucide-react'
+import { Check, FileCode2, ChevronDown, LoaderCircle } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { readDiffLines } from '../../lib/diff'
@@ -12,16 +12,40 @@ function statusLabel(status: string) {
   return statuses[status] ?? status
 }
 
-/** Read-only, scoped to one session. Expanding a file never opens an editor. */
+/** Scoped to one session; accepting Codex edits records a review decision. */
 export function ChangedFiles({ sessionId, active, source = 'opencode', files: suppliedFiles }: { sessionId: string; active: boolean; source?: 'codex' | 'opencode'; files?: SessionFileDiff[] }) {
   const diff = usePolling(suppliedFiles ? null : () => source === 'codex' ? api.codexDiff(sessionId) : api.sessionDiff(sessionId), active ? 5000 : 60_000)
   const [visibleCount, setVisibleCount] = useState(30)
-  const files = useMemo(() => suppliedFiles ?? (Array.isArray(diff.data) ? diff.data.filter((file) => typeof file.file === 'string') : []), [suppliedFiles, diff.data])
+  const [accepted, setAccepted] = useState<Set<string>>(() => new Set())
+  const [accepting, setAccepting] = useState(false)
+  const [acceptError, setAcceptError] = useState<string | null>(null)
+  const files = useMemo(() => {
+    const current = suppliedFiles ?? (Array.isArray(diff.data) ? diff.data.filter((file) => typeof file.file === 'string') : [])
+    return source === 'codex' ? current.filter(file => !file.changeIds?.length || !file.changeIds.every(id => accepted.has(id))) : current
+  }, [suppliedFiles, diff.data, source, accepted])
+  const changeIds = useMemo(() => [...new Set(files.flatMap(file => file.changeIds ?? []))], [files])
+  async function acceptChanges() {
+    if (accepting || active || !changeIds.length) return
+    const snapshot = changeIds
+    setAccepting(true); setAcceptError(null)
+    try {
+      const result = await api.acceptCodexChanges(sessionId, snapshot)
+      setAccepted(previous => new Set([...previous, ...result.accepted]))
+      void diff.refresh()
+    } catch (failure) { setAcceptError(failure instanceof Error ? tr(failure.message) : tr('تعذّر قبول التعديلات.')) }
+    finally { setAccepting(false) }
+  }
+  if (source === 'codex' && !files.length && !diff.error && !acceptError && diff.status !== 'loading') return null
   return <section aria-label={tr("تغييرات ملفات الجلسة")} className="border-b border-line py-3">
     <div className="mb-2 flex items-center justify-between gap-2">
       <h3 className="flex items-center gap-1.5 text-xs font-bold text-ink"><FileCode2 className="h-3.5 w-3.5 text-ready" aria-hidden="true" />{source === 'codex' ? tr("تغييرات Codex") : tr("تغييرات الجلسة")} <span className="text-[10px] font-normal text-ink-soft">({files.length})</span></h3>
-      {active ? <span className="text-[10px] text-ready-ink">{tr("تتحدّث أثناء العمل")}</span> : null}
+      <div className="flex items-center gap-2">
+        {active ? <span className="text-[10px] text-ready-ink">{tr("تتحدّث أثناء العمل")}</span> : null}
+        {source === 'codex' && files.length > 0 ? <button type="button" onClick={() => void acceptChanges()} disabled={active || accepting || !changeIds.length} className="inline-flex items-center gap-1.5 rounded-lg bg-ready px-3 py-1.5 text-[11px] font-bold text-on-accent transition-colors hover:bg-ready-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/50 disabled:cursor-not-allowed disabled:opacity-45">
+          {accepting ? <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Check className="h-3.5 w-3.5" aria-hidden="true" />}{tr(accepting ? 'جارٍ قبول التعديلات…' : 'قبول التعديلات')}</button> : null}
+      </div>
     </div>
+    {acceptError ? <p role="alert" className="mb-2 text-[11px] leading-5 text-review-ink">{tr(acceptError)}</p> : null}
     {diff.error ? <p role="status" className="text-[11px] text-review-ink">{tr("تعذّر تحميل التغييرات:")}{' '}{diff.error}</p>
       : files.length === 0 ? <p className="text-[11px] leading-5 text-ink-soft">{diff.status === 'loading' ? tr("جارٍ تحميل التغييرات…") : tr("لا توجد تغييرات ملفات مسجلة لهذه الجلسة.")}</p>
       : <div className="space-y-1.5">

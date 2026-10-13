@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { config } from '../app/config'
 import { api } from '../lib/api'
 import { asArray } from '../lib/guards'
+import { toEpoch } from '../lib/format'
 import { openCodeReviewPrompt } from '../lib/review'
 import type { CodexThread, CodexStatus, OpenCodeSession, OpenCodeStatus, ProjectInfo, RelayEvent } from '../lib/types'
 import { useAgentAlerts } from './useAgentAlerts'
@@ -22,6 +23,8 @@ export function useRelayRoom() {
   const openCodeStatus = usePolling(api.openCodeStatus, Math.max(config.poll.openCodeStatusMs, 30_000))
   const project = usePolling(api.project, config.poll.projectMs)
   const threadList = usePolling(api.threads, Math.max(config.poll.threadsMs, 30_000))
+  const [showArchived, setShowArchived] = useState(false)
+  const archivedList = usePolling(showArchived ? api.archivedThreads : null, 30_000)
   const relayEvents = usePolling(api.relayEvents, Math.max(config.poll.relayEventsMs, 30_000))
   const models = usePolling(api.models, Math.max(config.poll.modelsMs, 300_000))
   const openCodeSessions = usePolling(api.openCodeSessions, Math.max(config.poll.sessionsMs, 30_000))
@@ -32,17 +35,28 @@ export function useRelayRoom() {
   const [choosingWorkRoot, setChoosingWorkRoot] = useState(false)
   /** Errors from the shell itself (create thread, open folder). */
   const [shellError, setShellError] = useState<string | null>(null)
+  const [recentActivity, setRecentActivity] = useState<Record<string, number>>({})
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail
+      if (typeof id === 'string') setRecentActivity(previous => ({ ...previous, [id]: Date.now() }))
+      void threadList.refresh()
+      void openCodeSessions.refresh()
+    }
+    window.addEventListener('coding-room:conversation-activity', changed)
+    return () => window.removeEventListener('coding-room:conversation-activity', changed)
+  }, [threadList.refresh, openCodeSessions.refresh])
 
   const projectThreads = useMemo(() => {
-    // Preserve the API's order while tolerating duplicate rollout records
-    // from an older server that is still running during a frontend update.
+    // Tolerate duplicate rollout records, then include just-sent messages in
+    // recency order while the provider's list catches up.
     const seen = new Set<string>()
     return asArray<CodexThread>(threadList.data).filter((thread) => {
       if (seen.has(thread.id)) return false
       seen.add(thread.id)
       return true
-    })
-  }, [threadList.data])
+    }).sort((a, b) => Math.max(toEpoch(b.updatedAt), recentActivity[b.id] ?? 0) - Math.max(toEpoch(a.updatedAt), recentActivity[a.id] ?? 0))
+  }, [threadList.data, recentActivity])
   const workRoot = (project.data as ProjectInfo | null)?.workRoot
   const threads = useMemo(() => {
     if (!workRoot) return projectThreads
@@ -50,6 +64,11 @@ export function useRelayRoom() {
     const currentRoot = normalize(workRoot)
     return projectThreads.filter(thread => typeof thread.directory === 'string' && normalize(thread.directory) === currentRoot)
   }, [projectThreads, workRoot])
+  const archivedThreads = useMemo(() => {
+    const normalize = (value: string) => value.replace(/[\\/]+$/, '').toLowerCase()
+    return asArray<CodexThread>(archivedList.data).filter(thread => !workRoot || normalize(thread.directory ?? '') === normalize(workRoot))
+      .sort((a, b) => toEpoch(b.updatedAt) - toEpoch(a.updatedAt))
+  }, [archivedList.data, workRoot])
   const events = useMemo(() => asArray<RelayEvent>(relayEvents.data), [relayEvents.data])
 
   // Open the most recent conversation on first load, then leave the choice alone.
@@ -92,6 +111,7 @@ export function useRelayRoom() {
     setShellError(null)
     try {
       const created = await api.createThread(tr("محادثة جديدة"))
+      setShowArchived(false)
       setSelectedId(created.id)
       await threadList.refresh()
     } catch (failure) {
@@ -182,6 +202,14 @@ export function useRelayRoom() {
     projectDirectory: (project.data as ProjectInfo | null)?.directory,
     workRoot,
     threads,
+    archivedThreads,
+    showArchived,
+    archivedLoading: archivedList.status === 'loading',
+    archivedError: archivedList.error,
+    onShowArchived: setShowArchived,
+    onRenameThread: async (id: string, title: string) => { await api.renameThread(id, title); await Promise.all([threadList.refresh(), archivedList.refresh()]) },
+    onArchiveThread: async (id: string) => { await api.archiveThread(id); await Promise.all([threadList.refresh(), archivedList.refresh()]); if (selectedId === id) setSelectedId(null) },
+    onRestoreThread: async (id: string) => { await api.restoreThread(id); await Promise.all([threadList.refresh(), archivedList.refresh()]); setShowArchived(false); setSelectedId(id) },
     selectedId,
     events,
     creating,

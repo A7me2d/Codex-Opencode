@@ -334,6 +334,37 @@
   }
 }
 
+.codex-transcript-scroll {
+  margin-bottom: var(--composer-height, 160px);
+}
+
+.codex-floating-composer,
+.codex-floating-composer textarea {
+  background: transparent;
+}
+
+[data-theme="liquid-glass"] .codex-floating-composer {
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+[data-theme="liquid-glass"] .openzero-workspace .codex-input-capsule textarea {
+  background: transparent;
+}
+
+[data-theme="liquid-glass"] .codex-input-capsule {
+  border-color: oklch(0.84 0.006 255 / 0.4);
+  box-shadow: inset 0 1px 1px oklch(0.98 0.004 255 / 0.12), 0 8px 20px oklch(0.08 0.006 255 / 0.18);
+}
+
+[data-theme="liquid-glass"] .codex-send-or-stop {
+  border: 1px solid oklch(0.86 0.006 255 / 0.4);
+  background: transparent;
+  color: var(--color-ink);
+  box-shadow: inset 0 1px oklch(0.98 0.004 255 / 0.16), 0 4px 12px oklch(0.08 0.006 255 / 0.2);
+}
+
 /* Chat-only Liquid Glass surfaces. Messages use solid fills, never per-item blur. */
 [data-theme="liquid-glass"] .chat-panel {
   background-color: oklch(0.2 0.008 255 / 0.84);

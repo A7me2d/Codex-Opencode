@@ -3,16 +3,20 @@ import { Bot, Sparkles, UserRound } from 'lucide-react'
 import { memo } from 'react'
 import { cx } from '../lib/cx'
 import type { ChatMessage, Speaker } from '../lib/types'
+import { AccountAvatar } from './AccountAvatar'
+import { accountIdentity } from '../lib/accountIdentity'
 
 const agentName: Record<Speaker, string> = { codex: 'Codex', opencode: 'OpenCode' }
 
 /** One chat line. The two agents stay visually distinct without splitting the flow. */
-export const MessageBubble = memo(function MessageBubble({ message, speaker }: { message: ChatMessage; speaker: Speaker }) {
+export const MessageBubble = memo(function MessageBubble({ message, speaker, codexIdentity }: { message: ChatMessage; speaker: Speaker; codexIdentity?: string }) {
   const isUser = message.role === 'user'
+  const accountUser = isUser && speaker === 'codex'
+  const accountName = accountIdentity(codexIdentity).name || tr('Codex Desktop')
   const lines = message.text.split('\n')
 
   return <article className={cx('chat-message flex items-start gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
-    <div
+    {!accountUser ? <div
       aria-hidden="true"
       className={cx(
         'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-inset ring-line/70',
@@ -20,11 +24,12 @@ export const MessageBubble = memo(function MessageBubble({ message, speaker }: {
       )}
     >
       {isUser ? <UserRound className="h-3.5 w-3.5" /> : speaker === 'codex' ? <Sparkles className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-    </div>
+    </div> : null}
 
     <div className="min-w-0 max-w-[94%] flex-1 text-start">
-      <div className="mb-2 flex min-h-6 items-center gap-2 px-1">
-        <span className="text-[11px] font-extrabold tracking-wide text-ink">{isUser ? tr("أنت") : agentName[speaker]}</span>
+      <div className={cx('mb-2 flex min-h-6 items-center gap-2 px-1', accountUser && 'flex-row-reverse')}>
+        {accountUser ? <AccountAvatar identity={codexIdentity} /> : null}
+        <span dir="auto" className="min-w-0 truncate text-[11px] font-extrabold tracking-wide text-ink" title={accountUser ? accountName : undefined}>{accountUser ? accountName : isUser ? tr("أنت") : agentName[speaker]}</span>
         {!isUser ? <span className={cx('rounded-full px-2 py-0.5 text-[9px] font-bold', speaker === 'codex' ? 'bg-relay-tint text-relay-ink' : 'bg-ready-tint text-ready-ink')}>{tr('رد المساعد')}</span> : null}
         {message.live ? <span className="inline-flex items-center gap-1 text-relay" role="status">{tr("يكتب الآن")}<span className="h-1.5 w-1.5 animate-pulse rounded-full bg-relay" /></span> : null}
       </div>
@@ -39,6 +44,7 @@ export const MessageBubble = memo(function MessageBubble({ message, speaker }: {
     </div>
   </article>
 }, (previous, next) => previous.speaker === next.speaker
+  && previous.codexIdentity === next.codexIdentity
   && previous.message.id === next.message.id
   && previous.message.role === next.message.role
   && previous.message.text === next.message.text

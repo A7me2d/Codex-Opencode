@@ -1,4 +1,7 @@
 import { readProjectFile, saveProjectFile } from './server/project-editor.mjs'
+import { codexWeeklyQuota } from './server/codex-weekly-quota.mjs'
+import { ExtensionWorkbench, workbenchPath, trustedExtensionRequest } from './server/extension-workbench.mjs'
+import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -18,6 +21,7 @@ const stateDirectory = process.env.RELAY_STATE_DIR
   ? path.resolve(process.env.RELAY_STATE_DIR)
   : path.join(appDirectory, '.relay-state')
 const eventsPath = path.join(stateDirectory, 'events.json')
+const extensionWorkbench = new ExtensionWorkbench(stateDirectory)
 const codexStatePath = path.join(stateDirectory, 'codex.json')
 const workRootStatePath = path.join(stateDirectory, 'work-root.json')
 const maxBodyBytes = 256 * 1024
@@ -614,6 +618,9 @@ class CodexAppServerBridge {
     this.runningTurns = new Map()
     this.completedTurns = new Map()
     this.onTurnCompleted = null
+    this.rateLimitsSnapshot = null
+    this.rateLimitsReadAt = 0
+    this.rateLimitsPending = null
   }
 
   async ensureStarted() {
@@ -643,6 +650,8 @@ class CodexAppServerBridge {
     this.threadInstructions.clear()
     this.runningTurns.clear()
     this.completedTurns.clear()
+    this.rateLimitsSnapshot = null
+    this.rateLimitsReadAt = 0
     child.stdout.on('data', (chunk) => this.consumeStdout(chunk.toString()))
     child.stderr.on('data', (chunk) => {
       this.stderr = `${this.stderr}${chunk.toString()}`.slice(-4000)
@@ -801,6 +810,14 @@ class CodexAppServerBridge {
 
   handleNotification(packet) {
     const params = packet.params ?? {}
+    if (packet.method === 'account/rateLimits/updated') {
+      const incoming = params.rateLimits
+      this.rateLimitsSnapshot = { ...this.rateLimitsSnapshot, ...params,
+        rateLimitsByLimitId: { ...this.rateLimitsSnapshot?.rateLimitsByLimitId, ...params.rateLimitsByLimitId,
+          ...(incoming?.limitId ? { [incoming.limitId]: incoming } : {}) } }
+      this.rateLimitsReadAt = Date.now()
+      return
+    }
     if (packet.method === 'turn/started') {
       this.markTurnRunning(params.threadId, params.turn?.id ?? params.turnId)
       return
@@ -999,6 +1016,21 @@ class CodexAppServerBridge {
 
 const codexBridge = new CodexAppServerBridge()
 
+async function readCodexWeeklyQuota() {
+  await codexBridge.ensureStarted()
+  if (codexBridge.rateLimitsSnapshot && Date.now() - codexBridge.rateLimitsReadAt < 60_000) {
+    return codexWeeklyQuota(codexBridge.rateLimitsSnapshot)
+  }
+  if (!codexBridge.rateLimitsPending) {
+    codexBridge.rateLimitsPending = codexBridge.call('account/rateLimits/read', {}, 15_000).then(result => {
+      codexBridge.rateLimitsSnapshot = result
+      codexBridge.rateLimitsReadAt = Date.now()
+      return codexWeeklyQuota(result)
+    }).finally(() => { codexBridge.rateLimitsPending = null })
+  }
+  return codexBridge.rateLimitsPending
+}
+
 function threadInstructionSelection(saved) {
   if (saved.workflowRole === 'executor' && saved.workflow?.planner === 'codex') {
     return { source: 'codexToCodexExecutorInstructions', text: codexToCodexExecutorInstructions }
@@ -1159,6 +1191,9 @@ async function ensureRelayCodexThreadLoaded(threadId) {
       })
     }
   } catch (error) {
+    if (/already has an active writer|another.*(?:app-server|process).*owns/i.test(publicError(error))) {
+      throw new HttpError(409, 'This Codex session is open in another application. Its history can be read here; sending requires the other application to release the session.')
+    }
     if (publicError(error).includes('no rollout found')) {
       throw new HttpError(409, 'This empty Codex session was not persisted before Open Zero restarted. Start a new conversation.')
     }
@@ -1184,16 +1219,17 @@ function isWorkRoot(directory) {
  * apart. Sessions Open Zero does not own yet are still openable: resuming one
  * registers it here, which is why `needsRegistration` is reported.
  */
-async function listAllCodexThreads() {
+async function listAllCodexThreads(archived = false) {
   const state = await readCodexState()
 
   const response = await codexBridge.call('thread/list', {
     limit: 200,
     sortKey: 'updated_at',
     sortDirection: 'desc',
+    archived,
   })
   const remote = Array.isArray(response?.data) ? response.data : []
-  adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
+  if (!archived) adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
 
   // Codex does not include a freshly started, empty app-server thread in
   // `thread/list` until it has a rollout item. Open Zero owns that thread
@@ -1204,7 +1240,7 @@ async function listAllCodexThreads() {
   const activeLocalOnly = Object.values(state.threads)
     .filter((saved) => {
       const id = safeCodexThreadId(saved?.id)
-      return id && !remoteIds.has(id) && codexBridge.activeThreads.has(id)
+      return !archived && id && !remoteIds.has(id) && codexBridge.activeThreads.has(id) && !saved.archived
     })
     .map((saved) => ({
       id: saved.id,
@@ -1229,12 +1265,15 @@ async function listAllCodexThreads() {
         // can lag behind or fall back to a console code-page.
         title: saved?.title ?? thread.name ?? thread.title ?? 'محادثة جديدة',
         directory,
-        updatedAt: thread.updatedAt ?? thread.updated_at ?? saved?.updatedAt,
+        updatedAt: Math.max(conversationTime(thread.updatedAt ?? thread.updated_at), conversationTime(saved?.lastMessageAt))
+          || conversationTime(saved?.updatedAt ?? thread.createdAt ?? thread.created_at),
         createdAt: saved?.createdAt ?? thread.createdAt ?? thread.created_at,
         /** The folder this instance works in. */
         inProject: isWorkRoot(directory),
         /** Still running here, so its state is live rather than read from disk. */
         active: codexBridge.activeThreads.has(thread.id),
+        running: codexBridge.getTurnState(thread.id).active || thread.status?.type === 'active',
+        archived,
         /** Open Zero has not recorded this session yet; opening it will. */
         needsRegistration: !saved,
         openCodeModel: saved?.openCodeModel,
@@ -1245,10 +1284,43 @@ async function listAllCodexThreads() {
     })
     .filter(Boolean)
     .sort((left, right) => {
-      // The project at hand first, then newest activity.
-      if (left.inProject !== right.inProject) return left.inProject ? -1 : 1
-      return Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0)
+      return conversationTime(right.updatedAt) - conversationTime(left.updatedAt)
     })
+}
+
+async function manageCodexThread(threadId, action, input = {}) {
+  const id = safeCodexThreadId(threadId)
+  if (!id) throw new HttpError(400, 'Invalid Codex thread id.')
+  const title = action === 'rename' ? conversationTitle(input.title) : null
+  // Metadata operations must not resume a conversation or replace its instructions.
+  const response = await codexBridge.call('thread/read', { threadId: id, includeTurns: false })
+  const thread = response?.thread
+  if (!thread || thread.id !== id) throw new HttpError(404, 'Codex conversation not found.')
+  if (action === 'archive') {
+    const state = await readCodexState()
+    const related = [id, state.threads[id]?.executorThreadId,
+      ...Object.values(state.threads).filter(entry => entry.executorThreadId === id).map(entry => entry.id)].filter(Boolean)
+    if (thread.status?.type === 'active' || related.some(key => codexBridge.getTurnState(key).active)) {
+      throw new HttpError(409, 'Wait until this conversation finishes before archiving it.')
+    }
+    const linked = related.map(key => state.links[key]?.opencodeSessionId).filter(Boolean)
+    if (linked.length) {
+      const active = await openCodeApi('GET', '/api/session/active')
+      if (linked.some(key => isOpenCodeSessionActive(active, key))) throw new HttpError(409, 'Wait until the linked OpenCode session finishes before archiving this conversation.')
+    }
+  }
+  await codexBridge.call(action === 'rename' ? 'thread/name/set' : action === 'archive' ? 'thread/archive' : 'thread/unarchive',
+    { threadId: id, ...(title ? { name: title } : {}) })
+  await updateCodexState(state => {
+    const saved = state.threads[id] ?? { id, directory: thread.cwd, createdAt: conversationTime(thread.createdAt), title: thread.name ?? thread.title }
+    state.threads[id] = { ...saved, ...(title ? { title } : { archived: action === 'archive' }) }
+  })
+  if (action === 'archive') {
+    codexBridge.activeThreads.delete(id)
+    codexBridge.threadInstructions.delete(id)
+  }
+  adoptedLookupCache = undefined
+  return { id, ...(title ? { title } : { archived: action === 'archive' }) }
 }
 
 async function createRelayCodexThread(input) {
@@ -1298,7 +1370,9 @@ function textFromCodexInput(content) {
 }
 
 async function listRelayCodexMessages(threadId) {
-  await ensureRelayCodexThreadLoaded(threadId)
+  // Persisted item pagination is read-only. Resuming here unnecessarily claims
+  // writer ownership and fails for sessions open in Codex Desktop or another API.
+  await requireRelayCodexThread(threadId)
   const items = []
   let cursor
   const seenCursors = new Set()
@@ -1387,6 +1461,7 @@ async function sendRelayCodexMessage(threadId, input) {
           delete state.threads[threadId].pendingCodexSandbox
         }
         state.threads[threadId].updatedAt = Date.now()
+        state.threads[threadId].lastMessageAt = Date.now()
         if (settings.model) {
           state.threads[threadId].codexModel = settings.model
           state.threads[threadId].codexEffort = settings.effort
@@ -1963,8 +2038,7 @@ async function listProjectOpenCodeSessions() {
       }
     })
     .sort((left, right) => {
-      if (left.active !== right.active) return left.active ? -1 : 1
-      return Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0)
+      return conversationTime(right.updatedAt) - conversationTime(left.updatedAt)
     })
 }
 
@@ -2244,10 +2318,44 @@ async function relayCodexExecutorReplyToPlanner(executorThreadId) {
   }
 }
 
-codexBridge.onTurnCompleted = (threadId) => relayCodexExecutorReplyToPlanner(threadId)
+codexBridge.onTurnCompleted = async (threadId) => {
+  await updateCodexState(state => { if (state.threads[threadId]) state.threads[threadId].lastMessageAt = Date.now() })
+  return relayCodexExecutorReplyToPlanner(threadId)
+}
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+    if (url.pathname.startsWith('/api/extensions/') && !trustedExtensionRequest(request)) {
+      sendJson(response, 403, { error: 'Open the extensions workspace from Open Zero.' })
+      return
+    }
+    if (url.pathname.startsWith(workbenchPath)) {
+      try { extensionWorkbench.proxy(request, response) }
+      catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
+      return
+    }
+    if (url.pathname === '/api/extensions/status' && request.method === 'GET') {
+      sendJson(response, 200, { data: extensionWorkbench.status(watchRoot) })
+      return
+    }
+    if (url.pathname === '/api/extensions/start' && request.method === 'POST') {
+      try {
+        const input = await readJson(request)
+        if (path.resolve(input.directory ?? '') !== path.resolve(watchRoot)) throw new HttpError(409, 'The selected project changed. Reopen the Extensions tab.')
+        sendJson(response, 200, { data: await extensionWorkbench.start(watchRoot, input.acceptedTerms) })
+      } catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
+      return
+    }
+    if (url.pathname === '/api/extensions/stop' && request.method === 'POST') {
+      try { await extensionWorkbench.stop(); sendJson(response, 200, { data: { stopped: true } }) }
+      catch { sendJson(response, 502, { error: 'Could not stop the extensions workspace.' }) }
+      return
+    }
+    if (url.pathname === '/api/extensions/install-nx' && request.method === 'POST') {
+      try { sendJson(response, 200, { data: await extensionWorkbench.installNx() }) }
+      catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
+      return
+    }
   if (url.pathname === '/api/license/status' && request.method === 'GET') {
     try { sendJson(response, 200, await readLicenseStatus()) }
     catch (error) { sendJson(response, error.status ?? 503, { error: publicError(error) }) }
@@ -2427,6 +2535,12 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/codex/weekly-quota') {
+      try { sendJson(response, 200, { data: await readCodexWeeklyQuota() }) }
+      catch { sendJson(response, 200, { data: { available: false, remainingPercent: null, resetsAt: null } }) }
+      return
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/codex/models') {
       sendJson(response, 200, { data: await listCodexModels() })
       return
@@ -2452,7 +2566,6 @@ const server = createServer(async (request, response) => {
 
     const codexSettingsMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/settings$/)
     if (request.method === 'GET' && codexSettingsMatch) {
-      await ensureRelayCodexThreadLoaded(codexSettingsMatch[1])
       const { saved } = await requireRelayCodexThread(codexSettingsMatch[1])
       sendJson(response, 200, { data: { model: saved.codexModel ?? '', effort: saved.codexEffort ?? '', sandbox: codexSandboxMode(saved.pendingCodexSandbox ?? saved.codexSandbox), permissionsPending: Boolean(saved.pendingCodexSandbox) } })
       return
@@ -2471,7 +2584,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/codex/threads') {
-      sendJson(response, 200, { data: await listAllCodexThreads() })
+      sendJson(response, 200, { data: await listAllCodexThreads(url.searchParams.get('archived') === 'true') })
       return
     }
 
@@ -2479,6 +2592,12 @@ const server = createServer(async (request, response) => {
       const input = await readJson(request)
       const thread = await createRelayCodexThread(input)
       sendJson(response, 201, { data: thread })
+      return
+    }
+
+    const codexManageMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/(rename|archive|restore)$/)
+    if (codexManageMatch && request.method === 'POST') {
+      sendJson(response, 200, { data: await manageCodexThread(codexManageMatch[1], codexManageMatch[2], await readJson(request)) })
       return
     }
 
@@ -2536,11 +2655,27 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    const codexAcceptChangesMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/changes\/accept$/)
+    if (codexAcceptChangesMatch && request.method === 'POST') {
+      try {
+        const threadId = codexAcceptChangesMatch[1]
+        const input = await readJson(request)
+        const items = await listRelayCodexMessages(threadId)
+        await updateCodexState(state => {
+          state.threads[threadId].acceptedChangeIds = acceptedCodexChangeIds(items, state.threads[threadId].acceptedChangeIds, input.itemIds)
+        })
+        sendJson(response, 200, { data: { accepted: input.itemIds } })
+      } catch (error) { sendJson(response, error.status ?? 502, { error: publicError(error) }) }
+      return
+    }
+
     const codexMessagesMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/messages$/)
     if (codexMessagesMatch) {
       const [, threadId] = codexMessagesMatch
       if (request.method === 'GET') {
-        sendJson(response, 200, { data: await listRelayCodexMessages(threadId) })
+        const items = await listRelayCodexMessages(threadId)
+        const { saved } = await requireRelayCodexThread(threadId)
+        sendJson(response, 200, { data: unacceptedCodexItems(items, saved.acceptedChangeIds) })
         return
       }
       if (request.method === 'POST') {
@@ -2785,6 +2920,16 @@ const server = createServer(async (request, response) => {
   }
 })
 
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+  if (url.pathname.startsWith(workbenchPath)) extensionWorkbench.upgrade(request, socket, head)
+  else socket.destroy()
+})
+
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
+  void Promise.allSettled([extensionWorkbench.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
+})
+
 server.listen(port, '127.0.0.1', () => {
   const address = server.address()
   const listeningPort = address && typeof address === 'object' ? address.port : port
@@ -2802,6 +2947,6 @@ process.parentPort?.on('message', event => {
   }
   if (event.data?.type === 'shutdown' && server.listening) {
     server.close()
-    void codexBridge.stop().finally(() => process.exit(0))
+    void Promise.allSettled([extensionWorkbench.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
   }
 })

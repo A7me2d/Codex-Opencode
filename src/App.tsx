@@ -126,6 +126,7 @@ function WorkspaceApp() {
   const codexToCodex = conversation.view.thread?.workflow?.planner === 'codex' && conversation.view.thread?.workflow?.executor === 'codex'
     && conversation.view.thread?.workflowRole !== 'executor'
   const codexPane = <CodexConversation
+          codexIdentity={room.codexIdentity}
           workRoot={room.workRoot}
           codexSelection={conversation.codexSelection}
           thread={conversation.view.thread}
@@ -171,6 +172,7 @@ function WorkspaceApp() {
 
   const executorConversation = room.executorConversation
   const executorPane = executorConversation.view.thread ? <CodexConversation
+    codexIdentity={room.codexIdentity}
     workRoot={room.workRoot}
     codexSelection={executorConversation.codexSelection}
     thread={executorConversation.view.thread}
@@ -225,6 +227,14 @@ function WorkspaceApp() {
           collapsed={sessionsCollapsed}
           onToggle={() => setSessionsCollapsed((value) => !value)}
           threads={room.threads}
+            archivedThreads={room.archivedThreads}
+            showArchived={room.showArchived}
+            archivedLoading={room.archivedLoading}
+            archivedError={room.archivedError}
+            onShowArchived={room.onShowArchived}
+            onRename={room.onRenameThread}
+            onArchive={room.onArchiveThread}
+            onRestore={room.onRestoreThread}
           selectedId={room.selectedId}
           onSelect={room.onSelectThread}
           onCreate={room.onCreateThread}

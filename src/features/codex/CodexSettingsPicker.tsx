@@ -1,6 +1,6 @@
 import { tr } from '../../lib/i18n'
 import { useEffect, useId, useRef, useState } from 'react'
-import { Bot, Brain, Check, ChevronDown, Shield } from 'lucide-react'
+import { Bot, Brain, Check, Shield } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { CodexSelection } from '../../hooks/useConversation'
 import { cx } from '../../lib/cx'
@@ -37,24 +37,23 @@ function Picker({ label, icon: Icon, value, options, disabled, onChange }: {
     return () => document.removeEventListener('pointerdown', outside)
   }, [expanded, value, options])
 
-  return <div ref={root} className="relative min-w-0" onBlur={(event) => {
+  return <div ref={root} className="min-w-0" onBlur={(event) => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
   }} onKeyDown={(event) => {
     if (event.key === 'Escape') { event.preventDefault(); setOpen(false); trigger.current?.focus() }
   }}>
     <button ref={trigger} type="button" disabled={disabled || !options.length}
       aria-label={tr("{{0}}: {{1}}", [label, current?.label ?? tr("غير متاح")])} aria-haspopup="menu" aria-expanded={expanded} aria-controls={expanded ? id : undefined}
+      title={`${label}: ${current?.label ?? tr('غير متاح')}`}
       onClick={() => setOpen(!expanded)}
       onKeyDown={(event) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) }
       }}
-      className={cx('inline-flex max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs transition-colors hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-50', expanded ? 'bg-relay-tint text-relay-ink' : 'bg-paper text-ink')}>
-      <Icon className="h-3.5 w-3.5 shrink-0 text-relay" aria-hidden="true" />
-      <span className="min-w-0 truncate font-semibold">{current?.label ?? tr("غير متاح")}</span>
-      <ChevronDown className={cx('h-3 w-3 shrink-0 text-ink-soft transition-transform motion-reduce:transition-none', expanded && 'rotate-180')} aria-hidden="true" />
+      className={cx('inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-50', expanded && 'bg-relay-tint text-relay-ink')}>
+      <Icon className="h-4 w-4" aria-hidden="true" />
     </button>
     {expanded ? <div id={id} role="menu" aria-label={label}
-      className="absolute bottom-full right-0 z-40 mb-2 w-64 max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-line bg-card shadow-lg">
+      className="absolute bottom-full start-0 z-40 mb-3 w-64 max-w-full overflow-hidden rounded-xl border border-line bg-card shadow-lg">
       <div className="border-b border-line px-3 py-2.5 text-[11px] font-bold text-ink-soft">{label}</div>
       <div className="thin-scroll max-h-52 overflow-y-auto p-1.5">
         {options.map((option, index) => <button key={option.value} ref={(node) => { items.current[index] = node }}
@@ -83,15 +82,14 @@ function Picker({ label, icon: Icon, value, options, disabled, onChange }: {
 
 export function CodexSettingsPicker({ selection, disabled }: { selection: CodexSelection; disabled: boolean }) {
   const model = selection.models.find((entry) => entry.model === selection.current.model)
-  return <div className="chat-settings mb-3 flex flex-wrap items-center gap-1.5">
+  return <div className="codex-icon-settings flex items-center gap-0.5">
     <Picker label={tr("موديل Codex")} icon={Bot} value={selection.current.model}
       options={selection.models.map((entry) => ({ value: entry.model, label: entry.displayName || entry.model, detail: entry.model }))}
       disabled={disabled || selection.loading} onChange={selection.onModelChange} />
-    <span className="h-4 w-px bg-line" aria-hidden="true" />
     <Picker label={tr("مستوى التفكير")} icon={Brain} value={selection.current.effort}
       options={(model?.supportedReasoningEfforts ?? []).map((entry) => ({ value: entry.reasoningEffort, label: effortLabel(entry.reasoningEffort), detail: entry.reasoningEffort }))}
       disabled={disabled || selection.loading} onChange={selection.onEffortChange} />
-    {selection.loading ? <span role="status" className="text-[10px] text-ink-soft">{tr("تحميل الخيارات…")}</span> : null}
+    {selection.loading ? <span role="status" className="sr-only">{tr("تحميل الخيارات…")}</span> : null}
     <Picker label={tr("صلاحيات Codex")} icon={Shield} value={selection.permissions}
       options={[
         { value: 'read-only', label: tr("قراءة فقط"), detail: tr("عرض الملفات بدون تعديل") },
@@ -99,6 +97,6 @@ export function CodexSettingsPicker({ selection, disabled }: { selection: CodexS
         { value: 'danger-full-access', label: tr("وصول كامل"), detail: tr("القراءة والكتابة خارج مجلد المشروع أيضًا") },
       ]}
       disabled={disabled || selection.loading || selection.changingPermissions} onChange={selection.onPermissionsChange} />
-    {selection.permissionsPending ? <span className="text-[10px] text-ink-soft">{tr("تُطبّق الصلاحيات مع الرسالة التالية")}</span> : null}
+    {selection.permissionsPending ? <span title={tr('تُطبّق الصلاحيات مع الرسالة التالية')} aria-label={tr('تُطبّق الصلاحيات مع الرسالة التالية')} className="h-1 w-1 rounded-full bg-review" /> : null}
   </div>
 }

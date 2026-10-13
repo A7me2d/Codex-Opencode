@@ -94,10 +94,12 @@ function TerminalViewport({ cwd, sessionId, terminalRef }: { cwd: string; sessio
     })
     observer.observe(host)
 
-    terminal.writeln(`PS> opencode --session ${sessionId}`)
+    if (sessionId) terminal.writeln(`PS> opencode --session ${sessionId}`)
     void bridge.start(cwd, sessionId).then(({ cwd: actualCwd }) => {
       setState(tr("متصلة"))
       terminal.writeln(`Open Zero Terminal  ·  ${actualCwd}`)
+      fitAndResize()
+      if (host.clientHeight) terminal.focus()
     }).catch(error => {
       setState(tr("تعذر بدء الطرفية"))
       terminal.writeln(`\r\n${tr("تعذر بدء الطرفية: {{0}}", [error instanceof Error ? error.message : String(error)])}`)
@@ -128,6 +130,7 @@ export function TerminalDock({ cwd }: { cwd?: string }) {
   const [sessionId, setSessionId] = useState('')
   const [sessionDraft, setSessionDraft] = useState('')
   const [sessionError, setSessionError] = useState('')
+  const [showSessionForm, setShowSessionForm] = useState(false)
   const terminalRef = useRef<XTerminal | null>(null)
   const activeCwd = cwd || 'Documents'
 
@@ -135,6 +138,7 @@ export function TerminalDock({ cwd }: { cwd?: string }) {
     setSessionId('')
     setSessionDraft('')
     setSessionError('')
+    setShowSessionForm(false)
   }, [cwd])
 
   function connectToSession(event: FormEvent<HTMLFormElement>) {
@@ -146,6 +150,7 @@ export function TerminalDock({ cwd }: { cwd?: string }) {
     }
     setSessionError('')
     setSessionId(id)
+    setShowSessionForm(false)
   }
 
   return <section className="z-30 w-full border-t border-line bg-card shadow-[0_-5px_24px_rgba(27,39,53,0.08)]" aria-label={tr("الطرفية")}>
@@ -156,17 +161,19 @@ export function TerminalDock({ cwd }: { cwd?: string }) {
         {open ? <code className="hidden max-w-[48vw] truncate rounded bg-paper px-2 py-1 text-[10px] text-ink-soft sm:block" dir="ltr" title={activeCwd}>{activeCwd}</code> : null}
       </div>
       <div className="flex items-center gap-1">
+        {open && window.codingRoomTerminal ? <>
+          <button type="button" onClick={() => { setSessionId(''); setShowSessionForm(false); requestAnimationFrame(() => terminalRef.current?.focus()) }} className={`inline-flex h-8 items-center rounded-md px-2 text-[11px] ${!sessionId && !showSessionForm ? 'bg-relay-tint font-bold text-relay-ink' : 'text-ink-soft hover:bg-paper'}`} aria-pressed={!sessionId && !showSessionForm}>{tr('أوامر')}</button>
+          <button type="button" onClick={() => setShowSessionForm(value => !value)} className={`inline-flex h-8 items-center rounded-md px-2 text-[11px] ${sessionId || showSessionForm ? 'bg-relay-tint font-bold text-relay-ink' : 'text-ink-soft hover:bg-paper'}`} aria-expanded={showSessionForm}>{tr('جلسة OpenCode')}</button>
+        </> : null}
         {open ? <button type="button" onClick={() => terminalRef.current?.clear()} className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] text-ink-soft hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40" title={tr("مسح مخرجات الطرفية")}><Eraser className="h-3.5 w-3.5" />{tr("مسح")}</button> : null}
-        <button type="button" onClick={() => { setOpen(value => !value); setMounted(true) }} aria-expanded={open} aria-controls="coding-room-terminal" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-relay-tint px-3 text-xs font-bold text-relay-ink hover:bg-relay/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+        <button type="button" onClick={() => { setOpen(value => !value); setMounted(true); if (!open) requestAnimationFrame(() => terminalRef.current?.focus()) }} aria-expanded={open} aria-controls="coding-room-terminal" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-relay-tint px-3 text-xs font-bold text-relay-ink hover:bg-relay/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
           {open ? <><ChevronDown className="h-3.5 w-3.5" />{tr("إخفاء")}</> : <><ChevronUp className="h-3.5 w-3.5" />{tr("إظهار Terminal")}</>}
         </button>
         {open ? <button type="button" onClick={() => setOpen(false)} aria-label={tr("إغلاق الطرفية")} title={tr("إغلاق الطرفية")} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-soft hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40"><X className="h-4 w-4" /></button> : null}
       </div>
     </div>
     {mounted ? <div id="coding-room-terminal" aria-hidden={!open} className={`${open ? 'flex' : 'hidden'} h-[min(280px,45vh)] flex-col border-t border-[#303849] bg-[#11151d]`} dir="ltr">
-      {sessionId && window.codingRoomTerminal
-        ? <TerminalViewport key={`${cwd ?? ''}:${sessionId}`} cwd={cwd ?? ''} sessionId={sessionId} terminalRef={terminalRef} />
-        : <form onSubmit={connectToSession} className="m-auto w-full max-w-xl space-y-3 px-5 py-6 text-center text-[#d6deeb]" dir={direction()}>
+      {showSessionForm && window.codingRoomTerminal ? <form onSubmit={connectToSession} className="shrink-0 space-y-2 border-b border-[#303849] px-4 py-3 text-[#d6deeb]" dir={direction()}>
           <label htmlFor="opencode-terminal-session" className="block text-sm font-bold">{tr("أدخل معرّف جلسة OpenCode")}</label>
           <p className="text-xs text-[#a9b1d6]">{tr("سيبدأ الأمر تلقائيًا:")}{' '}<code dir="ltr" className="rounded bg-[#1b2230] px-1.5 py-1">opencode --session ses_…</code></p>
           <div className="flex gap-2" dir="ltr">
@@ -174,7 +181,8 @@ export function TerminalDock({ cwd }: { cwd?: string }) {
             <button type="submit" className="rounded-lg bg-[#7aa2f7] px-4 py-2 text-xs font-bold text-[#1a1b26] hover:bg-[#a6c0ff]">{tr("اتصال")}</button>
           </div>
           {sessionError ? <p role="alert" className="text-xs text-[#f7768e]">{sessionError}</p> : null}
-        </form>}
+        </form> : null}
+      <TerminalViewport key={`${cwd ?? ''}:${sessionId}`} cwd={cwd ?? ''} sessionId={sessionId} terminalRef={terminalRef} />
     </div> : null}
   </section>
 }

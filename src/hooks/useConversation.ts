@@ -119,6 +119,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     const active = Boolean(turnRequest.data?.active)
     if (lastActivity.current.scope === scope && lastActivity.current.active !== active) {
       void Promise.all([messages.refresh(), handoff.refresh()])
+      window.dispatchEvent(new CustomEvent('coding-room:conversation-activity', { detail: threadId }))
     }
     lastActivity.current = { scope, active }
   }, [scope, turnRequest.data?.active, messages.refresh, handoff.refresh])
@@ -160,6 +161,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       // reads the text, and the server uses the paths to tell OpenCode which
       // files the work is about.
       await api.sendMessage(threadId, text, attached, codexSettings.model ? codexSettings : undefined)
+      window.dispatchEvent(new CustomEvent('coding-room:conversation-activity', { detail: threadId }))
       if (override === undefined) { setDraft(''); setAttachments([]) }
       await refreshAll()
       return true

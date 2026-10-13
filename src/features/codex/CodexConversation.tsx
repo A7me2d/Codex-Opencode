@@ -1,7 +1,7 @@
 import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { direction, tr } from '../../lib/i18n'
 import { ArrowUpRight, CircleDot, Plus, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MessageBubble } from '../../components/MessageBubble'
 import { ScrollToLatest } from '../../components/ui/ScrollToLatest'
 import { Spinner } from '../../components/ui/Spinner'
@@ -16,6 +16,7 @@ import { McpPanel } from '../../components/McpPanel'
 import type { CodexSelection } from '../../hooks/useConversation'
 
 export interface CodexConversationProps {
+  codexIdentity?: string
   fileChanges: SessionFileDiff[]
   workRoot?: string
   codexSelection: CodexSelection
@@ -76,6 +77,12 @@ export function CodexConversation(props: CodexConversationProps) {
   const [executionError, setExecutionError] = useState<string | null>(null)
   const executorChat = thread?.workflowRole === 'executor'
   const scroll = useChatHistory(messages, thread?.id)
+  const wasBusy = useRef(false)
+  useEffect(() => {
+    const busy = sending || turn.active
+    if (busy && !wasBusy.current) scroll.scrollToLatest()
+    wasBusy.current = busy
+  }, [sending, turn.active, scroll.scrollToLatest])
 
   return <section dir={direction()} className="chat-panel flex min-h-[32rem] min-w-0 flex-col bg-paper lg:min-h-0 lg:overflow-hidden">
     {thread ? (
@@ -99,9 +106,8 @@ export function CodexConversation(props: CodexConversationProps) {
         <McpPanel agent="codex" busy={turn.active || sending} />
 
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div ref={scroll.ref} onScroll={scroll.handleScroll} onWheel={scroll.handleWheel} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          <div ref={scroll.ref} onScroll={scroll.handleScroll} onWheel={scroll.handleWheel} className="codex-transcript-scroll thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
             <EarlierMessages count={scroll.hiddenCount} onLoad={scroll.loadOlder} />
-            <div className="mx-auto mb-4"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} files={props.fileChanges} /></div>
             {loading && messages.length === 0 ? (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-ink-soft">
                 <Spinner />{tr("يتم تحميل المحادثة…")}</div>
@@ -111,13 +117,12 @@ export function CodexConversation(props: CodexConversationProps) {
               </div>
             ) : (
               <ol className="mx-auto flex flex-col divide-y divide-line/80">
-                {scroll.visibleMessages.map((message) => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="codex" /></li>)}
+                {scroll.visibleMessages.map((message) => <li key={message.id} className="py-5 first:pt-0 last:pb-0"><MessageBubble message={message} speaker="codex" codexIdentity={props.codexIdentity} /></li>)}
               </ol>
             )}
+            <div className="mx-auto mt-4"><ChangedFiles key={thread.id} source="codex" sessionId={thread.id} active={turn.active} files={props.fileChanges} /></div>
           </div>
-          <ScrollToLatest visible={!scroll.following && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} />
-        </div>
-
+          <ScrollToLatest aboveComposer visible={!scroll.following && messages.length > 0} onClick={() => scroll.scrollToLatest(true)} />
         <Composer
           implementer={executorChat || (thread.workflow?.planner !== 'codex' && thread.workflow?.executor === 'codex')}
           codexSelection={props.codexSelection}
@@ -136,6 +141,7 @@ export function CodexConversation(props: CodexConversationProps) {
           turn={turn}
           onStop={onStop}
         />
+        </div>
         {thread.workflow?.planner === 'codex' && thread.workflow?.executor === 'codex' && !executorChat ? <div className="shrink-0 border-t border-line bg-card px-4 py-2.5">
           <button type="button" title={tr("يرسل آخر رد من شات المفكّر إلى شات المنفّذ، ثم يعيد تقرير المنفّذ للمفكّر تلقائيًا للمراجعة.")} onClick={() => {
             if (!thread || executingPlan) return

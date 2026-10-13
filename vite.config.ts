@@ -13,6 +13,7 @@ export default defineConfig({
       '/api': {
         target: `http://127.0.0.1:${Number.isInteger(apiPort) && apiPort > 0 ? apiPort : 4280}`,
         changeOrigin: false,
+        ws: true,
       },
     },
   },

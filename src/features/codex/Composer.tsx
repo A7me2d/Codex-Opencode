@@ -1,5 +1,5 @@
 import { tr } from '../../lib/i18n'
-import { useRef, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useLayoutEffect, useRef, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { AtSign, CircleStop, Paperclip, Send, Timer, X } from 'lucide-react'
 import { ErrorNote } from '../../components/ui/ErrorNote'
 import { Spinner } from '../../components/ui/Spinner'
@@ -7,6 +7,7 @@ import type { CodexTurnState } from '../../lib/types'
 
 import type { CodexSelection } from '../../hooks/useConversation'
 import { CodexSettingsPicker } from './CodexSettingsPicker'
+import { WeeklyQuota } from './WeeklyQuota'
 
 export interface ComposerProps {
   implementer?: boolean
@@ -38,6 +39,16 @@ export interface ComposerProps {
  */
 export function Composer({ implementer = false, codexSelection, draft, onChange, onSubmit, onQueue, onCancelQueue, queued, sending, error, attachments, onAttach, onRemoveAttachment, attaching, turn, onStop }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  useLayoutEffect(() => {
+    const form = formRef.current
+    const parent = form?.parentElement
+    if (!form || !parent) return
+    const measure = () => parent.style.setProperty('--composer-height', `${Math.ceil(form.getBoundingClientRect().height)}px`)
+    const observer = new ResizeObserver(measure)
+    observer.observe(form); measure()
+    return () => { observer.disconnect(); parent.style.removeProperty('--composer-height') }
+  }, [])
   const busy = sending || turn.active
   const isDelegation = /(?:^|\s)\$opencode\b/i.test(draft)
   const starting = sending && !turn.active
@@ -62,8 +73,7 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); deliver() }
   }
 
-  return <form onSubmit={submit} className="chat-composer shrink-0 border-t border-line bg-card p-3 sm:p-4">
-    <CodexSettingsPicker selection={codexSelection} disabled={busy || Boolean(queued)} />
+  return <form ref={formRef} onSubmit={submit} className="codex-floating-composer absolute inset-x-0 bottom-0 z-20 mx-auto w-full bg-transparent px-3 pb-3 pt-2 sm:px-5 sm:pb-4">
     {codexSelection.error ? <ErrorNote>{tr(codexSelection.error)}</ErrorNote> : null}
     {queued ? (
       <div className="mb-2 flex items-center gap-2 rounded-lg border border-review/25 bg-review-tint px-3 py-2.5">
@@ -92,29 +102,36 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
       </div>
     ) : null}
 
-    <div className="chat-composer-row chat-composer-with-tools flex items-end gap-2 rounded-xl border border-line bg-paper p-2 focus-within:border-relay/60 focus-within:ring-2 focus-within:ring-relay/10">
-      <button type="button" onClick={onAttach} disabled={busy || attaching} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-ink-soft transition-colors hover:border-relay/40 hover:text-relay-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={tr("اختيار ملف من المشروع وإرسال مساره فقط")} title={tr("إرسال مسار ملف فقط")}>
+    <div className="flex gap-3 items-center">
+      <div className="codex-input-capsule relative min-w-0 flex-1 rounded-3xl border border-line bg-transparent px-3 pb-2 pt-3 shadow-lg focus-within:border-relay/60 focus-within:ring-2 focus-within:ring-relay/10">
+        <textarea aria-label={tr("اكتب إلى Codex…")} ref={textareaRef} value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? tr("اكتب توجيهًا إلى Codex المنفّذ…") : tr("اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.")} className="block min-h-[3rem] w-full min-w-0 resize-none bg-transparent px-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
+        <div className="mt-2 flex flex-wrap items-center gap-0.5">
+      <button type="button" onClick={onAttach} disabled={busy || attaching} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-45" aria-label={tr("اختيار ملف من المشروع وإرسال مساره فقط")} title={tr("إرسال مسار ملف فقط")}>
         {attaching ? <Spinner className="h-4 w-4" /> : <Paperclip className="h-4 w-4" aria-hidden="true" />}
       </button>
 
-      <button type="button" onClick={insertOpenCodeTag} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ready/25 bg-ready-tint/60 text-ready-ink transition-colors hover:border-ready/50 hover:bg-ready-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/30" aria-label={tr("إضافة وسم $opencode إلى الرسالة")} title={tr("إضافة وسم $opencode إلى الرسالة")}>
+      <button type="button" onClick={insertOpenCodeTag} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-ready-tint hover:text-ready-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ready/30" aria-label={tr("إضافة وسم $opencode إلى الرسالة")} title={tr("إضافة وسم $opencode إلى الرسالة")}>
         <AtSign className="h-4 w-4" aria-hidden="true" />
       </button>
 
-      <textarea aria-label={tr("اكتب إلى Codex…")} ref={textareaRef} value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? tr("اكتب توجيهًا إلى Codex المنفّذ…") : tr("اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.")} className="min-w-0 min-h-[3.4rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
+          <span className="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
+          <CodexSettingsPicker selection={codexSelection} disabled={busy || Boolean(queued)} />
+          <WeeklyQuota />
+        </div>
+      </div>
 
       {turn.active ? (
-        <button type="button" onClick={onStop} disabled={turn.stopping} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-review text-on-accent transition-colors hover:bg-review-ink disabled:cursor-not-allowed disabled:opacity-55" aria-label={tr("إيقاف Codex فورًا")} title={tr("إيقاف Codex فورًا")}>
+        <button type="button" onClick={onStop} disabled={turn.stopping} className="codex-send-or-stop mb-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-review text-on-accent shadow-lg transition-colors hover:bg-review-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-review/50 disabled:cursor-not-allowed disabled:opacity-55" aria-label={tr("إيقاف Codex فورًا")} title={tr("إيقاف Codex فورًا")}>
           {turn.stopping ? <Spinner className="h-4 w-4" /> : <CircleStop className="h-4 w-4" aria-hidden="true" />}
         </button>
       ) : (
-        <button type="submit" disabled={sending || !hasContent} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-relay text-on-accent transition-colors hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-45" aria-label={busy ? tr("حفظ الرسالة وإرسالها فور انتهاء دور Codex") : tr("إرسال إلى Codex")} title={busy ? tr("يُرسل تلقائيًا فور انتهاء دور Codex") : tr("إرسال إلى Codex")}>
+        <button type="submit" disabled={sending || !hasContent} className="codex-send-or-stop mb-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-relay text-on-accent shadow-lg transition-colors hover:bg-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/50 disabled:cursor-not-allowed disabled:opacity-45" aria-label={busy ? tr("حفظ الرسالة وإرسالها فور انتهاء دور Codex") : tr("إرسال إلى Codex")} title={busy ? tr("يُرسل تلقائيًا فور انتهاء دور Codex") : tr("إرسال إلى Codex")}>
           {sending ? <Spinner className="h-4 w-4" /> : busy ? <Timer className="h-4 w-4" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
         </button>
       )}
     </div>
 
-    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-ink-soft">
+    {busy || isDelegation ? <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-ink-soft">
       {turn.active ? (
         <span role="status" className="inline-flex items-center gap-1.5 font-bold text-review-ink">
           <Spinner className="h-3.5 w-3.5" />
@@ -126,7 +143,7 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
       ) : isDelegation ? (
         <span className="font-mono text-relay-ink">{tr("$opencode ← سيظهر التفويض في المسار الجانبي")}</span>
       ) : null}
-    </div>
+    </div> : null}
 
     {error ? <ErrorNote>{tr(error)}</ErrorNote> : null}
   </form>
