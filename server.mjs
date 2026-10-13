@@ -1,5 +1,6 @@
 import { readProjectFile, saveProjectFile } from './server/project-editor.mjs'
 import { codexWeeklyQuota } from './server/codex-weekly-quota.mjs'
+import { searchProjectContents } from './server/project-content-search.mjs'
 import { ExtensionWorkbench, workbenchPath, trustedExtensionRequest } from './server/extension-workbench.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
@@ -2436,6 +2437,16 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/project/search-content') {
+      const controller = new AbortController()
+      const cancel = () => { if (!response.writableEnded) controller.abort() }
+      response.once('close', cancel)
+      try {
+        const result = await searchProjectContents(watchRoot, url.searchParams.get('q') ?? '', { signal: controller.signal })
+        if (!response.destroyed) sendJson(response, 200, { data: result })
+      } finally { response.removeListener('close', cancel) }
+      return
+    }
     if (request.method === 'GET' && url.pathname === '/api/project/search') {
       const query = (url.searchParams.get('q') ?? '').trim().toLocaleLowerCase()
       if (!query) { sendJson(response, 200, { data: { entries: [], truncated: false } }); return }

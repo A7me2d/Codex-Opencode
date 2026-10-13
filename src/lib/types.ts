@@ -70,6 +70,8 @@ export interface WorkflowSettings { workflow: WorkflowSetup; agents: { id: strin
 export interface ProjectFileEntry { name: string; path: string; kind: 'directory' | 'file' }
 export interface ProjectFiles { path: string; entries: ProjectFileEntry[]; truncated: boolean }
 export interface ProjectSearchResults { entries: ProjectFileEntry[]; truncated: boolean }
+export interface ProjectContentMatch { name: string; path: string; line: number; column: number; text: string; matchStart: number; matchLength: number }
+export interface ProjectContentSearchResults { matches: ProjectContentMatch[]; truncated: boolean; skippedFiles: number }
 
 export interface CodexThread {
   archived?: boolean

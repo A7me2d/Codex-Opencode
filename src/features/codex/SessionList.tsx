@@ -61,20 +61,20 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
           {tr("محادثة")}</button>
       </div>
 
-      <div className="shrink-0 border-b border-line px-4 py-3">
-       
-        <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
-          className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-relay/25 bg-relay-tint/60 px-3 py-2 text-xs font-bold text-relay-ink transition-colors hover:border-relay/50 hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-55">
-          {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
-          {choosingWorkRoot ? tr("جارٍ اختيار المشروع…") : tr("فتح مجلد مشروع جديد")}
-        </button>
-        <div className="mt-3 flex items-start gap-2 px-1">
-          <FolderTree className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
+      <div className="shrink-0 border-b border-line px-4 py-2">
+        <div className="flex items-center gap-2">
+          <FolderTree className="h-3.5 w-3.5 shrink-0 text-ink-soft" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             {workRoot ? <>
-              <span dir="auto" className="mt-0.5 block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
-            </> : <span className="mt-1 block text-[11px] text-ink-soft">{tr("جارٍ تحديد المجلد…")}</span>}
+              <span dir="auto" title={workRoot} className="block truncate text-xs font-semibold text-ink">{workRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workRoot}</span>
+            </> : <span className="block text-[11px] text-ink-soft">{tr("جارٍ تحديد المجلد…")}</span>}
           </div>
+          <button type="button" onClick={onChooseWorkRoot} disabled={choosingWorkRoot}
+            aria-label={choosingWorkRoot ? tr('جارٍ اختيار المشروع…') : tr('فتح مجلد مشروع جديد')}
+            title={choosingWorkRoot ? tr('جارٍ اختيار المشروع…') : tr('فتح مجلد مشروع جديد')}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-wait disabled:opacity-55">
+            {choosingWorkRoot ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FolderOpen className="h-4 w-4" aria-hidden="true" />}
+          </button>
         </div>
       </div>
 
@@ -88,7 +88,7 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
               setView(next); document.getElementById(`project-tab-${next}`)?.focus()
             }} className={cx('inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}>
             {tr(value === 'files' ? 'الملفات' : 'المحادثات')}
-            {value === 'chats' ? <span className="text-[10px] tabular-nums text-ink-soft">{threads.length}</span> : null}
+            {value === 'chats' ? <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-relay-tint px-1 text-[9px] leading-4 tabular-nums text-relay-ink">{threads.length}</span> : null}
           </button>)}
         </div>
       </div>

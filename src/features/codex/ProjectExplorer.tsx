@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { BookOpen, Braces, Boxes, Check, ChevronDown, ChevronRight, Code2, Component, Copy, Database, FileArchive, FileAudio2, FileCode2, FileCog, FileImage, FileJson2, FileLock2, FileSpreadsheet, FileText, FileType2, FileVideo2, FlaskConical, Folder, FolderOpen, Globe2, Image, Layers3, LoaderCircle, Package, Palette, Search, Settings2, TestTube2, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { api } from '../../lib/api'
-import type { ProjectFileEntry, ProjectFiles } from '../../lib/types'
+import type { ProjectContentMatch, ProjectFileEntry, ProjectFiles } from '../../lib/types'
 import { useFileIconTheme } from '../../lib/fileIconThemes'
 import { lynxStyleA } from '../../lib/lynxStyleA'
 
@@ -148,6 +148,9 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
   const [loading, setLoading] = useState<Set<string>>(() => new Set(['']))
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [searchMode, setSearchMode] = useState<'name' | 'content'>('name')
+  const [contentMatches, setContentMatches] = useState<ProjectContentMatch[]>([])
+  const [skippedFiles, setSkippedFiles] = useState(0)
   const [searchResults, setSearchResults] = useState<ProjectFileEntry[]>([])
   const [searching, setSearching] = useState(false)
   const [searchTruncated, setSearchTruncated] = useState(false)
@@ -171,20 +174,28 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
     void loadDirectory('')
   }, [workRoot, loadDirectory])
   useEffect(() => {
-    const term = query.trim().toLocaleLowerCase()
-    if (!term) { setSearchResults([]); setSearching(false); return }
+    const term = query.trim()
+    setSearchResults([]); setContentMatches([]); setSearchTruncated(false); setSkippedFiles(0)
+    if (!term) { setSearching(false); return }
     let cancelled = false
+    const controller = new AbortController()
+    setSearching(true)
     const timer = window.setTimeout(async () => {
       setSearching(true)
       try {
-        const result = await api.projectSearch(term)
-        if (!cancelled) { setSearchResults(result.entries); setSearchTruncated(result.truncated) }
+        if (searchMode === 'content') {
+          const result = await api.projectContentSearch(term, controller.signal)
+          if (!cancelled) { setContentMatches(result.matches); setSearchTruncated(result.truncated); setSkippedFiles(result.skippedFiles) }
+        } else {
+          const result = await api.projectSearch(term)
+          if (!cancelled) { setSearchResults(result.entries); setSearchTruncated(result.truncated) }
+        }
       } catch (failure) {
         if (!cancelled) setError(failure instanceof Error ? failure.message : tr("تعذّر البحث في ملفات المشروع."))
       } finally { if (!cancelled) setSearching(false) }
     }, 250)
-    return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [query, workRoot])
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(timer) }
+  }, [query, workRoot, searchMode])
   function toggleDirectory(entry: ProjectFileEntry) {
     if (expanded.has(entry.path)) {
       setExpanded(current => { const next = new Set(current); next.delete(entry.path); return next })
@@ -196,16 +207,25 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
   const root = directories['']
   return <section aria-label={tr("ملفات المشروع")} className="flex min-h-0 flex-1 flex-col">
     {error ? <p role="alert" className="flex shrink-0 items-start gap-2 border-b border-line bg-review-tint px-3 py-2 text-[10px] leading-5 text-review-ink"><TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />{tr(error)}</p> : null}
-    <label className="mx-2 mt-2 flex shrink-0 items-center gap-2 rounded-md border border-line bg-paper px-2.5 focus-within:border-relay/50 focus-within:ring-2 focus-within:ring-relay/20">
+    <div className="mx-2 mt-2 flex shrink-0 items-center gap-2 rounded-lg border border-line bg-paper ps-2.5 pe-1 focus-within:border-relay/50 focus-within:ring-2 focus-within:ring-relay/20">
       {searching ? <LoaderCircle className="h-3.5 w-3.5 animate-spin text-ink-soft" aria-hidden="true" /> : <Search className="h-3.5 w-3.5 text-ink-soft" aria-hidden="true" />}
-      <input value={query} onChange={event => setQuery(event.target.value)} placeholder={tr("ابحث باسم الملف…")} aria-label={tr("ابحث باسم الملف")} className="h-9 min-w-0 flex-1 bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-soft" />
+      <input value={query} onChange={event => setQuery(event.target.value)} maxLength={searchMode === 'content' ? 500 : undefined} placeholder={tr(searchMode === 'content' ? 'ابحث عن كلاس أو نص…' : 'ابحث باسم الملف…')} aria-label={tr(searchMode === 'content' ? 'البحث داخل الملفات' : 'ابحث باسم الملف')} className="h-9 min-w-0 flex-1 bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-soft" />
       {query ? <button type="button" onClick={() => setQuery('')} aria-label={tr("مسح البحث")} className="rounded p-1 text-ink-soft hover:bg-card hover:text-ink"><X className="h-3.5 w-3.5" /></button> : null}
-    </label>
+      <div className="relative h-7 w-10 shrink-0 rounded-md border-s border-line text-ink-soft hover:bg-card focus-within:ring-2 focus-within:ring-relay/40">
+        <span className="pointer-events-none flex h-full items-center justify-center gap-0.5" aria-hidden="true">
+          {searchMode === 'name' ? <FileText className="h-3.5 w-3.5" /> : <Code2 className="h-3.5 w-3.5 text-relay-ink" />}<ChevronDown className="h-2.5 w-2.5" />
+        </span>
+        <select aria-label={tr('طريقة البحث')} title={`${tr('طريقة البحث')}: ${tr(searchMode === 'name' ? 'اسم الملف' : 'داخل الملفات')}`} value={searchMode} onChange={event => setSearchMode(event.target.value as 'name' | 'content')} className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
+          <option value="name">{tr('اسم الملف')}</option><option value="content">{tr('داخل الملفات')}</option>
+        </select>
+      </div>
+    </div>
     <div dir="ltr" className="thin-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
       {query.trim() ? <>
-        {searchResults.length ? <ul className="space-y-0.5">{searchResults.map(entry => <ProjectSearchResult key={entry.path} entry={entry} iconTheme={iconTheme} workRoot={workRoot} />)}</ul> : !searching ? <p className="px-3 py-6 text-center text-[11px] text-ink-soft">{tr("لا توجد نتائج مطابقة.")}</p> : null}
+        {searchMode === 'content' && contentMatches.length ? <ProjectContentResults matches={contentMatches} workRoot={workRoot} /> : searchMode === 'name' && searchResults.length ? <ul className="space-y-0.5">{searchResults.map(entry => <ProjectSearchResult key={entry.path} entry={entry} iconTheme={iconTheme} workRoot={workRoot} />)}</ul> : !searching ? <p className="px-3 py-6 text-center text-[11px] text-ink-soft">{tr("لا توجد نتائج مطابقة.")}</p> : null}
         {searching ? <p className="px-3 py-2 text-center text-[10px] text-ink-soft">{tr("جارٍ البحث في ملفات المشروع…")}</p> : null}
-        {searchTruncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">{tr("تم عرض أول 1000 نتيجة فقط.")}</p> : null}
+        {searchTruncated ? <p className="px-3 py-2 text-[10px] text-ink-soft">{tr('تم عرض جزء من النتائج. اكتب بحثًا أدق لعرض الباقي.')}</p> : null}
+        {searchMode === 'content' && skippedFiles > 0 ? <p className="px-3 py-2 text-[10px] text-ink-soft">{tr('تم تجاوز {{0}} ملف ثنائي أو كبير أو غير قابل للقراءة.', [skippedFiles])}</p> : null}
       </> : <>
       {loading.has('') && !root ? <div className="flex items-center justify-center gap-2 py-6 text-[11px] text-ink-soft"><LoaderCircle className="h-4 w-4 animate-spin" />{tr("جارٍ قراءة ملفات المشروع…")}</div> : null}
       {root?.entries.length ? <ul className="space-y-0.5">{root.entries.map(entry => <ProjectEntry key={entry.path} entry={entry} childrenByPath={directories} loadingPaths={loading} expandedPaths={expanded} iconTheme={iconTheme} workRoot={workRoot} onToggle={toggleDirectory} />)}</ul> : null}
@@ -215,6 +235,23 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
     </div>
     <div className="shrink-0 border-t border-line px-3 py-2 text-[10px] text-ink-soft">{root ? tr("{{0}} عنصر", [root.entries.length]) : tr("مستكشف ملفات المشروع")}</div>
   </section>
+}
+
+function ProjectContentResults({ matches, workRoot }: { matches: ProjectContentMatch[]; workRoot: string }) {
+  const groups = new Map<string, ProjectContentMatch[]>()
+  matches.forEach(match => { const group = groups.get(match.path) ?? []; group.push(match); groups.set(match.path, group) })
+  return <div>
+    <p className="mb-2 px-2 text-[10px] text-ink-soft">{tr('{{0}} نتيجة في {{1}} ملف محفوظ', [matches.length, groups.size])}</p>
+    <ul className="space-y-2">{Array.from(groups, ([filePath, results]) => <li key={filePath}>
+      <div className="flex items-center gap-1 rounded-md bg-paper px-2 py-1"><FileCode2 className="h-3.5 w-3.5 shrink-0 text-relay-ink" aria-hidden="true" /><span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-ink" title={filePath}>{filePath}</span><CopyPathButton path={projectAbsolutePath(workRoot, filePath)} /></div>
+      <ul className="mt-1 space-y-0.5">{results.map(match => <li key={`${match.line}:${match.column}`}>
+        <button type="button" onClick={() => openProjectFile(workRoot, match.path, match.line, match.column, match.matchLength)} title={`${match.path}:${match.line}:${match.column}`} className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-start font-mono text-[11px] hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
+          <span className="min-w-5 shrink-0 text-ink-soft">{match.line}</span>
+          <span className="min-w-0 truncate text-ink">{match.text.slice(0, match.matchStart)}<mark className="rounded-sm bg-review-tint text-review-ink">{match.text.slice(match.matchStart, match.matchStart + match.matchLength)}</mark>{match.text.slice(match.matchStart + match.matchLength)}</span>
+        </button>
+      </li>)}</ul>
+    </li>)}</ul>
+  </div>
 }
 
 function ProjectSearchResult({ entry, iconTheme, workRoot }: { entry: ProjectFileEntry; iconTheme: 'lynx-style-a' | 'classic'; workRoot: string }) {

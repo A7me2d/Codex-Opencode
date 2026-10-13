@@ -5,9 +5,9 @@ import { useLocale } from '../lib/i18n'
 
 export type FileTab = { path: string; content: string; saved: string; version: string }
 const CodeEditor = lazy(() => import('./CodeEditorView'))
-export interface CodeEditorHandle { focus: () => void; measure: () => void; gotoLine: (line: number) => void; position: () => { line: number; column: number }; selection: () => { text: string; startLine: number; endLine: number } }
-export function openProjectFile(root: string, path: string) {
-  window.dispatchEvent(new CustomEvent('coding-room:open-file', { detail: { root, path } }))
+export interface CodeEditorHandle { focus: () => void; measure: () => void; gotoLine: (line: number, column?: number, length?: number) => void; position: () => { line: number; column: number }; selection: () => { text: string; startLine: number; endLine: number } }
+export function openProjectFile(root: string, path: string, line?: number, column?: number, matchLength?: number) {
+  window.dispatchEvent(new CustomEvent('coding-room:open-file', { detail: { root, path, line, column, matchLength } }))
 }
 
 export function ProjectEditor({ root, children, onInsert }: { root?: string; children: ReactNode; onInsert: (text: string) => void }) {
@@ -18,12 +18,23 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
   const tabsRef = useRef(tabs), views = useRef(new Map<string, CodeEditorHandle>()), opening = useRef(new Set<string>()), generation = useRef(0)
   const previousRoot = useRef(root)
   const cachedTabs = useRef(new Map<string, FileTab[]>())
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+  const targets = useRef(new Map<string, { line: number; column?: number; length?: number }>())
+  const reveal = useCallback((path: string, view: CodeEditorHandle) => {
+    const target = targets.current.get(path)
+    if (target && selectedRef.current === path) {
+      view.measure(); view.gotoLine(target.line, target.column, target.length)
+      targets.current.delete(path)
+    }
+  }, [])
   tabsRef.current = tabs
   const file = tabs.find(tab => tab.path === selected)
   useEffect(() => {
     if (previousRoot.current) cachedTabs.current.set(previousRoot.current, tabsRef.current)
     previousRoot.current = root
     generation.current++
+    targets.current.clear()
     setTabs(root ? cachedTabs.current.get(root) || [] : [])
     setSelected(''); setError(''); setLoading(false); setBusy(''); opening.current.clear()
   }, [root])
@@ -31,15 +42,20 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
     if (!selected) return
     const timer = requestAnimationFrame(() => {
       const view = views.current.get(selected)
-      if (view) { view.measure(); setPosition(view.position()); view.focus() }
+      if (view) { view.measure(); reveal(selected, view); setPosition(view.position()); view.focus() }
     })
     return () => cancelAnimationFrame(timer)
   }, [selected])
   useEffect(() => {
     const open = async (event: Event) => {
-      const input = (event as CustomEvent<{ root: string; path: string }>).detail
+      const input = (event as CustomEvent<{ root: string; path: string; line?: number; column?: number; matchLength?: number }>).detail
       if (!root || input.root !== root) return
-      if (tabsRef.current.some(tab => tab.path === input.path)) { setSelected(input.path); return }
+      if (input.line) targets.current.set(input.path, { line: input.line, column: input.column, length: input.matchLength })
+      if (tabsRef.current.some(tab => tab.path === input.path)) {
+        setSelected(input.path)
+        requestAnimationFrame(() => { const view = views.current.get(input.path); if (view) reveal(input.path, view) })
+        return
+      }
       if (opening.current.has(input.path)) return
       if (tabsRef.current.length >= 12) { setError(ar ? 'أغلق تبويبًا قبل فتح ملف آخر.' : 'Close a tab before opening another file.'); return }
       const current = generation.current
@@ -115,7 +131,7 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
       <button onClick={insert} className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-xs font-bold text-relay-ink"><Send className="h-3.5 w-3.5" />{ar ? 'أضف الكود للشات' : 'Add code to chat'}</button>
       <form onSubmit={event => { event.preventDefault(); const view = views.current.get(selected); if (!view) return; view.gotoLine(Number(goTo) || 1) }} className="ms-auto flex items-center gap-1"><input aria-label={ar ? 'رقم السطر' : 'Line number'} type="number" min={1} value={goTo} onChange={event => setGoTo(event.target.value)} placeholder={ar ? 'سطر' : 'Line'} className="w-20 rounded-md border border-line bg-paper px-2 py-1.5 text-xs" /><button className="rounded-md border border-line px-2 py-1.5 text-xs">{ar ? 'انتقل' : 'Go'}</button></form>
     </div>}
-    {tabs.map(tab => <div key={tab.path} className={selected === tab.path ? 'min-h-0 flex-1 overflow-hidden' : 'hidden'}><Suspense fallback={<div className="p-5 text-sm text-ink-soft">Loading editor...</div>}><CodeEditor file={tab} register={view => { if (view) views.current.set(tab.path, view); else views.current.delete(tab.path) }} onChange={content => change(tab.path, content)} onSave={() => void save(tab.path)} onPosition={(line, column) => { if (selected === tab.path) setPosition({ line, column }) }} /></Suspense></div>)}
+    {tabs.map(tab => <div key={tab.path} className={selected === tab.path ? 'min-h-0 flex-1 overflow-hidden' : 'hidden'}><Suspense fallback={<div className="p-5 text-sm text-ink-soft">Loading editor...</div>}><CodeEditor file={tab} register={view => { if (view) { views.current.set(tab.path, view); reveal(tab.path, view) } else views.current.delete(tab.path) }} onChange={content => change(tab.path, content)} onSave={() => void save(tab.path)} onPosition={(line, column) => { if (selected === tab.path) setPosition({ line, column }) }} /></Suspense></div>)}
     {file && <footer className="flex shrink-0 justify-between gap-3 border-t border-line px-3 py-2 text-[10px] text-ink-soft"><span dir="ltr" className="truncate" title={file.path}>{file.path}</span><span className="shrink-0">Ln {position.line}, Col {position.column} · UTF-8{file.content !== file.saved ? (ar ? ' · مسودة' : ' · Draft') : ''}</span></footer>}
   </div>
 }

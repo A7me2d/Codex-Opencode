@@ -5,6 +5,15 @@ export type AppLocale = 'en' | 'ar'
 
 const STORAGE_KEY = 'coding-room.locale'
 const english: Record<string, string> = {
+  'طريقة البحث': 'Search mode',
+  'اسم الملف': 'File name',
+  'داخل الملفات': 'In files',
+  'ابحث عن كلاس أو نص…': 'Search for a class or text…',
+  'البحث داخل الملفات': 'Search in files',
+  'تم عرض جزء من النتائج. اكتب بحثًا أدق لعرض الباقي.': 'Showing partial results. Narrow your search to find more.',
+  'تم تجاوز {{0}} ملف ثنائي أو كبير أو غير قابل للقراءة.': 'Skipped {{0}} binary, large or unreadable files.',
+  '{{0}} نتيجة في {{1}} ملف محفوظ': '{{0}} matches in {{1}} saved files',
+  'اكتب بحثًا في سطر واحد لا يتجاوز 500 حرف.': 'Enter a single-line search of at most 500 characters.',
   'أوامر': 'Commands',
   'اكتب أمرًا': 'Enter a command',
   'تشغيل': 'Run',

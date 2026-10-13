@@ -49,7 +49,7 @@ export default function CodeEditor({ file, onChange, register, onSave, onPositio
       focus: () => editor.focus(),
       measure: () => editor.requestMeasure(),
       position: () => { const pos=editor.state.selection.main.head, line=editor.state.doc.lineAt(pos); return { line: line.number, column: pos-line.from+1 } },
-      gotoLine: n => { const line=editor.state.doc.line(Math.max(1,Math.min(editor.state.doc.lines,n))); editor.dispatch({selection:{anchor:line.from},effects:EditorView.scrollIntoView(line.from,{y:'center'})}); editor.focus() },
+      gotoLine: (n, column = 1, length = 0) => { const line=editor.state.doc.line(Math.max(1,Math.min(editor.state.doc.lines,n))); const anchor=Math.min(line.to,line.from+Math.max(0,column-1)); editor.dispatch({selection:{anchor,head:Math.min(line.to,anchor+Math.max(0,length))},effects:EditorView.scrollIntoView(anchor,{y:'center'})}); editor.focus() },
       selection: () => { const range=editor.state.selection.main; const from=range.empty?0:range.from, to=range.empty?editor.state.doc.length:range.to; return { text:editor.state.sliceDoc(from,to),startLine:editor.state.doc.lineAt(from).number,endLine:editor.state.doc.lineAt(Math.max(from,to-1)).number } },
     })
     return () => { callbacks.current.register(null); editor.destroy(); view.current = null }
