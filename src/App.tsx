@@ -1,4 +1,6 @@
 import { StandaloneTitleBar } from './components/WindowControls'
+import { WelcomeScreen } from './components/WelcomeScreen'
+import { useWelcomeSequence } from './hooks/useWelcomeSequence'
 import { ProjectEditor } from './components/ProjectEditor'
 import { ExtensionsWorkspace } from './components/ExtensionsWorkspace'
 import { SupportButton, SupportChat } from './components/SupportChat'
@@ -357,14 +359,9 @@ function LicenseGate() {
   const [key, setKey] = useState('')
   const [error, setError] = useState('')
   const [activating, setActivating] = useState(false)
-  const [welcomeReady, setWelcomeReady] = useState(false)
+  const welcomePhase = useWelcomeSequence(checking)
   const [quotaExhausted, setQuotaExhausted] = useState(false)
   const [resetsAt, setResetsAt] = useState<string | null>(null)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setWelcomeReady(true), 1000)
-    return () => window.clearTimeout(timer)
-  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -432,19 +429,15 @@ function LicenseGate() {
     } finally { setActivating(false) }
   }
 
-  if (checking || !welcomeReady) return <main dir={isArabic ? 'rtl' : 'ltr'} className="fixed inset-0 flex flex-col items-center justify-center bg-[#06080f] px-6 text-[#dce7ff]">
-    <StandaloneTitleBar dark />
-    <img src="/brand/openzero-logo-animated.svg" alt="" aria-hidden="true" className="mb-5 h-36 w-36 object-contain" />
-    <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="w-[min(360px,75vw)] object-contain" />
-    <h1 className="mt-5 text-xl font-bold">{isArabic ? 'أهلًا بك في Open Zero' : 'Welcome to Open Zero'}</h1>
-    <p role="status" className="mt-3 flex items-center gap-2 text-sm text-[#a9b9d8]"><LoaderCircle className="h-4 w-4 animate-spin" />{isArabic ? 'جارٍ فحص مفتاح التفعيل…' : 'Checking your activation key…'}</p>
-  </main>
-  if (active) return <WorkspaceApp />
+  const welcome = welcomePhase !== 'done' ? <WelcomeScreen key="welcome" leaving={welcomePhase === 'leaving'} checking={checking} isArabic={isArabic} /> : null
+  // Keep the same overlay mounted across phases so its opacity transition can run.
+  if (welcomePhase === 'waiting') return <>{null}{welcome}</>
+  if (active) return <><div inert={welcomePhase !== 'done'} aria-hidden={welcomePhase !== 'done' || undefined}><WorkspaceApp /></div>{welcome}</>
   const title = quotaExhausted ? (isArabic ? 'انتهى رصيد الطلبات' : 'Request quota exhausted') : (isArabic ? 'تفعيل Open Zero' : 'Activate Open Zero')
   const description = quotaExhausted
     ? (isArabic ? 'رصيد مفتاحك وصل إلى صفر. الإرسال متوقف حتى تجديد الرصيد اليومي أو تفعيل مفتاح آخر.' : 'Your key has zero requests remaining. Messaging is paused until the daily quota resets or you activate another key.')
     : (isArabic ? 'أدخل مفتاح تفعيل صالح لاستخدام Open Zero. كل رسالة تستهلك طلبًا من رصيد مفتاحك.' : 'Enter a valid activation key to use Open Zero. Each message uses one request from your key quota.')
-  return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center overflow-y-auto bg-[#06080f] px-6 py-8 text-[#dce7ff]">
+  return <><main inert={welcomePhase !== 'done'} aria-hidden={welcomePhase !== 'done' || undefined} dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center overflow-y-auto bg-[#06080f] px-6 py-8 text-[#dce7ff]">
     <StandaloneTitleBar dark />
     <form onSubmit={activate} className="w-full max-w-[380px]">
       <img src="/brand/openzero-logo-animated.svg" alt="" aria-hidden="true" className="mx-auto mb-4 h-28 w-28 object-contain" />
@@ -461,7 +454,7 @@ function LicenseGate() {
       </button>
       <div className="mt-6 flex justify-center border-t border-[#253149]/60 pt-5"><SupportButton appearance="welcome" /></div>
     </form>
-  </main>
+  </main>{welcome}</>
 }
 
 type MandatoryUpdateState = { version?: string; percent?: number; error?: string }
