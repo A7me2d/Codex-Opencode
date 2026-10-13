@@ -3,6 +3,7 @@ import { codexWeeklyQuota } from './server/codex-weekly-quota.mjs'
 import { searchProjectContents } from './server/project-content-search.mjs'
 import { SourceControl } from './server/source-control.mjs'
 import { generateCommitMessage } from './server/commit-message.mjs'
+import { projectPreviewFiles } from './server/project-preview.mjs'
 import { ExtensionWorkbench, workbenchPath, trustedExtensionRequest } from './server/extension-workbench.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
@@ -2440,6 +2441,11 @@ const server = createServer(async (request, response) => {
       return
     }
 
+    if (url.pathname === '/api/project/preview-files' && request.method === 'GET') {
+      if (url.searchParams.get('root') !== watchRoot) throw new HttpError(409, 'The project changed. Enable automatic preview again.')
+      sendJson(response, 200, { data: await projectPreviewFiles(watchRoot) })
+      return
+    }
     if (url.pathname === '/api/project/file' && request.method === 'GET') {
       sendJson(response,200,{data:await readProjectFile(watchRoot,{root:url.searchParams.get('root'),path:url.searchParams.get('path')})})
       return

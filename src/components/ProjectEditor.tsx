@@ -5,14 +5,16 @@ import { useLocale } from '../lib/i18n'
 import { persistPreference, preferenceKeys } from '../lib/preferences'
 import { useEditorAutoSave } from '../hooks/useEditorAutoSave'
 
-export type FileTab = { path: string; content: string; saved: string; version: string }
+export type FileTab = { path: string; content: string; saved: string; version: string; automatic?: boolean }
 const CodeEditor = lazy(() => import('./CodeEditorView'))
-export interface CodeEditorHandle { focus: () => void; measure: () => void; gotoLine: (line: number, column?: number, length?: number) => void; position: () => { line: number; column: number }; selection: () => { text: string; startLine: number; endLine: number } }
-export function openProjectFile(root: string, path: string, line?: number, column?: number, matchLength?: number) {
-  window.dispatchEvent(new CustomEvent('coding-room:open-file', { detail: { root, path, line, column, matchLength } }))
+export interface CodeEditorHandle { focus: () => void; measure: () => void; gotoLine: (line: number, column?: number, length?: number) => void; scrollToFraction: (fraction: number) => void; position: () => { line: number; column: number }; selection: () => { text: string; startLine: number; endLine: number } }
+export function openProjectFile(root: string, path: string, line?: number, column?: number, matchLength?: number, preview?: { automatic?: boolean; scrollFraction?: number }) {
+  window.dispatchEvent(new CustomEvent('coding-room:open-file', { detail: { root, path, line, column, matchLength, ...preview } }))
 }
 
-export function ProjectEditor({ root, children, onInsert }: { root?: string; children: ReactNode; onInsert: (text: string) => void }) {
+export function ProjectEditor({ root, children, onInsert, automatic = false }: { root?: string; children: ReactNode; onInsert: (text: string) => void; automatic?: boolean }) {
+  const automaticRef = useRef(automatic)
+  automaticRef.current = automatic
   const ar = useLocale() === 'ar'
   const [tabs, setTabs] = useState<FileTab[]>([]), [selected, setSelected] = useState('')
   const [error, setError] = useState(''), [loading, setLoading] = useState(false), [busy, setBusy] = useState('')
@@ -27,11 +29,14 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
   const cachedTabs = useRef(new Map<string, FileTab[]>())
   const selectedRef = useRef(selected)
   selectedRef.current = selected
-  const targets = useRef(new Map<string, { line: number; column?: number; length?: number }>())
+  const targets = useRef(new Map<string, { line?: number; column?: number; length?: number; fraction?: number; automatic?: boolean }>())
   const reveal = useCallback((path: string, view: CodeEditorHandle) => {
     const target = targets.current.get(path)
     if (target && selectedRef.current === path) {
-      view.measure(); view.gotoLine(target.line, target.column, target.length)
+      if (target.automatic && !automaticRef.current) { targets.current.delete(path); return }
+      view.measure()
+      if (target.line) view.gotoLine(target.line, target.column, target.length)
+      if (target.fraction !== undefined) view.scrollToFraction(target.fraction)
       targets.current.delete(path)
     }
   }, [])
@@ -56,24 +61,27 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
   }, [selected])
   useEffect(() => {
     const open = async (event: Event) => {
-      const input = (event as CustomEvent<{ root: string; path: string; line?: number; column?: number; matchLength?: number }>).detail
+      const input = (event as CustomEvent<{ root: string; path: string; line?: number; column?: number; matchLength?: number; automatic?: boolean; scrollFraction?: number }>).detail
       if (!root || input.root !== root) return
-      if (input.line) targets.current.set(input.path, { line: input.line, column: input.column, length: input.matchLength })
+      if (input.automatic && (!automaticRef.current || busyRef.current || tabsRef.current.some(tab => tab.content !== tab.saved))) return
+      if (input.line || input.scrollFraction !== undefined) targets.current.set(input.path, { line: input.line, column: input.column, length: input.matchLength, fraction: input.scrollFraction, automatic: input.automatic })
       if (tabsRef.current.some(tab => tab.path === input.path)) {
+        if (!input.automatic) setTabs(previous => previous.map(tab => tab.path === input.path ? { ...tab, automatic: false } : tab))
         setSelected(input.path)
         requestAnimationFrame(() => { const view = views.current.get(input.path); if (view) reveal(input.path, view) })
         return
       }
       if (opening.current.has(input.path)) return
-      if (tabsRef.current.length >= 12) { setError(ar ? 'أغلق تبويبًا قبل فتح ملف آخر.' : 'Close a tab before opening another file.'); return }
+      if (!input.automatic && tabsRef.current.filter(tab => !tab.automatic).length >= 12) { setError(ar ? 'أغلق تبويبًا قبل فتح ملف آخر.' : 'Close a tab before opening another file.'); return }
       const current = generation.current
       opening.current.add(input.path); setLoading(true); setError('')
       try {
         const result = await api.projectFile(root, input.path)
         if (current !== generation.current) return
-        setTabs(previous => previous.some(tab => tab.path === result.path) ? previous : [...previous, { ...result, saved: result.content }])
+        if (input.automatic && (!automaticRef.current || busyRef.current || tabsRef.current.some(tab => tab.content !== tab.saved))) { targets.current.delete(input.path); return }
+        setTabs(previous => previous.some(tab => tab.path === result.path) ? previous : [...previous.filter(tab => !input.automatic || !tab.automatic || tab.content !== tab.saved), { ...result, saved: result.content, automatic: input.automatic }])
         setSelected(result.path)
-      } catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : String(failure)) }
+      } catch (failure) { if (current === generation.current && !input.automatic) setError(failure instanceof Error ? failure.message : String(failure)) }
       finally { if (current === generation.current) { opening.current.delete(input.path); setLoading(opening.current.size > 0) } }
     }
     window.addEventListener('coding-room:open-file', open)
@@ -84,7 +92,7 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
     window.addEventListener('beforeunload', leave)
     return () => window.removeEventListener('beforeunload', leave)
   }, [])
-  const change = useCallback((path: string, content: string) => setTabs(previous => previous.map(tab => tab.path === path ? { ...tab, content } : tab)), [])
+  const change = useCallback((path: string, content: string) => setTabs(previous => previous.map(tab => tab.path === path ? { ...tab, content, automatic: false } : tab)), [])
   async function save(path: string, automatic = false) {
     const tab = tabsRef.current.find(item => item.path === path)
     if (!tab || !root || busyRef.current || tab.content === tab.saved) return
