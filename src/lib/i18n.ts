@@ -5,6 +5,8 @@ export type AppLocale = 'en' | 'ar'
 
 const STORAGE_KEY = 'coding-room.locale'
 const english: Record<string, string> = {
+  'أوامر': 'Commands',
+  'جلسة OpenCode': 'OpenCode session',
   'رصيد Codex الأسبوعي غير متاح': 'Codex weekly allowance is unavailable',
   'المتبقي من رصيد Codex الأسبوعي: {{0}}%': 'Codex weekly allowance remaining: {{0}}%',
   'قبول التعديلات': 'Accept changes',
@@ -16,6 +18,8 @@ const english: Record<string, string> = {
   'وافق على شروط VS Code Server لتشغيل بيئة الإضافات.': 'Accept the VS Code Server terms to start the extensions workspace.',
   'ثبّت Visual Studio Code أو اضبط VSCODE_CLI_EXE لاستخدام الإضافات.': 'Install Visual Studio Code or configure VSCODE_CLI_EXE to use extensions.',
   'تعذّر تشغيل بيئة إضافات VS Code. تحقق من تثبيت VS Code واتصال الإنترنت.': 'Could not start the VS Code extensions workspace. Check the VS Code installation and internet connection.',
+  'تعذّر تنزيل أو تشغيل VS Code Server. تحقق من اتصال الإنترنت أو إعدادات البروكسي، ثم أعد المحاولة.': 'VS Code Server could not be downloaded or started. Check your internet connection or proxy, then retry.',
+  'انتهت مهلة تجهيز VS Code Server. تحقق من اتصال الإنترنت أو إعدادات البروكسي، ثم أعد محاولة تشغيل بيئة الإضافات.': 'VS Code Server setup timed out. Check your internet connection or proxy, then retry the extension workspace.',
   'شغّل بيئة الإضافات أولًا.': 'Start the extensions workspace first.',
   'لا يزال تنزيل VS Code جاريًا. انتظر ظهور المحرر ثم ثبّت Nx Console.': 'VS Code is still downloading. Wait for the editor to load, then install Nx Console.',
   'انتهت مهلة تثبيت Nx Console. تحقق من اتصال الإنترنت وأعد المحاولة.': 'Installing Nx Console timed out. Check your internet connection and retry.',

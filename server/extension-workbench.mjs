@@ -38,7 +38,7 @@ export function workbenchFolder(directory, platform = process.platform) {
 
 /** A private, on-demand VS Code host. No runtime is launched during import. */
 export class ExtensionWorkbench {
-  constructor(stateDirectory, { launch = spawn, request = httpRequest, resolveCLI = findVSCodeCLI } = {}) {
+  constructor(stateDirectory, { launch = spawn, request = httpRequest, resolveCLI = findVSCodeCLI, readinessTimeoutMs = 600_000 } = {}) {
     this.storage = path.join(stateDirectory, 'extension-workbench')
     this.launch = launch
     this.request = request
@@ -51,14 +51,21 @@ export class ExtensionWorkbench {
     this.connections = new Set()
     this.installing = null
     this.installer = null
+    this.phase = 'stopped'
+    this.downloadPercent = null
+    this.editorReady = false
+    this.readinessTimeoutMs = readinessTimeoutMs
+    this.readinessTimer = null
+    this.readinessRequest = null
   }
 
   status(directory) {
     const cli = this.resolveCLI()
     return { directory, available: Boolean(cli), running: Boolean(this.child && this.port), starting: Boolean(this.starting),
       error: this.error, nxWorkspace: existsSync(path.join(directory, 'nx.json')),
-      runtimeReady: Boolean(this.findRuntime()), installing: Boolean(this.installing), nxInstalled: this.nxInstalled(),
-      path: this.port ? `${workbenchPath}?${new URLSearchParams({ folder: workbenchFolder(directory) })}` : null }
+      phase: this.phase, downloadPercent: this.downloadPercent,
+      runtimeReady: this.editorReady && Boolean(this.findRuntime()), installing: Boolean(this.installing), nxInstalled: this.nxInstalled(),
+      path: this.port && this.editorReady ? `${workbenchPath}?${new URLSearchParams({ folder: workbenchFolder(directory) })}` : null }
   }
 
   async start(directory, acceptedTerms) {
@@ -78,6 +85,7 @@ export class ExtensionWorkbench {
     const tokenFile = path.join(this.storage, 'connection-token')
     await writeFile(tokenFile, this.token, { mode: 0o600 })
     this.error = null
+    this.phase = 'starting'; this.editorReady = false; this.downloadPercent = null
     const child = this.launch(cli, ['serve-web', '--host', '127.0.0.1', '--port', '0',
       '--cli-data-dir', path.join(this.storage, 'cli'), '--server-data-dir', path.join(this.storage, 'data'),
       '--server-base-path', workbenchPath.slice(0, -1), '--connection-token-file', tokenFile,
@@ -88,18 +96,24 @@ export class ExtensionWorkbench {
       let ready = false
       let output = ''
       const fail = () => {
-        this.error = 'Could not start the VS Code extensions workspace. Check the VS Code installation and internet connection.'
+        this.error ||= 'Could not start the VS Code extensions workspace. Check the VS Code installation and internet connection.'
+        this.phase = 'error'; this.editorReady = false
+        this.cancelReadiness()
         if (!ready) { clearTimeout(timeout); reject(new Error(this.error)) }
       }
       const timeout = setTimeout(() => { fail(); void this.stop() }, 30_000)
       const capture = chunk => {
         // CLI output can contain authentication URLs. Parse it without logging it.
         output = `${output}${chunk}`.replace(/\x1b\[[0-9;]*m/g, '').slice(-8192)
+        this.captureRuntimeProgress(String(chunk))
         const match = output.match(/Web UI available at http:\/\/127\.0\.0\.1:(\d+)/)
         if (!match || ready) return
         const port = Number(match[1])
         if (port < 1 || port > 65535) return
-        this.port = port; ready = true; clearTimeout(timeout); resolve()
+        this.port = port; ready = true; clearTimeout(timeout)
+        this.phase = 'downloading'
+        this.monitorReadiness(child)
+        resolve()
       }
       child.stdout?.on('data', capture)
       child.stderr?.on('data', capture)
@@ -111,14 +125,86 @@ export class ExtensionWorkbench {
     })
   }
 
+  captureRuntimeProgress(chunk) {
+    if (this.phase === 'error' || this.phase === 'stopped') return
+    const clean = chunk.replace(/\x1b\[[0-9;]*m/g, '')
+    if (/Downloading server/i.test(clean) && !this.editorReady) {
+      this.phase = 'downloading'
+      const percent = clean.match(/(\d+(?:\.\d+)?)\s*%/)
+      if (percent) this.downloadPercent = Math.min(100, Number(percent[1]))
+    }
+    if (/Starting server/i.test(clean) && !this.editorReady) this.phase = 'starting'
+    // Never expose raw CLI output: it may contain tokens, URLs or private paths.
+    if (/error getting latest version|error downloading|failed to download|error serving request|ServerDownloadError/i.test(clean)) {
+      this.readinessFailed('VS Code Server could not be downloaded or started. Check your internet connection or proxy, then retry.')
+    }
+  }
+
+  cancelReadiness() {
+    clearTimeout(this.readinessTimer); this.readinessTimer = null
+    this.readinessRequest?.destroy(); this.readinessRequest = null
+  }
+
+  readinessFailed(message) {
+    this.error = message; this.phase = 'error'; this.editorReady = false
+    this.cancelReadiness()
+  }
+
+  monitorReadiness(child) {
+    const deadline = Date.now() + this.readinessTimeoutMs
+    const probe = () => {
+      if (this.child !== child || this.phase === 'error') return
+      if (Date.now() >= deadline) {
+        this.readinessFailed('VS Code Server setup timed out. Check your internet connection or proxy, then retry the extension workspace.')
+        return
+      }
+      let settled = false
+      let timeout
+      const next = () => {
+        if (settled) return
+        settled = true; clearTimeout(timeout)
+        this.readinessRequest = null
+        if (this.child === child && !this.editorReady && ['starting', 'downloading'].includes(this.phase)) this.readinessTimer = setTimeout(probe, 1500)
+      }
+      const target = this.target(workbenchPath)
+      const request = this.request(target, { method: 'GET', headers: this.upstreamHeaders() }, response => {
+        // A real workbench responds 200; serve-web's download placeholder is 202.
+        response.resume()
+        if (this.child !== child) { next(); return }
+        if (response.statusCode === 200 && /text\/html/i.test(response.headers['content-type'] ?? '')) {
+          this.editorReady = true; this.phase = 'ready'; this.error = null
+          this.downloadPercent = null
+        } else if (response.statusCode >= 400) {
+          this.readinessFailed('VS Code Server could not be downloaded or started. Check your internet connection or proxy, then retry.')
+        }
+        next()
+      })
+      this.readinessRequest = request
+      timeout = setTimeout(() => { request.destroy(); next() }, Math.min(15_000, Math.max(1, deadline - Date.now())))
+      request.on('error', next)
+      request.end()
+    }
+    // Start the lazy vendor download even before an iframe is mounted.
+    this.readinessTimer = setTimeout(probe, 0)
+  }
+
   target(incoming) {
     if (!this.port || !this.token || !this.child) throw Object.assign(new Error('Start the extensions workspace first.'), { status: 503 })
     const url = new URL(incoming, `http://127.0.0.1:${this.port}`)
     if (!url.pathname.startsWith(workbenchPath)) throw Object.assign(new Error('Invalid extensions workspace path.'), { status: 400 })
     url.protocol = 'http:'; url.hostname = '127.0.0.1'; url.port = String(this.port)
     url.username = ''; url.password = ''
-    url.searchParams.set('tkn', this.token)
+    url.searchParams.delete('tkn')
     return url
+  }
+
+  upstreamHeaders(headers = {}) {
+    // Query-token authentication redirects the root page to remove that token.
+    // Re-injecting it on every proxy request would create an endless 302 loop.
+    const cookies = (headers.cookie ?? '').split(';').map(value => value.trim())
+      .filter(value => value && !/^vscode-tkn\s*=/.test(value))
+    cookies.push(`vscode-tkn=${this.token}`)
+    return { ...headers, cookie: cookies.join('; ') }
   }
 
   findRuntime() {
@@ -135,7 +221,7 @@ export class ExtensionWorkbench {
       }
       if (depth >= 4) return
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        if (entry.isDirectory() && !entry.isSymbolicLink()) walk(path.join(directory, entry.name), depth + 1)
+        if (entry.isDirectory() && !entry.isSymbolicLink() && !entry.name.includes('.staging-')) walk(path.join(directory, entry.name), depth + 1)
       }
     }
     try { walk(root, 0) } catch { return null }
@@ -159,7 +245,7 @@ export class ExtensionWorkbench {
     if (!this.child || !this.port) throw Object.assign(new Error('Start the extensions workspace first.'), { status: 409 })
     if (this.installing) return this.installing
     const runtime = this.findRuntime()
-    if (!runtime) throw Object.assign(new Error('VS Code is still downloading. Wait for the editor to load, then install Nx Console.'), { status: 409 })
+    if (!this.editorReady || !runtime) throw Object.assign(new Error('VS Code is still downloading. Wait for the editor to load, then install Nx Console.'), { status: 409 })
     this.installing = new Promise((resolve, reject) => {
       const child = this.launch(runtime.node, [runtime.main, '--server-data-dir', path.join(this.storage, 'data'),
         '--extensions-dir', path.join(this.storage, 'data', 'extensions'), '--install-extension', 'nrwl.angular-console',
@@ -180,7 +266,7 @@ export class ExtensionWorkbench {
   proxy(request, response) {
     if (!trustedExtensionRequest(request)) throw Object.assign(new Error('Open the extensions workspace from Open Zero.'), { status: 403 })
     const target = this.target(request.url)
-    const upstream = this.request(target, { method: request.method, headers: { ...request.headers, host: request.headers.host } }, result => {
+    const upstream = this.request(target, { method: request.method, headers: this.upstreamHeaders(request.headers) }, result => {
       const headers = { ...result.headers }
       if (headers.location) {
         const redirect = new URL(headers.location, target)
@@ -206,7 +292,7 @@ export class ExtensionWorkbench {
     if (!trustedExtensionRequest(request)) { socket.destroy(); return }
     let target
     try { target = this.target(request.url) } catch { socket.destroy(); return }
-    const upstream = this.request(target, { headers: request.headers })
+    const upstream = this.request(target, { headers: this.upstreamHeaders(request.headers) })
     upstream.on('upgrade', (response, remote, remoteHead) => {
       this.connections.add(socket); this.connections.add(remote)
       const headers = response.rawHeaders.reduce((result, value, index, array) => index % 2 ? result : `${result}${value}: ${array[index + 1]}\r\n`, '')
@@ -225,6 +311,8 @@ export class ExtensionWorkbench {
   }
 
   async stop() {
+    this.editorReady = false; this.phase = 'stopped'; this.downloadPercent = null
+    this.cancelReadiness()
     this.installer?.kill()
     const child = this.child
     this.child = null; this.port = null; this.token = null

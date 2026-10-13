@@ -199,7 +199,7 @@ function startBackend() {
 ipcMain.handle('terminal:start', (event, input) => {
   const requestedDirectory = input?.directory
   const sessionId = String(input?.sessionId ?? '').trim()
-  if (!/^ses_[A-Za-z0-9]+$/.test(sessionId)) throw new Error('أدخل معرّف جلسة OpenCode صالحًا.')
+  if (sessionId && !/^ses_[A-Za-z0-9]+$/.test(sessionId)) throw new Error('أدخل معرّف جلسة OpenCode صالحًا.')
   const directory = typeof requestedDirectory === 'string' && requestedDirectory.trim()
     ? path.resolve(requestedDirectory)
     : app.getPath('documents')
@@ -211,7 +211,10 @@ ipcMain.handle('terminal:start', (event, input) => {
   const powershell = process.env.WINDIR
     ? path.join(process.env.WINDIR, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
     : 'powershell.exe'
-  const terminal = spawnPty(fs.existsSync(powershell) ? powershell : 'powershell.exe', ['-NoLogo', '-NoProfile', '-NoExit', '-Command', `opencode --session ${sessionId}`], {
+  const command = sessionId ? `opencode --session ${sessionId}` : ''
+  const args = ['-NoLogo', '-NoProfile', '-NoExit']
+  if (command) args.push('-Command', command)
+  const terminal = spawnPty(fs.existsSync(powershell) ? powershell : 'powershell.exe', args, {
     name: 'xterm-256color',
     cols: 100,
     rows: 24,
@@ -226,7 +229,7 @@ ipcMain.handle('terminal:start', (event, input) => {
       event.sender.send('terminal:exit', exitCode)
     }
   })
-  return { cwd: directory, command: `opencode --session ${sessionId}` }
+  return { cwd: directory, command }
 })
 
 ipcMain.on('terminal:write', (event, data) => {

@@ -11,6 +11,8 @@ export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
 export interface CodexWeeklyQuota { available: boolean; remainingPercent: number | null; resetsAt: number | null }
 
 export interface ExtensionWorkspaceStatus {
+  phase: 'stopped' | 'starting' | 'downloading' | 'ready' | 'error'
+  downloadPercent: number | null
   directory: string
   available: boolean
   running: boolean
