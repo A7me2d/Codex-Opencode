@@ -113,7 +113,7 @@ OpenCode switches disconnect or reconnect the server in the current project at r
 
 ## Desktop updates
 
-The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds and publishes a Windows installer whenever code is pushed to `main` or `new-models`. Installed copies check GitHub Releases after startup and every six hours, download updates automatically, and install them on exit (or restart immediately from the update notice). Share the **Open Zero Setup** installer from the latest GitHub Release; the portable executable does not support automatic updates.
+The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds and publishes a Windows installer only when code is pushed to `main`, including after merging a pull request. Pushing to development or feature branches does not create desktop releases. Installed copies check GitHub Releases after startup and every six hours, download updates automatically, and install them on exit (or restart immediately from the update notice). Share the **Open Zero Setup** installer from the latest GitHub Release; the portable executable does not support automatic updates.
 
 ## Commands
 
