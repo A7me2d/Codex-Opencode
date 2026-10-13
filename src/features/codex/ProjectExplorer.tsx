@@ -1,6 +1,6 @@
 import { openProjectFile } from '../../components/ProjectEditor'
 import { tr } from '../../lib/i18n'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { BookOpen, Braces, Boxes, Check, ChevronDown, ChevronRight, Code2, Component, Copy, Database, FileArchive, FileAudio2, FileCode2, FileCog, FileImage, FileJson2, FileLock2, FileSpreadsheet, FileText, FileType2, FileVideo2, FlaskConical, Folder, FolderOpen, Globe2, Image, Layers3, LoaderCircle, Package, Palette, Search, Settings2, TestTube2, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { api } from '../../lib/api'
@@ -108,6 +108,49 @@ function CopyPathButton({ path }: { path: string }) {
   </button>
 }
 
+function SearchModePicker({ value, onChange }: { value: 'name' | 'content'; onChange: (value: 'name' | 'content') => void }) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const options = useRef<(HTMLButtonElement | null)[]>([])
+  const id = useId()
+  const modes = ['name', 'content'] as const
+  const close = () => { setOpen(false); trigger.current?.focus() }
+  useEffect(() => {
+    if (!open) return
+    options.current[value === 'name' ? 0 : 1]?.focus()
+    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
+    document.addEventListener('pointerdown', outside)
+    return () => document.removeEventListener('pointerdown', outside)
+  }, [open, value])
+  return <div ref={root} className="relative h-7 w-10 shrink-0 border-s border-line" onBlur={event => {
+    if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+  }} onKeyDown={event => { if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); close() } }}>
+    <button ref={trigger} type="button" aria-label={`${tr('طريقة البحث')}: ${tr(value === 'name' ? 'اسم الملف' : 'داخل الملفات')}`} title={tr('طريقة البحث')} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
+      onClick={() => setOpen(previous => !previous)} onKeyDown={event => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) }
+      }} className={`flex h-full w-full items-center justify-center gap-0.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 ${open ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-card hover:text-ink'}`}>
+      {value === 'name' ? <FileText className="h-3.5 w-3.5" aria-hidden="true" /> : <Code2 className="h-3.5 w-3.5" aria-hidden="true" />}<ChevronDown className={`h-2.5 w-2.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+    </button>
+    {open ? <div id={id} role="menu" aria-label={tr('طريقة البحث')} className="absolute end-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-line bg-card p-1.5 shadow-[0_12px_32px_rgba(20,28,40,0.18)]">
+      <div className="px-2.5 pb-2 pt-1 text-[10px] font-semibold text-ink-soft">{tr('طريقة البحث')}</div>
+      {modes.map((mode, index) => <button key={mode} ref={node => { options.current[index] = node }} type="button" role="menuitemradio" aria-checked={value === mode} tabIndex={-1}
+        onClick={() => { onChange(mode); close() }} onKeyDown={event => {
+          let next = index
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') next = 1 - index
+          else if (event.key === 'Home') next = 0
+          else if (event.key === 'End') next = 1
+          else return
+          event.preventDefault(); options.current[next]?.focus()
+        }} className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-start text-[11px] font-semibold outline-none transition-colors focus:bg-relay-tint hover:bg-relay-tint ${value === mode ? 'bg-relay-tint/60 text-relay-ink' : 'text-ink'}`}>
+        {mode === 'name' ? <FileText className="h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" /> : <Code2 className="h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />}
+        <span className="flex-1">{tr(mode === 'name' ? 'اسم الملف' : 'داخل الملفات')}</span>
+        {value === mode ? <Check className="h-3.5 w-3.5 shrink-0 text-relay-ink" aria-hidden="true" /> : null}
+      </button>)}
+    </div> : null}
+  </div>
+}
+
 function ProjectEntry({ entry, childrenByPath, loadingPaths, expandedPaths, iconTheme, workRoot, onToggle }: {
   entry: ProjectFileEntry
   childrenByPath: Record<string, ProjectFiles>
@@ -211,14 +254,7 @@ export function ProjectExplorer({ workRoot }: { workRoot: string }) {
       {searching ? <LoaderCircle className="h-3.5 w-3.5 animate-spin text-ink-soft" aria-hidden="true" /> : <Search className="h-3.5 w-3.5 text-ink-soft" aria-hidden="true" />}
       <input value={query} onChange={event => setQuery(event.target.value)} maxLength={searchMode === 'content' ? 500 : undefined} placeholder={tr(searchMode === 'content' ? 'ابحث عن كلاس أو نص…' : 'ابحث باسم الملف…')} aria-label={tr(searchMode === 'content' ? 'البحث داخل الملفات' : 'ابحث باسم الملف')} className="h-9 min-w-0 flex-1 bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-soft" />
       {query ? <button type="button" onClick={() => setQuery('')} aria-label={tr("مسح البحث")} className="rounded p-1 text-ink-soft hover:bg-card hover:text-ink"><X className="h-3.5 w-3.5" /></button> : null}
-      <div className="relative h-7 w-10 shrink-0 rounded-md border-s border-line text-ink-soft hover:bg-card focus-within:ring-2 focus-within:ring-relay/40">
-        <span className="pointer-events-none flex h-full items-center justify-center gap-0.5" aria-hidden="true">
-          {searchMode === 'name' ? <FileText className="h-3.5 w-3.5" /> : <Code2 className="h-3.5 w-3.5 text-relay-ink" />}<ChevronDown className="h-2.5 w-2.5" />
-        </span>
-        <select aria-label={tr('طريقة البحث')} title={`${tr('طريقة البحث')}: ${tr(searchMode === 'name' ? 'اسم الملف' : 'داخل الملفات')}`} value={searchMode} onChange={event => setSearchMode(event.target.value as 'name' | 'content')} className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
-          <option value="name">{tr('اسم الملف')}</option><option value="content">{tr('داخل الملفات')}</option>
-        </select>
-      </div>
+      <SearchModePicker value={searchMode} onChange={setSearchMode} />
     </div>
     <div dir="ltr" className="thin-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
       {query.trim() ? <>
