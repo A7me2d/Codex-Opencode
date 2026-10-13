@@ -1,7 +1,7 @@
 import { openSupport } from '../../components/SupportChat'
 import { direction, tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
-import { FolderOpen, FolderTree, GitBranch, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
+import { Files, FolderOpen, FolderTree, GitBranch, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
 import { AccountAvatar } from '../../components/AccountAvatar'
 import { accountIdentity } from '../../lib/accountIdentity'
 import { StateDot } from '../../components/ui/StateDot'
@@ -92,18 +92,20 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
       <div className="shrink-0 border-b border-line px-3 py-2">
         <div role="tablist" aria-label={tr('محتوى المشروع')} className="flex gap-1 rounded-full border border-line bg-paper p-1">
           {(['files', 'chats'] as const).map(value => <button key={value} type="button" role="tab" id={`project-tab-${value}`} aria-controls={`project-panel-${value}`} aria-selected={view === value} tabIndex={view === value ? 0 : -1}
-            aria-label={tr(value === 'files' ? 'الملفات' : 'محادثات المشروع')} onClick={() => setView(value)} onKeyDown={event => {
+            aria-label={value === 'files' ? tr('الملفات') : `${tr('محادثات المشروع')} (${threads.length})`}
+            title={value === 'files' ? tr('الملفات') : `${tr('المحادثات')} (${threads.length})`} onClick={() => setView(value)} onKeyDown={event => {
               if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
               event.preventDefault()
               const next = event.key === 'ArrowRight' ? (value === 'files' ? 'chats' : 'source') : (value === 'files' ? 'source' : 'files')
               setView(next); document.getElementById(`project-tab-${next}`)?.focus()
-            }} className={cx('inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}>
-            {tr(value === 'files' ? 'الملفات' : 'المحادثات')}
-            {value === 'chats' ? <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-relay-tint px-1 text-[9px] leading-4 tabular-nums text-relay-ink">{threads.length}</span> : null}
+            }} className={cx('inline-flex h-9 min-w-0 flex-1 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}>
+            <span className="relative inline-flex">{value === 'files' ? <Files className="h-4 w-4" aria-hidden="true" /> : <MessageCircleMore className="h-4 w-4" aria-hidden="true" />}
+              {value === 'chats' && threads.length > 0 ? <span aria-hidden="true" className="absolute -end-3 -top-1.5 inline-flex min-w-3.5 items-center justify-center rounded-full bg-relay-tint px-0.5 text-[8px] font-semibold leading-3.5 tabular-nums text-relay-ink">{threads.length > 99 ? '99+' : threads.length}</span> : null}
+            </span>
           </button>)}
           <button type="button" role="tab" id="project-tab-source" aria-controls="project-panel-source" aria-selected={view === 'source'} tabIndex={view === 'source' ? 0 : -1} aria-label="Source Control" title="Source Control (Ctrl+Shift+G)" onClick={() => setView('source')}
             onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const next = event.key === 'ArrowRight' ? 'files' : 'chats'; setView(next); document.getElementById(`project-tab-${next}`)?.focus() } }}
-            className={cx('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === 'source' ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}><GitBranch className="h-4 w-4" aria-hidden="true" /></button>
+            className={cx('inline-flex h-9 min-w-0 flex-1 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === 'source' ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}><GitBranch className="h-4 w-4" aria-hidden="true" /></button>
         </div>
       </div>
 
