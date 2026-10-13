@@ -5,8 +5,8 @@ import { Resvg } from '@resvg/resvg-js'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const logo = await readFile(path.join(root, 'public', 'brand', 'openzero-logo-transparent.png'))
 const wordmark = await readFile(path.join(root, 'public', 'brand', 'openzero-wordmark-transparent.png'))
-function resizedPng(source, size) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 256 256"><image width="256" height="256" href="data:image/png;base64,${source.toString('base64')}"/></svg>`
+function resizedPng(source, width, height = width) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,${source.toString('base64')}"/></svg>`
   return new Resvg(svg).render().asPng()
 }
 const sizes = [16, 24, 32, 48, 64, 128, 256]
@@ -31,5 +31,7 @@ await mkdir(path.join(root, 'build'), { recursive: true })
 await writeFile(path.join(root, 'public', 'app-icon.png'), images[images.length - 1])
 await writeFile(path.join(root, 'public', 'app-icon.svg'), `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><image width="256" height="256" href="data:image/png;base64,${images[images.length - 1].toString('base64')}"/></svg>`)
 await writeFile(path.join(root, 'public', 'app-icon.ico'), ico)
-await writeFile(path.join(root, 'public', 'brand', 'openzero-wordmark-256.png'), resizedPng(wordmark, 256))
+// The wordmark is landscape: keep its native proportions for the desktop splash.
+const wordmarkHeight = Math.max(1, Math.round(512 * wordmark.readUInt32BE(20) / wordmark.readUInt32BE(16)))
+await writeFile(path.join(root, 'public', 'brand', 'openzero-wordmark-256.png'), resizedPng(wordmark, 512, wordmarkHeight))
 await writeFile(path.join(root, 'build', 'app.ico'), ico)

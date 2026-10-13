@@ -434,7 +434,8 @@ function LicenseGate() {
 
   if (checking || !welcomeReady) return <main dir={isArabic ? 'rtl' : 'ltr'} className="fixed inset-0 flex flex-col items-center justify-center bg-[#06080f] px-6 text-[#dce7ff]">
     <StandaloneTitleBar dark />
-    <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="w-[min(320px,70vw)] rounded-3xl object-contain" />
+    <img src="/brand/openzero-logo-transparent.png" alt="" aria-hidden="true" className="mb-5 h-36 w-36 object-contain" />
+    <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="w-[min(360px,75vw)] object-contain" />
     <h1 className="mt-5 text-xl font-bold">{isArabic ? 'أهلًا بك في Open Zero' : 'Welcome to Open Zero'}</h1>
     <p role="status" className="mt-3 flex items-center gap-2 text-sm text-[#a9b9d8]"><LoaderCircle className="h-4 w-4 animate-spin" />{isArabic ? 'جارٍ فحص مفتاح التفعيل…' : 'Checking your activation key…'}</p>
   </main>
@@ -446,7 +447,8 @@ function LicenseGate() {
   return <main dir={isArabic ? 'rtl' : 'ltr'} className="flex min-h-screen items-center justify-center overflow-y-auto bg-[#06080f] px-6 py-8 text-[#dce7ff]">
     <StandaloneTitleBar dark />
     <form onSubmit={activate} className="w-full max-w-[380px]">
-      <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="mx-auto w-[min(280px,65vw)] rounded-3xl object-contain" />
+      <img src="/brand/openzero-logo-transparent.png" alt="" aria-hidden="true" className="mx-auto mb-4 h-28 w-28 object-contain" />
+      <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="mx-auto w-[min(320px,70vw)] object-contain" />
       <h1 className="mt-5 text-center text-xl font-bold tracking-tight">{title}</h1>
       <p className="mt-3 text-center text-sm leading-6 text-[#a9b9d8]">{description}</p>
       {quotaExhausted && <p className="mt-4 rounded-xl border border-[#e9b36c]/25 bg-[#e9b36c]/10 px-4 py-3 text-xs font-semibold leading-6 text-[#f5cc99]">{isArabic ? 'المتبقي: 0 · تجديد الرصيد:' : 'Remaining: 0 · Quota resets:'} {resetsAt ? new Date(resetsAt).toLocaleString(isArabic ? 'ar-EG' : 'en-US') : '00:00 UTC'}</p>}

@@ -1,7 +1,6 @@
 import { tr } from '../lib/i18n'
 import { type CSSProperties } from 'react'
 import { Shuffle, TriangleAlert } from 'lucide-react'
-import { config } from '../app/config'
 import { SettingsDialog } from './SettingsDialog'
 import type { AppLocale } from '../lib/i18n'
 import { WindowControls } from './WindowControls'
@@ -32,7 +31,7 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
       <div className="flex min-w-0 items-center gap-2">
         <img src="/app-icon.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0 object-contain" />
         <div className="flex min-w-0 flex-col items-start gap-0.5 overflow-hidden">
-        <span className="shrink-0">{config.appTitle}</span>
+        <img src="/brand/openzero-wordmark-transparent.png" alt="Open Zero" className="h-7 w-[104px] shrink-0 object-contain object-left sm:w-32" />
         <span className="ms-1 hidden truncate text-[10px] font-medium text-ink-soft sm:inline">{tr("التخطيط والتنفيذ والمراجعة بين مساعديك")}</span>
         </div>
       </div>
