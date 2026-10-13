@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <title>Open Zero</title>
+    <style>
+      body { margin: 0; height: 100vh; display: grid; place-items: center; background: #06080f; color: #dce7ff; font: 14px system-ui, sans-serif; }
+      header { position: fixed; inset: 0 0 auto; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; -webkit-app-region: drag; }
+      .wordmark { width: 112px; height: auto; }
+      .controls { display: flex; gap: 4px; -webkit-app-region: no-drag; }
+      button { border: 0; border-radius: 8px; background: transparent; color: #a9b9d8; width: 40px; height: 32px; cursor: pointer; font: inherit; }
+      button:hover, button:focus-visible { background: #182238; color: #eef3ff; }
+      button[data-action="close"]:hover { background: #c94359; }
+      main { text-align: center; }
+      .emblem { display: block; width: 144px; height: 144px; object-fit: contain; margin: 0 auto 20px; }
+      .brand { width: min(360px, 75vw); height: auto; object-fit: contain; }
+      p { margin-top: 22px; color: #a9b9d8; }
+      .spinner { width: 15px; height: 15px; border: 2px solid #dce7ff40; border-top-color: #61cfff; border-radius: 50%; display: inline-block; vertical-align: middle; margin-inline-end: 8px; animation: spin .8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+    </style>
+    <script src="./loading.js" defer></script>
+  </head>
+  <body>
+    <header dir="ltr">
+      <img class="wordmark" src="../dist/brand/openzero-wordmark-256.png" alt="Open Zero" />
+      <div class="controls">
+        <button type="button" data-action="minimize" aria-label="Minimize">&#8722;</button>
+        <button type="button" data-action="maximize" aria-label="Maximize">&#9633;</button>
+        <button type="button" data-action="close" aria-label="Close">&#215;</button>
+      </div>
+    </header>
+    <main>
+      <img class="emblem" src="../dist/brand/openzero-logo-animated.svg" alt="" />
+      <img class="brand" src="../dist/brand/openzero-wordmark-256.png" alt="Open Zero" />
+      <p role="status"><span class="spinner" aria-hidden="true"></span>جاري تجهيز مساحة العمل…</p>
+    </main>
+  </body>
+</html>
