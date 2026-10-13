@@ -5,6 +5,7 @@ import { Resvg } from '@resvg/resvg-js'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const logo = await readFile(path.join(root, 'public', 'brand', 'openzero-logo-transparent.png'))
 const wordmark = await readFile(path.join(root, 'public', 'brand', 'openzero-wordmark-transparent.png'))
+const closedLogo = await readFile(path.join(root, 'public', 'brand', 'openzero-logo-closed.png'))
 function resizedPng(source, width, height = width) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,${source.toString('base64')}"/></svg>`
   return new Resvg(svg).render().asPng()
@@ -35,3 +36,14 @@ await writeFile(path.join(root, 'public', 'app-icon.ico'), ico)
 const wordmarkHeight = Math.max(1, Math.round(512 * wordmark.readUInt32BE(20) / wordmark.readUInt32BE(16)))
 await writeFile(path.join(root, 'public', 'brand', 'openzero-wordmark-256.png'), resizedPng(wordmark, 512, wordmarkHeight))
 await writeFile(path.join(root, 'build', 'app.ico'), ico)
+
+// Animate only the eyes; the original emblem stays visible and motionless.
+// Raster layers are embedded so the SVG also works as an <img> and in Electron's data URL splash.
+const openFrame = resizedPng(logo, 512).toString('base64')
+const closedFrame = resizedPng(closedLogo, 512).toString('base64')
+await writeFile(path.join(root, 'public', 'brand', 'openzero-logo-animated.svg'), `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1254 1254">
+<style>.eyelids{opacity:0;animation:blink 6.2s ease-in-out infinite}@keyframes blink{0%,46%,51%,100%{opacity:0}47.5%,49.5%{opacity:1}}@media(prefers-reduced-motion:reduce){.eyelids{animation:none}}</style>
+<defs><radialGradient id="feather"><stop offset="75%" stop-color="white"/><stop offset="100%" stop-color="black"/></radialGradient><mask id="eyes" maskUnits="userSpaceOnUse" x="0" y="0" width="1254" height="1254"><ellipse cx="607" cy="638" rx="105" ry="72" transform="rotate(38 607 638)" fill="url(#feather)"/><ellipse cx="769" cy="671" rx="78" ry="55" transform="rotate(-30 769 671)" fill="url(#feather)"/></mask></defs>
+<image width="1254" height="1254" href="data:image/png;base64,${openFrame}"/>
+<image class="eyelids" mask="url(#eyes)" width="1254" height="1254" href="data:image/png;base64,${closedFrame}"/>
+</svg>`)

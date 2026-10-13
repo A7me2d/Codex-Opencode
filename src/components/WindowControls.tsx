@@ -26,7 +26,7 @@ export function WindowControls({ dark = false }: { dark?: boolean }) {
 export function StandaloneTitleBar({ dark = false }: { dark?: boolean }) {
   if (!window.codingRoomWindow?.minimize) return null
   return <header dir="ltr" onDoubleClick={() => void window.codingRoomWindow?.toggleMaximize?.()} style={{ WebkitAppRegion: 'drag' } as CSSProperties} className={`fixed inset-x-0 top-0 z-[110] flex h-12 select-none items-center justify-between px-3 ${dark ? 'bg-[#06080f] text-[#a9b9d8]' : 'border-b border-line bg-card text-ink-soft'}`}>
-    <div className="flex items-center gap-2"><img src="/app-icon.png" className="h-6 w-6 object-contain" alt="" /><img src="/brand/openzero-wordmark-transparent.png" className="h-7 w-28 object-contain" alt="Open Zero" /></div>
+    <div className="flex items-center gap-2"><img src="/brand/openzero-logo-animated.svg" className="h-6 w-6 object-contain" alt="" /><img src="/brand/openzero-wordmark-transparent.png" className="h-7 w-28 object-contain" alt="Open Zero" /></div>
     <WindowControls dark={dark} />
   </header>
 }
