@@ -115,6 +115,8 @@ OpenCode switches disconnect or reconnect the server in the current project at r
 
 The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds and publishes a Windows installer only when code is pushed to `main`, including after merging a pull request. Pushing to development or feature branches does not create desktop releases. Installed copies check GitHub Releases after startup and every six hours, download updates automatically, and install them on exit (or restart immediately from the update notice). Share the **Open Zero Setup** installer from the latest GitHub Release; the portable executable does not support automatic updates.
 
+Desktop release versions use decimal rollover of the workflow run number: run 9 is `1.0.9`, run 10 is `1.1.0`, run 99 is `1.9.9`, and run 100 is `2.0.0`. The same calculated version is used for the package, release tag and updater assets. Rerunning a workflow retains its version; failed runs can leave gaps in the numbering. Existing `1.0.59` installations can upgrade to the new numbering (for example, run 60 produces `1.6.0`).
+
 ## Commands
 
 ### Reviewing Codex changes

@@ -33,11 +33,21 @@ jobs:
           }
       - name: Assign a unique release version
         shell: pwsh
-        run: npm version "1.0.${{ github.run_number }}" --no-git-tag-version
+        run: |
+          $version = node scripts/release-version.mjs "${{ github.run_number }}"
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not calculate the release version.'
+          }
+          npm version $version --no-git-tag-version
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not apply the release version.'
+          }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+          "RELEASE_TAG=v$version" >> $env:GITHUB_ENV
       - name: Create or verify the release tag
         shell: pwsh
         run: |
-          $tag = "v1.0.${{ github.run_number }}"
+          $tag = $env:RELEASE_TAG
           $remoteTag = git ls-remote --tags origin "refs/tags/$tag"
           if ($LASTEXITCODE -ne 0) {
             throw "Could not check whether release tag $tag exists."
@@ -66,7 +76,6 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v1.0.${{ github.run_number }}
         run: |
           $headers = @{
             Authorization = "Bearer $env:GH_TOKEN"
@@ -109,7 +118,6 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v1.0.${{ github.run_number }}
         run: |
           $headers = @{
             Authorization = "Bearer $env:GH_TOKEN"
