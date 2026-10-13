@@ -1,7 +1,7 @@
 import { openSupport } from '../../components/SupportChat'
 import { direction, tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
-import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
+import { FolderOpen, FolderTree, GitBranch, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
 import { AccountAvatar } from '../../components/AccountAvatar'
 import { accountIdentity } from '../../lib/accountIdentity'
 import { StateDot } from '../../components/ui/StateDot'
@@ -10,6 +10,7 @@ import { clip, relativeTime } from '../../lib/format'
 import type { CodexThread } from '../../lib/types'
 import { ProjectExplorer } from './ProjectExplorer'
 import { ConversationActions } from '../../components/ConversationActions'
+import { SourceControlPanel } from './SourceControlPanel'
 
 export interface SessionListProps {
   collapsed: boolean
@@ -34,13 +35,23 @@ export interface SessionListProps {
   onOpenThreadFolder: (threadId: string) => void
   choosingWorkRoot: boolean
   codexIdentity?: string
+  commitModel?: string
 }
 
 /** Left column: the Codex conversations Open Zero owns, plus the project scope. */
-export function SessionList({ collapsed, onToggle, threads, archivedThreads, showArchived, archivedLoading, archivedError, onShowArchived, onRename, onArchive, onRestore, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot, codexIdentity }: SessionListProps) {
-  const [view, setView] = useState<'files' | 'chats'>('files')
+export function SessionList({ collapsed, onToggle, threads, archivedThreads, showArchived, archivedLoading, archivedError, onShowArchived, onRename, onArchive, onRestore, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot, codexIdentity, commitModel }: SessionListProps) {
+  const [view, setView] = useState<'files' | 'chats' | 'source'>('files')
   const visibleThreads = showArchived ? archivedThreads : threads
   useEffect(() => { setView('files') }, [workRoot])
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'g') {
+        event.preventDefault(); setView('source'); if (collapsed) onToggle()
+      }
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [collapsed, onToggle])
   const { name: accountName } = accountIdentity(codexIdentity)
   const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} title={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
     <PanelLeft className="h-4 w-4" aria-hidden="true" />
@@ -79,17 +90,20 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
       </div>
 
       <div className="shrink-0 border-b border-line px-3 py-2">
-        <div role="tablist" aria-label={tr('محتوى المشروع')} className="grid grid-cols-2 gap-1 rounded-full border border-line bg-paper p-1">
+        <div role="tablist" aria-label={tr('محتوى المشروع')} className="flex gap-1 rounded-full border border-line bg-paper p-1">
           {(['files', 'chats'] as const).map(value => <button key={value} type="button" role="tab" id={`project-tab-${value}`} aria-controls={`project-panel-${value}`} aria-selected={view === value} tabIndex={view === value ? 0 : -1}
             aria-label={tr(value === 'files' ? 'الملفات' : 'محادثات المشروع')} onClick={() => setView(value)} onKeyDown={event => {
               if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
               event.preventDefault()
-              const next = value === 'files' ? 'chats' : 'files'
+              const next = event.key === 'ArrowRight' ? (value === 'files' ? 'chats' : 'source') : (value === 'files' ? 'source' : 'files')
               setView(next); document.getElementById(`project-tab-${next}`)?.focus()
-            }} className={cx('inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}>
+            }} className={cx('inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}>
             {tr(value === 'files' ? 'الملفات' : 'المحادثات')}
             {value === 'chats' ? <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-relay-tint px-1 text-[9px] leading-4 tabular-nums text-relay-ink">{threads.length}</span> : null}
           </button>)}
+          <button type="button" role="tab" id="project-tab-source" aria-controls="project-panel-source" aria-selected={view === 'source'} tabIndex={view === 'source' ? 0 : -1} aria-label="Source Control" title="Source Control (Ctrl+Shift+G)" onClick={() => setView('source')}
+            onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const next = event.key === 'ArrowRight' ? 'files' : 'chats'; setView(next); document.getElementById(`project-tab-${next}`)?.focus() } }}
+            className={cx('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', view === 'source' ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink')}><GitBranch className="h-4 w-4" aria-hidden="true" /></button>
         </div>
       </div>
 
@@ -137,6 +151,9 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
           </ul>
         )}
       </nav> : null}
+      <div id="project-panel-source" role="tabpanel" aria-labelledby="project-tab-source" className={view === 'source' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+        {workRoot ? <SourceControlPanel key={workRoot} root={workRoot} visible={view === 'source'} commitModel={commitModel} /> : <p className="p-4 text-xs text-ink-soft">Open a project folder to use Source Control.</p>}
+      </div>
 
       <div className="flex shrink-0 items-center gap-2.5 border-t border-line px-4 py-3">
         <button type="button" aria-label="Support chat" onClick={() => openSupport(accountName)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">

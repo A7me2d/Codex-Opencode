@@ -8,6 +8,7 @@ import { cx } from '../lib/cx'
 import type { CodexModelInfo, ModelInfo, WorkflowSetup } from '../lib/types'
 import { ThemePanel } from './ThemePanel'
 import { StateDot } from './ui/StateDot'
+import { SettingsSelect } from './ui/SettingsSelect'
 
 type UpdateCheckResult = { status: string; version?: string; message?: string }
 
@@ -216,11 +217,11 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
           <div className="grid grid-cols-2 gap-3">{saved.data?.agents.filter(agent => agent.available).map(agent => <label key={agent.id} className={cx('flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors', setup[role] === agent.id ? 'border-relay bg-relay-tint/50' : 'border-line bg-paper hover:border-relay/40')}>
             <input type="radio" name={role} value={agent.id} checked={setup[role] === agent.id} disabled={agent.id === 'opencode' && setup[role === 'planner' ? 'executor' : 'planner'] === 'opencode'} onChange={() => choose(role, agent.id as WorkflowSetup['planner'])} className="accent-relay" /><span className="flex-1 text-sm font-semibold" dir="ltr">{agent.name}</span>{setup[role] === agent.id ? <Check className="h-4 w-4 text-relay" /> : null}
           </label>)}</div>
-          <label className="mt-3 block text-xs font-semibold text-ink-soft">{tr("الموديل")}<select value={setup[`${role}Model`]} onChange={event => setSetup(current => ({ ...current, [`${role}Model`]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-line bg-card px-3 py-2.5 text-sm text-ink">
-              <option value="">{tr("استخدم الموديل الافتراضي")}</option>
-              {modelOptions(setup[role]).map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
-            </select>
-          </label>
+          <div className="mt-3"><label htmlFor={`settings-model-${role}`} className="block text-xs font-semibold text-ink-soft">{tr('الموديل')}</label>
+            <SettingsSelect id={`settings-model-${role}`} label={`${tr('الموديل')} · ${role === 'planner' ? tr('المفكّر') : tr('المنفّذ')}`} value={setup[`${role}Model`]} disabled={saving || !saved.data}
+              options={[{ value: '', label: tr('استخدم الموديل الافتراضي') }, ...modelOptions(setup[role]).map(model => ({ value: model.id, label: model.name }))]}
+              onChange={value => setSetup(current => ({ ...current, [`${role}Model`]: value }))} />
+          </div>
         </fieldset>)}
         <p className="rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink-soft">{tr("المفكّر يخطط ويراجع، والمنفّذ يعدّل الملفات ويختبر النتيجة.")}</p>
         <div className="border-t border-line pt-4"><p className="text-xs text-ink-soft">{tr("أطراف إضافية مستقبلًا")}</p><div className="mt-2 flex gap-2">{saved.data?.agents.filter(agent => !agent.available).map(agent => <span key={agent.id} className="rounded-lg border border-dashed border-line px-3 py-1.5 text-xs text-ink-soft">{agent.name} {' '}{tr("· لاحقًا")}</span>)}</div></div>

@@ -72,6 +72,12 @@ export interface ProjectFiles { path: string; entries: ProjectFileEntry[]; trunc
 export interface ProjectSearchResults { entries: ProjectFileEntry[]; truncated: boolean }
 export interface ProjectContentMatch { name: string; path: string; line: number; column: number; text: string; matchStart: number; matchLength: number }
 export interface ProjectContentSearchResults { matches: ProjectContentMatch[]; truncated: boolean; skippedFiles: number }
+export interface GitChange { path: string; originalPath?: string; index: string; worktree: string; staged: boolean; changed: boolean; conflict: boolean }
+export type SourceControlStatus = { repository: false; root: string; error: string } | {
+  repository: true; root: string; branch: string; head: string; upstream: string; ahead: number; behind: number;
+  remotes: string[]; entries: GitChange[]; stagedVersion: string
+}
+export interface GitDiffPreview { path: string; staged: boolean; text: string; truncated: boolean; deleted: boolean }
 
 export interface CodexThread {
   archived?: boolean
