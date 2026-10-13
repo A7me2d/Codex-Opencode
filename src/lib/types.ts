@@ -54,6 +54,8 @@ export interface ProjectFiles { path: string; entries: ProjectFileEntry[]; trunc
 export interface ProjectSearchResults { entries: ProjectFileEntry[]; truncated: boolean }
 
 export interface CodexThread {
+  archived?: boolean
+  running?: boolean
   workflow?: WorkflowSetup
   workflowRole?: 'planner' | 'executor'
   executorThreadId?: string

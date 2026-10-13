@@ -115,6 +115,8 @@ The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds an
 
 ## Commands
 
+In **Project conversations**, use the pencil beside a conversation to rename it inline (Enter to save, Escape to cancel). The archive icon moves an idle conversation to **Archived**; restore it there to reopen the same history and links. Running work must finish before archiving. Both current and archived lists show the newest conversation activity first, with provider timestamps normalized to milliseconds. Renaming does not overwrite the local message-activity timestamp. These controls use Codex's metadata/archive APIs and do not send an agent message or consume a licensed request.
+
 | Command | Purpose |
 | --- | --- |
 | `npm run dev:all` | Frontend and API together, with automatic reload. |

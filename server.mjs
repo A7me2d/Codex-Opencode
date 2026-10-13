@@ -1,4 +1,5 @@
 import { readProjectFile, saveProjectFile } from './server/project-editor.mjs'
+import { conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -1184,16 +1185,17 @@ function isWorkRoot(directory) {
  * apart. Sessions Open Zero does not own yet are still openable: resuming one
  * registers it here, which is why `needsRegistration` is reported.
  */
-async function listAllCodexThreads() {
+async function listAllCodexThreads(archived = false) {
   const state = await readCodexState()
 
   const response = await codexBridge.call('thread/list', {
     limit: 200,
     sortKey: 'updated_at',
     sortDirection: 'desc',
+    archived,
   })
   const remote = Array.isArray(response?.data) ? response.data : []
-  adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
+  if (!archived) adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
 
   // Codex does not include a freshly started, empty app-server thread in
   // `thread/list` until it has a rollout item. Open Zero owns that thread
@@ -1204,7 +1206,7 @@ async function listAllCodexThreads() {
   const activeLocalOnly = Object.values(state.threads)
     .filter((saved) => {
       const id = safeCodexThreadId(saved?.id)
-      return id && !remoteIds.has(id) && codexBridge.activeThreads.has(id)
+      return !archived && id && !remoteIds.has(id) && codexBridge.activeThreads.has(id) && !saved.archived
     })
     .map((saved) => ({
       id: saved.id,
@@ -1229,12 +1231,15 @@ async function listAllCodexThreads() {
         // can lag behind or fall back to a console code-page.
         title: saved?.title ?? thread.name ?? thread.title ?? 'محادثة جديدة',
         directory,
-        updatedAt: thread.updatedAt ?? thread.updated_at ?? saved?.updatedAt,
+        updatedAt: Math.max(conversationTime(thread.updatedAt ?? thread.updated_at), conversationTime(saved?.lastMessageAt))
+          || conversationTime(saved?.updatedAt ?? thread.createdAt ?? thread.created_at),
         createdAt: saved?.createdAt ?? thread.createdAt ?? thread.created_at,
         /** The folder this instance works in. */
         inProject: isWorkRoot(directory),
         /** Still running here, so its state is live rather than read from disk. */
         active: codexBridge.activeThreads.has(thread.id),
+        running: codexBridge.getTurnState(thread.id).active || thread.status?.type === 'active',
+        archived,
         /** Open Zero has not recorded this session yet; opening it will. */
         needsRegistration: !saved,
         openCodeModel: saved?.openCodeModel,
@@ -1245,10 +1250,43 @@ async function listAllCodexThreads() {
     })
     .filter(Boolean)
     .sort((left, right) => {
-      // The project at hand first, then newest activity.
-      if (left.inProject !== right.inProject) return left.inProject ? -1 : 1
-      return Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0)
+      return conversationTime(right.updatedAt) - conversationTime(left.updatedAt)
     })
+}
+
+async function manageCodexThread(threadId, action, input = {}) {
+  const id = safeCodexThreadId(threadId)
+  if (!id) throw new HttpError(400, 'Invalid Codex thread id.')
+  const title = action === 'rename' ? conversationTitle(input.title) : null
+  // Metadata operations must not resume a conversation or replace its instructions.
+  const response = await codexBridge.call('thread/read', { threadId: id, includeTurns: false })
+  const thread = response?.thread
+  if (!thread || thread.id !== id) throw new HttpError(404, 'Codex conversation not found.')
+  if (action === 'archive') {
+    const state = await readCodexState()
+    const related = [id, state.threads[id]?.executorThreadId,
+      ...Object.values(state.threads).filter(entry => entry.executorThreadId === id).map(entry => entry.id)].filter(Boolean)
+    if (thread.status?.type === 'active' || related.some(key => codexBridge.getTurnState(key).active)) {
+      throw new HttpError(409, 'Wait until this conversation finishes before archiving it.')
+    }
+    const linked = related.map(key => state.links[key]?.opencodeSessionId).filter(Boolean)
+    if (linked.length) {
+      const active = await openCodeApi('GET', '/api/session/active')
+      if (linked.some(key => isOpenCodeSessionActive(active, key))) throw new HttpError(409, 'Wait until the linked OpenCode session finishes before archiving this conversation.')
+    }
+  }
+  await codexBridge.call(action === 'rename' ? 'thread/name/set' : action === 'archive' ? 'thread/archive' : 'thread/unarchive',
+    { threadId: id, ...(title ? { name: title } : {}) })
+  await updateCodexState(state => {
+    const saved = state.threads[id] ?? { id, directory: thread.cwd, createdAt: conversationTime(thread.createdAt), title: thread.name ?? thread.title }
+    state.threads[id] = { ...saved, ...(title ? { title } : { archived: action === 'archive' }) }
+  })
+  if (action === 'archive') {
+    codexBridge.activeThreads.delete(id)
+    codexBridge.threadInstructions.delete(id)
+  }
+  adoptedLookupCache = undefined
+  return { id, ...(title ? { title } : { archived: action === 'archive' }) }
 }
 
 async function createRelayCodexThread(input) {
@@ -1387,6 +1425,7 @@ async function sendRelayCodexMessage(threadId, input) {
           delete state.threads[threadId].pendingCodexSandbox
         }
         state.threads[threadId].updatedAt = Date.now()
+        state.threads[threadId].lastMessageAt = Date.now()
         if (settings.model) {
           state.threads[threadId].codexModel = settings.model
           state.threads[threadId].codexEffort = settings.effort
@@ -1963,8 +2002,7 @@ async function listProjectOpenCodeSessions() {
       }
     })
     .sort((left, right) => {
-      if (left.active !== right.active) return left.active ? -1 : 1
-      return Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0)
+      return conversationTime(right.updatedAt) - conversationTime(left.updatedAt)
     })
 }
 
@@ -2244,7 +2282,10 @@ async function relayCodexExecutorReplyToPlanner(executorThreadId) {
   }
 }
 
-codexBridge.onTurnCompleted = (threadId) => relayCodexExecutorReplyToPlanner(threadId)
+codexBridge.onTurnCompleted = async (threadId) => {
+  await updateCodexState(state => { if (state.threads[threadId]) state.threads[threadId].lastMessageAt = Date.now() })
+  return relayCodexExecutorReplyToPlanner(threadId)
+}
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
@@ -2471,7 +2512,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/codex/threads') {
-      sendJson(response, 200, { data: await listAllCodexThreads() })
+      sendJson(response, 200, { data: await listAllCodexThreads(url.searchParams.get('archived') === 'true') })
       return
     }
 
@@ -2479,6 +2520,12 @@ const server = createServer(async (request, response) => {
       const input = await readJson(request)
       const thread = await createRelayCodexThread(input)
       sendJson(response, 201, { data: thread })
+      return
+    }
+
+    const codexManageMatch = url.pathname.match(/^\/api\/codex\/threads\/([A-Za-z0-9_-]{6,200})\/(rename|archive|restore)$/)
+    if (codexManageMatch && request.method === 'POST') {
+      sendJson(response, 200, { data: await manageCodexThread(codexManageMatch[1], codexManageMatch[2], await readJson(request)) })
       return
     }
 

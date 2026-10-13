@@ -7,11 +7,20 @@ import { cx } from '../../lib/cx'
 import { clip, relativeTime } from '../../lib/format'
 import type { CodexThread } from '../../lib/types'
 import { ProjectExplorer } from './ProjectExplorer'
+import { ConversationActions } from '../../components/ConversationActions'
 
 export interface SessionListProps {
   collapsed: boolean
   onToggle: () => void
   threads: CodexThread[]
+  archivedThreads: CodexThread[]
+  showArchived: boolean
+  archivedLoading: boolean
+  archivedError: string | null
+  onShowArchived: (value: boolean) => void
+  onRename: (id: string, title: string) => Promise<unknown>
+  onArchive: (id: string) => Promise<unknown>
+  onRestore: (id: string) => Promise<unknown>
   selectedId: string | null
   onSelect: (id: string) => void
   onCreate: () => void
@@ -26,8 +35,9 @@ export interface SessionListProps {
 }
 
 /** Left column: the Codex conversations Open Zero owns, plus the project scope. */
-export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot, codexIdentity }: SessionListProps) {
+export function SessionList({ collapsed, onToggle, threads, archivedThreads, showArchived, archivedLoading, archivedError, onShowArchived, onRename, onArchive, onRestore, selectedId, onSelect, onCreate, creating, connected, workRoot, onChooseWorkRoot, onOpenThreadFolder, choosingWorkRoot, codexIdentity }: SessionListProps) {
   const [view, setView] = useState<'files' | 'chats'>('files')
+  const visibleThreads = showArchived ? archivedThreads : threads
   useEffect(() => { setView('files') }, [workRoot])
   const accountName = codexIdentity?.includes('@') ? codexIdentity.split('@')[0] : codexIdentity
   const nameParts = accountName?.split(/[\s._-]+/).filter(Boolean) ?? []
@@ -78,16 +88,22 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
       {view === 'files' && workRoot ? <ProjectExplorer key={workRoot.toLowerCase()} workRoot={workRoot} /> : null}
       {view === 'files' && !workRoot ? <div className="flex-1 px-3 py-6 text-center text-xs text-ink-soft">{tr("اختَر مجلد مشروع لعرض ملفاته هنا.")}</div> : null}
       {view === 'chats' ? <nav aria-label={tr("محادثات المشروع")} className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
-        {threads.length === 0 ? (
+        <div className="mb-2 flex gap-1">
+          <button type="button" aria-pressed={!showArchived} onClick={() => onShowArchived(false)} className={cx('flex-1 rounded-lg px-2 py-2 text-[10px] font-bold', !showArchived ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr('المحادثات الحالية')}</button>
+          <button type="button" aria-pressed={showArchived} onClick={() => onShowArchived(true)} className={cx('flex-1 rounded-lg px-2 py-2 text-[10px] font-bold', showArchived ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-paper')}>{tr('المؤرشفة')}</button>
+        </div>
+        {showArchived && archivedLoading ? <p role="status" className="flex justify-center p-3"><LoaderCircle className="h-4 w-4 animate-spin" /></p> : null}
+        {showArchived && archivedError ? <p role="alert" className="p-3 text-xs text-review-ink">{tr(archivedError)}</p> : null}
+        {visibleThreads.length === 0 && !(showArchived && (archivedLoading || archivedError)) ? (
           <div className="px-3 py-6 text-center text-xs leading-6 text-ink-soft">
-            {tr("لا توجد محادثات لهذا المشروع بعد.")}<br />{tr("ابدأ محادثة جديدة وستظهر هنا.")}</div>
+            {tr(showArchived ? 'لا توجد محادثات مؤرشفة لهذا المشروع.' : 'لا توجد محادثات لهذا المشروع بعد.')}<br />{!showArchived ? tr('ابدأ محادثة جديدة وستظهر هنا.') : null}</div>
         ) : (
           <ul className="space-y-1">
-            {threads.map((thread) => {
+            {visibleThreads.map((thread) => {
               const selected = thread.id === selectedId
               const title = thread.title ?? thread.name ?? tr("محادثة جديدة")
-              return <li key={thread.id} className="group/item relative">
-                <button type="button" onClick={() => onSelect(thread.id)} aria-current={selected ? 'true' : undefined} className={cx('w-full rounded-lg px-3 py-2.5 text-start transition-colors', selected ? 'bg-relay-tint text-relay-ink' : 'text-ink hover:bg-paper')}>
+              return <li key={thread.id} className={cx('grid grid-cols-[minmax(0,1fr)_auto] rounded-lg', selected && !showArchived && 'bg-relay-tint')}>
+                <button type="button" disabled={showArchived} onClick={() => onSelect(thread.id)} aria-current={selected && !showArchived ? 'true' : undefined} title={title} className={cx('min-w-0 rounded-lg px-3 py-2.5 text-start transition-colors', selected && !showArchived ? 'text-relay-ink' : 'text-ink hover:bg-paper')}>
                   <span className="flex items-start gap-2">
                     <MessageCircleMore className={cx('mt-0.5 h-3.5 w-3.5 shrink-0', selected ? 'text-relay' : 'text-ink-soft')} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
@@ -102,25 +118,11 @@ export function SessionList({ collapsed, onToggle, threads, selectedId, onSelect
                             : null}
                       </span>
                     </span>
-                    {/* Reach the folder this session belongs to, even when it is
-                        a different project than the one being watched. */}
-                    {thread.directory ? (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => { event.stopPropagation(); onOpenThreadFolder(thread.id) }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onOpenThreadFolder(thread.id) }
-                        }}
-                        title={tr("افتح {{0}}", [thread.directory])}
-                        aria-label={tr("افتح مجلد الجلسة {{0}}", [thread.directory])}
-                        className="mt-0.5 shrink-0 rounded p-1 text-ink-soft opacity-0 transition-opacity hover:text-relay focus:opacity-100 group-hover/item:opacity-100"
-                      >
-                        <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" />
-                      </span>
-                    ) : null}
                   </span>
                 </button>
+                <ConversationActions title={title} archived={showArchived} running={thread.running}
+                  onRename={name => onRename(thread.id, name)} onArchive={() => onArchive(thread.id)} onRestore={() => onRestore(thread.id)}
+                  onOpenFolder={thread.directory && !showArchived ? () => onOpenThreadFolder(thread.id) : undefined} />
               </li>
             })}
           </ul>

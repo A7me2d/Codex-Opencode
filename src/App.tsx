@@ -225,6 +225,14 @@ function WorkspaceApp() {
           collapsed={sessionsCollapsed}
           onToggle={() => setSessionsCollapsed((value) => !value)}
           threads={room.threads}
+            archivedThreads={room.archivedThreads}
+            showArchived={room.showArchived}
+            archivedLoading={room.archivedLoading}
+            archivedError={room.archivedError}
+            onShowArchived={room.onShowArchived}
+            onRename={room.onRenameThread}
+            onArchive={room.onArchiveThread}
+            onRestore={room.onRestoreThread}
           selectedId={room.selectedId}
           onSelect={room.onSelectThread}
           onCreate={room.onCreateThread}

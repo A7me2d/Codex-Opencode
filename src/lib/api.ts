@@ -92,6 +92,10 @@ export const api = {
 
   // Codex conversations
   threads: () => requestJson<{ data: CodexThread[] }>('/api/codex/threads').then(unwrap),
+  archivedThreads: () => requestJson<{ data: CodexThread[] }>('/api/codex/threads?archived=true').then(unwrap),
+  renameThread: (id: string, title: string) => post(`/api/codex/threads/${id}/rename`, { title }),
+  archiveThread: (id: string) => post(`/api/codex/threads/${id}/archive`),
+  restoreThread: (id: string) => post(`/api/codex/threads/${id}/restore`),
   createThread: (title: string) => post<{ data: CodexThread }>('/api/codex/threads', { title }).then(unwrap),
   messages: (threadId: string) => requestJson<{ data: CodexItem[] }>(`/api/codex/threads/${threadId}/messages`).then(unwrap),
   codexModels: () => requestJson<{ data: CodexModelInfo[] }>('/api/codex/models').then(unwrap),
