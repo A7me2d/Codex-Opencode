@@ -115,6 +115,18 @@ The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds an
 
 ## Commands
 
+### Reviewing Codex changes
+
+Codex's changed-files list appears below the latest chat messages. **Accept changes** records the exact displayed completed edit IDs in local session metadata and hides them immediately and after reopening the app. New edits, including later changes to the same files, appear for review separately. Acceptance does not commit, revert, or modify project files, and does not consume a licensed message. The button stays disabled while Codex is working.
+
+### Extensions and Nx Console
+
+The permanent **Extensions** tab opens a local VS Code workbench with its real Node extension host. Install VS Code on the computer first; on Windows Open Zero discovers `bin/code-tunnel.exe`, or you can set `VSCODE_CLI_EXE`. No editor runtime launches until you select **Start extension workspace**. The first launch requires accepting Microsoft's VS Code Server terms and downloads the server from Microsoft. The runtime listens on loopback with a generated connection token; Open Zero proxies HTTP and WebSocket connections under the same origin, preserving VS Code's frame policy. Runtime output and authentication URLs are not logged.
+
+Wait for the embedded editor to load, then click **Install Nx Console**. Installation uses the downloaded server's own Node and extension CLI, targets `nrwl.angular-console`, and verifies its installed manifest. Open your Nx workspace folder and use the Nx sidebar inside the embedded editor. Other extensions can be searched, installed, enabled, or removed in VS Code's **Extensions** view (`Ctrl+Shift+X`). Extension files and VS Code settings stay under `.relay-state/extension-workbench/` (or the desktop's existing state directory), separate from the user's normal VS Code profile. Chat and CodeMirror drafts remain mounted while switching tabs. Reload file tabs after editing the same files in the embedded workbench; existing version checks protect unsaved drafts against overwriting newer disk edits.
+
+The Stop button and application shutdown terminate the owned runtime. Switching tabs preserves it; switching project folders opens the new folder without discarding installed extensions. A folder without `nx.json` displays guidance instead of modifying it or installing Nx into the project. Build and isolated automated bridge checks do not prove Nx activation, generator behavior, or the embedded interface at runtime; those manual checks remain with the user.
+
 In **Project conversations**, use the pencil beside a conversation to rename it inline (Enter to save, Escape to cancel). The archive icon moves an idle conversation to **Archived**; restore it there to reopen the same history and links. Running work must finish before archiving. Both current and archived lists show the newest conversation activity first, with provider timestamps normalized to milliseconds. Renaming does not overwrite the local message-activity timestamp. These controls use Codex's metadata/archive APIs and do not send an agent message or consume a licensed request.
 
 | Command | Purpose |
@@ -129,7 +141,11 @@ When running the development servers separately with a custom API port, set `OPE
 
 ## Troubleshooting
 
+The Codex composer floats without an outer background. Model, reasoning and permissions are icon menus inside the input; hover or focus an icon to see its current value. The gauge shows only the remaining weekly Codex allowance from `account/rateLimits/read`, refreshed at most once per minute with a shared server cache. A dash means the account did not supply a seven-day quota. Sending resumes automatic streaming scroll; scrolling upward pauses following until you send again or jump to the latest message.
+
 ### Diagnose old Codex role instructions
+
+Transcript and settings GET requests do not resume a thread or claim writer ownership. A conversation open in Codex Desktop or another app-server can still be read through persisted item pagination. Sending remains a writer operation; if another application owns that session, the API reports an explicit conflict (409) without interrupting it or replacing its ID/history. Role instruction refresh is performed when preparing a write, rather than as a side effect of reading messages.
 
 `GET /api/codex/threads/<threadId>/instructions` reports the saved role's selected instruction source, its expected text, and the last actual `thread/start` or `thread/resume` request observed by this API process. Reading this endpoint does not start Codex, resume a thread, change permissions, or interrupt a turn. `rpc-accepted` means Codex acknowledged the request; `effectiveInstructions: "unverified"` deliberately does not claim that the model's context was replaced.
 

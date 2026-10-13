@@ -7,6 +7,7 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
   const ref = useRef<HTMLDivElement>(null)
   const [boundary, setBoundary] = useState<{ key: string; id: string | null }>({ key: resetKey, id: null })
   const [following, setFollowing] = useState(true)
+  const followingRef = useRef(true)
   const pending = useRef<{ height: number; top: number } | null>(null)
   const previousTop = useRef(0)
   const id = boundary.key === resetKey ? boundary.id : null
@@ -18,6 +19,7 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
     pending.current = null
     setBoundary({ key: resetKey, id: null })
     setFollowing(true)
+    followingRef.current = true
     const element = ref.current
     if (element) { element.style.overflowAnchor = 'none'; element.scrollTop = element.scrollHeight; previousTop.current = element.scrollTop }
   }, [resetKey])
@@ -33,10 +35,35 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
     previousTop.current = element.scrollTop
   }, [visibleMessages, following])
 
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    let frame = 0
+    const followGrowth = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (!followingRef.current || pending.current) return
+        element.scrollTop = element.scrollHeight
+        previousTop.current = element.scrollTop
+      })
+    }
+    const resize = new ResizeObserver(followGrowth)
+    const observeChildren = () => {
+      resize.disconnect()
+      resize.observe(element)
+      Array.from(element.children).forEach(child => resize.observe(child))
+    }
+    const mutations = new MutationObserver(() => { observeChildren(); followGrowth() })
+    observeChildren()
+    mutations.observe(element, { childList: true, subtree: true, characterData: true })
+    return () => { cancelAnimationFrame(frame); resize.disconnect(); mutations.disconnect() }
+  }, [resetKey])
+
   const loadOlder = useCallback(() => {
     const element = ref.current
     if (!element || start === 0 || pending.current) return
     pending.current = { height: element.scrollHeight, top: element.scrollTop }
+    followingRef.current = false
     setFollowing(false)
     setBoundary({ key: resetKey, id: messages[Math.max(0, start - batchSize)].id })
   }, [messages, resetKey, start])
@@ -48,20 +75,30 @@ export function useChatHistory<T extends { id: string }>(messages: T[], resetKey
     previousTop.current = element.scrollTop
     if (movingUp && element.scrollTop <= 72 && start > 0) { loadOlder(); return }
     if (movingUp && id === null && messages[start]) setBoundary({ key: resetKey, id: messages[start].id })
-    setFollowing(!movingUp && element.scrollHeight - element.scrollTop - element.clientHeight <= config.stickyScrollThresholdPx)
+    const next = !movingUp && (followingRef.current || element.scrollHeight - element.scrollTop - element.clientHeight <= config.stickyScrollThresholdPx)
+    followingRef.current = next
+    setFollowing(next)
   }, [id, loadOlder, messages, resetKey, start])
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    if (event.deltaY < 0 && (ref.current?.scrollTop ?? Infinity) <= 72) loadOlder()
+    if (event.deltaY < 0) {
+      followingRef.current = false
+      setFollowing(false)
+      if ((ref.current?.scrollTop ?? Infinity) <= 72) loadOlder()
+    }
   }, [loadOlder])
 
   const scrollToLatest = useCallback((smooth = false) => {
     pending.current = null
     setBoundary({ key: resetKey, id: null })
     setFollowing(true)
+    followingRef.current = true
     requestAnimationFrame(() => {
       const element = ref.current
-      if (element) element.scrollTo({ top: element.scrollHeight, behavior: smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto' })
+      if (element) {
+        element.scrollTo({ top: element.scrollHeight, behavior: smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto' })
+        previousTop.current = element.scrollTop
+      }
     })
   }, [resetKey])
 

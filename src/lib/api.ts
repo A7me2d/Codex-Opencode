@@ -1,4 +1,5 @@
 import { tr } from './i18n'
+import type { CodexWeeklyQuota, ExtensionWorkspaceStatus } from './types'
 /**
  * The one place that talks HTTP.
  *
@@ -61,6 +62,11 @@ function unwrap<T>(body: { data?: T }): T {
 export type ModelSelector = string
 
 export const api = {
+  codexWeeklyQuota: () => requestJson<{ data: CodexWeeklyQuota }>('/api/codex/weekly-quota').then(unwrap),
+  extensionsStatus: () => requestJson<{ data: ExtensionWorkspaceStatus }>('/api/extensions/status').then(unwrap),
+  startExtensions: (directory: string, acceptedTerms: boolean) => post<{ data: ExtensionWorkspaceStatus }>('/api/extensions/start', { directory, acceptedTerms }).then(unwrap),
+  stopExtensions: () => post('/api/extensions/stop'),
+  installNxConsole: () => post<{ data: { installed: boolean; id: string } }>('/api/extensions/install-nx').then(unwrap),
   licenseStatus: () => window.codingRoomLicense
     ? window.codingRoomLicense.status()
     : requestJson<NonNullable<Awaited<ReturnType<NonNullable<Window['codingRoomLicense']>['status']>>>>('/api/license/status'),
@@ -100,6 +106,7 @@ export const api = {
   messages: (threadId: string) => requestJson<{ data: CodexItem[] }>(`/api/codex/threads/${threadId}/messages`).then(unwrap),
   codexModels: () => requestJson<{ data: CodexModelInfo[] }>('/api/codex/models').then(unwrap),
   codexDiff: (threadId: string) => requestJson<{ data: CodexItem[] }>(`/api/codex/threads/${threadId}/messages`).then(unwrap).then(readCodexFileChanges),
+  acceptCodexChanges: (threadId: string, itemIds: string[]) => post<{ data: { accepted: string[] } }>(`/api/codex/threads/${threadId}/changes/accept`, { itemIds }).then(unwrap),
   codexSettings: (threadId: string) => requestJson<{ data: CodexSettings }>(`/api/codex/threads/${threadId}/settings`).then(unwrap),
   setCodexPermissions: (threadId: string, sandbox: string) => post<{ data: { sandbox: string } }>(`/api/codex/threads/${threadId}/settings`, { sandbox }).then(unwrap),
   sendMessage: (threadId: string, text: string, attachments: string[] = [], settings?: CodexSettings) =>

@@ -12,6 +12,7 @@ export function readCodexFileChanges(items: CodexItem[] | null): SessionFileDiff
       const previous = byFile.get(change.path)
       byFile.set(change.path, {
         file: change.path,
+        changeIds: [...new Set([...(previous?.changeIds ?? []), item.id])],
         patch: previous ? `${previous.patch}\n${change.diff}` : change.diff,
         additions: (previous?.additions ?? 0) + lines.filter((line) => line.kind === 'added').length,
         deletions: (previous?.deletions ?? 0) + lines.filter((line) => line.kind === 'removed').length,

@@ -8,6 +8,21 @@
 
 export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+export interface CodexWeeklyQuota { available: boolean; remainingPercent: number | null; resetsAt: number | null }
+
+export interface ExtensionWorkspaceStatus {
+  directory: string
+  available: boolean
+  running: boolean
+  starting: boolean
+  runtimeReady: boolean
+  installing: boolean
+  nxInstalled: boolean
+  nxWorkspace: boolean
+  error: string | null
+  path: string | null
+}
+
 export interface RequestState<T> {
   data: T | null
   error: string | null
@@ -158,6 +173,8 @@ export interface ChatMessage {
 export type Speaker = 'codex' | 'opencode'
 
 export interface SessionFileDiff {
+  /** The completed Codex edit events contributing to this file's patch. */
+  changeIds?: string[]
   file: string
   patch: string
   additions: number

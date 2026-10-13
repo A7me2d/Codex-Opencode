@@ -1,7 +1,9 @@
 import { openSupport } from '../../components/SupportChat'
 import { direction, tr } from '../../lib/i18n'
 import { useEffect, useState } from 'react'
-import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus, UserRound } from 'lucide-react'
+import { FolderOpen, FolderTree, LoaderCircle, MessageCircleMore, PanelLeft, Plus } from 'lucide-react'
+import { AccountAvatar } from '../../components/AccountAvatar'
+import { accountIdentity } from '../../lib/accountIdentity'
 import { StateDot } from '../../components/ui/StateDot'
 import { cx } from '../../lib/cx'
 import { clip, relativeTime } from '../../lib/format'
@@ -39,18 +41,14 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
   const [view, setView] = useState<'files' | 'chats'>('files')
   const visibleThreads = showArchived ? archivedThreads : threads
   useEffect(() => { setView('files') }, [workRoot])
-  const accountName = codexIdentity?.includes('@') ? codexIdentity.split('@')[0] : codexIdentity
-  const nameParts = accountName?.split(/[\s._-]+/).filter(Boolean) ?? []
-  const accountInitials = nameParts.length > 1
-    ? nameParts.slice(0, 2).map(part => part[0]).join('').toUpperCase()
-    : nameParts[0]?.slice(0, 2).toUpperCase()
+  const { name: accountName } = accountIdentity(codexIdentity)
   const toggle = <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} title={collapsed ? tr("إظهار جلسات Codex") : tr("إخفاء جلسات Codex")} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-relay-tint hover:text-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">
     <PanelLeft className="h-4 w-4" aria-hidden="true" />
   </button>
   if (collapsed) return <aside dir={direction()} className="flex flex-col items-center gap-2 border-b border-line bg-card py-2 lg:h-full lg:border-b-0 lg:border-r">
     {toggle}
     <button type="button" onClick={() => openSupport(accountName)} aria-label="Support chat" title={tr("Codex account")} className="mt-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
-        {accountInitials || <UserRound className="h-4 w-4" />}
+        <AccountAvatar identity={codexIdentity} />
     </button>
   </aside>
   return (
@@ -131,7 +129,7 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
 
       <div className="flex shrink-0 items-center gap-2.5 border-t border-line px-4 py-3">
         <button type="button" aria-label="Support chat" onClick={() => openSupport(accountName)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-relay-tint text-[10px] font-extrabold text-relay-ink ring-1 ring-inset ring-relay/15">
-          {accountInitials || <UserRound className="h-4 w-4" />}
+          <AccountAvatar identity={codexIdentity} />
         </button>
         <span dir="auto" className="min-w-0 truncate text-xs font-semibold text-ink" title={accountName || tr("Codex Desktop")}>
           {accountName || tr("Codex Desktop")}

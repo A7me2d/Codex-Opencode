@@ -126,6 +126,7 @@ function WorkspaceApp() {
   const codexToCodex = conversation.view.thread?.workflow?.planner === 'codex' && conversation.view.thread?.workflow?.executor === 'codex'
     && conversation.view.thread?.workflowRole !== 'executor'
   const codexPane = <CodexConversation
+          codexIdentity={room.codexIdentity}
           workRoot={room.workRoot}
           codexSelection={conversation.codexSelection}
           thread={conversation.view.thread}
@@ -171,6 +172,7 @@ function WorkspaceApp() {
 
   const executorConversation = room.executorConversation
   const executorPane = executorConversation.view.thread ? <CodexConversation
+    codexIdentity={room.codexIdentity}
     workRoot={room.workRoot}
     codexSelection={executorConversation.codexSelection}
     thread={executorConversation.view.thread}
