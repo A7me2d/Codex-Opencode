@@ -102,7 +102,7 @@ export function Composer({ implementer = false, codexSelection, draft, onChange,
       </div>
     ) : null}
 
-    <div className="flex items-end gap-3">
+    <div className="flex gap-3 items-center">
       <div className="codex-input-capsule relative min-w-0 flex-1 rounded-3xl border border-line bg-transparent px-3 pb-2 pt-3 shadow-lg focus-within:border-relay/60 focus-within:ring-2 focus-within:ring-relay/10">
         <textarea aria-label={tr("اكتب إلى Codex…")} ref={textareaRef} value={draft} onChange={(event) => onChange(event.target.value)} onKeyDown={keyDown} rows={2} placeholder={implementer ? tr("اكتب توجيهًا إلى Codex المنفّذ…") : tr("اكتب إلى Codex… أضف $opencode عندما تريد إرسال التنفيذ إلى OpenCode.")} className="block min-h-[3rem] w-full min-w-0 resize-none bg-transparent px-1 text-sm leading-6 text-ink outline-none placeholder:text-ink-soft/75" />
         <div className="mt-2 flex flex-wrap items-center gap-0.5">
