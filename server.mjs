@@ -279,14 +279,12 @@ function selectProjectFolder(initialDirectoryOverride = watchRoot) {
   if (process.platform !== 'win32') throw new HttpError(501, 'Choosing a project folder is currently available on Windows only.')
 
   const initialDirectory = powerShellSingleQuoted(resolveExistingDirectory(initialDirectoryOverride))
+  const pickerSource = powerShellSingleQuoted(path.join(projectDirectory, 'server', 'windows-folder-picker.cs'))
   const script = [
-    'Add-Type -AssemblyName System.Windows.Forms',
-    '$dialog = New-Object System.Windows.Forms.FolderBrowserDialog',
-    `$dialog.SelectedPath = '${initialDirectory}'`,
-    '$dialog.Description = "Choose the folder Codex and OpenCode should work in"',
-    '$dialog.ShowNewFolderButton = $true',
-    '$result = $dialog.ShowDialog()',
-    'if ($result -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Write($dialog.SelectedPath) }',
+    "$ErrorActionPreference = 'Stop'",
+    `Add-Type -Path '${pickerSource}'`,
+    `$selected = [OpenZero.NativeFolderPicker]::Choose('${initialDirectory}')`,
+    'if ($selected) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Write($selected) }',
   ].join('; ')
 
   return new Promise((resolve, reject) => {
@@ -305,7 +303,7 @@ function selectProjectFolder(initialDirectoryOverride = watchRoot) {
     child.once('error', reject)
     child.once('close', (code) => {
       if (code !== 0) {
-        reject(new Error(stderr.trim() || 'The Windows folder picker could not be opened.'))
+        reject(new Error('The Windows folder picker could not be opened.'))
         return
       }
       const selectedPath = stdout.trim()

@@ -292,8 +292,8 @@
   background-color: oklch(0.16 0.008 255 / 0.85);
 }
 
-[data-theme="liquid-glass"] .cm-editor {
-  background-color: oklch(0.19 0.008 255) !important;
+.vscode-code-editor .cm-panels .cm-textfield {
+  background-color: #3c3c3c !important;
 }
 
 [data-theme="liquid-glass"] .openzero-workspace > main > :is(aside, section, div:not([role="slider"])),

@@ -55,7 +55,7 @@ export function SessionList({ collapsed, onToggle, threads, archivedThreads, sho
     <aside dir={direction()} className="flex min-h-[14rem] flex-col border-b border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-b-0 lg:border-r">
       <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-4">
         <div className="flex items-center gap-2 text-sm font-bold text-ink">
-          {toggle} {tr("جلسات Codex")}</div>
+          {toggle}</div>
         <button type="button" onClick={onCreate} disabled={!connected || creating} className="inline-flex items-center gap-1.5 rounded-lg bg-relay px-2.5 py-1.5 text-xs font-bold text-on-accent transition-colors hover:bg-relay-ink disabled:cursor-not-allowed disabled:opacity-45">
           {creating ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
           {tr("محادثة")}</button>

@@ -117,9 +117,15 @@ The GitHub Actions workflow at `.github/workflows/publish-desktop.yml` builds an
 
 ### Reviewing Codex changes
 
+File tabs use a solid VS Code Dark+ inspired editor palette with syntax highlighting, line numbers, selections, search matches and completion menus. The editor palette stays independent of Liquid Glass and the surrounding chat theme.
+
+The editor toolbar's **Auto Save** switch is off by default and remembers your choice. When enabled, dirty file tabs save after an 800 ms typing pause, one request at a time. Edits typed during a save remain dirty and save next. Version checks prevent overwriting external edits; an automatic save failure pauses Auto Save and displays the error. The footer shows Draft, Saving or Saved.
+
 Codex's changed-files list appears below the latest chat messages. **Accept changes** records the exact displayed completed edit IDs in local session metadata and hides them immediately and after reopening the app. New edits, including later changes to the same files, appear for review separately. Acceptance does not commit, revert, or modify project files, and does not consume a licensed message. The button stays disabled while Codex is working.
 
 ### Extensions and Nx Console
+
+Choosing a project folder on Windows uses the modern Common Item Dialog in folder mode, with Explorer navigation, an address bar and search, instead of the legacy Browse for Folder tree. It starts at the current project; cancelling leaves the project unchanged.
 
 The project explorer offers **File name** and **In files** search modes. In files performs case-insensitive literal text search over saved UTF-8 files, groups matching snippets by file, and opens a selected match at its line/column in the file editor. Existing unsaved drafts are preserved. Generated directories and dependencies are excluded, as are binary, unreadable and files over 2 MiB. Searches are cancellable and bounded to 1,000 matches, 20,000 files and eight seconds; partial results are indicated in the UI.
 

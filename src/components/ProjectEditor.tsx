@@ -2,6 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNod
 import { Code2, RefreshCw, Save, Send, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useLocale } from '../lib/i18n'
+import { persistPreference, preferenceKeys } from '../lib/preferences'
+import { useEditorAutoSave } from '../hooks/useEditorAutoSave'
 
 export type FileTab = { path: string; content: string; saved: string; version: string }
 const CodeEditor = lazy(() => import('./CodeEditorView'))
@@ -14,6 +16,11 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
   const ar = useLocale() === 'ar'
   const [tabs, setTabs] = useState<FileTab[]>([]), [selected, setSelected] = useState('')
   const [error, setError] = useState(''), [loading, setLoading] = useState(false), [busy, setBusy] = useState('')
+  const [autoSave, setAutoSave] = useState(() => {
+    try { return window.localStorage.getItem(preferenceKeys.editorAutoSave) === 'true' } catch { return false }
+  })
+  const busyRef = useRef<{ generation: number; path: string } | null>(null)
+  useEffect(() => { persistPreference(preferenceKeys.editorAutoSave, String(autoSave)) }, [autoSave])
   const [position, setPosition] = useState({ line: 1, column: 1 }), [goTo, setGoTo] = useState('')
   const tabsRef = useRef(tabs), views = useRef(new Map<string, CodeEditorHandle>()), opening = useRef(new Set<string>()), generation = useRef(0)
   const previousRoot = useRef(root)
@@ -34,6 +41,7 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
     if (previousRoot.current) cachedTabs.current.set(previousRoot.current, tabsRef.current)
     previousRoot.current = root
     generation.current++
+    busyRef.current = null
     targets.current.clear()
     setTabs(root ? cachedTabs.current.get(root) || [] : [])
     setSelected(''); setError(''); setLoading(false); setBusy(''); opening.current.clear()
@@ -77,25 +85,41 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
     return () => window.removeEventListener('beforeunload', leave)
   }, [])
   const change = useCallback((path: string, content: string) => setTabs(previous => previous.map(tab => tab.path === path ? { ...tab, content } : tab)), [])
-  async function save(path: string) {
+  async function save(path: string, automatic = false) {
     const tab = tabsRef.current.find(item => item.path === path)
-    if (!tab || !root || busy) return
+    if (!tab || !root || busyRef.current || tab.content === tab.saved) return
     const current = generation.current
+    busyRef.current = { generation: current, path }
     setBusy(path); setError('')
     try {
       const result = await api.saveProjectFile({ root, path, content: tab.content, version: tab.version })
       if (current === generation.current) setTabs(previous => previous.map(item => item.path === path ? { ...item, saved: result.content, version: result.version } : item))
-    } catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : String(failure)) }
-    finally { if (current === generation.current) setBusy('') }
+      else {
+        const cached = cachedTabs.current.get(root)
+        if (cached) cachedTabs.current.set(root, cached.map(item => item.path === path ? { ...item, saved: result.content, version: result.version } : item))
+      }
+    } catch (failure) {
+      if (current === generation.current) {
+        if (automatic) setAutoSave(false)
+        const message = failure instanceof Error ? failure.message : String(failure)
+        setError(automatic ? `${ar ? 'توقف الحفظ التلقائي. ' : 'Auto Save paused. '}${message}` : message)
+      }
+    }
+    finally {
+      if (busyRef.current?.generation === current) busyRef.current = null
+      if (current === generation.current) setBusy('')
+    }
   }
+  useEditorAutoSave(tabs, root, autoSave, busy, path => save(path, true))
   async function reload() {
-    if (!file || !root || busy) return
+    if (!file || !root || busyRef.current) return
     if (file.content !== file.saved && !window.confirm(ar ? 'إلغاء تعديلات المسودة وإعادة قراءة الملف؟' : 'Discard draft edits and reload the file?')) return
     const path = file.path, current = generation.current
+    busyRef.current = { generation: current, path }
     setBusy(path); setError('')
     try { const result = await api.projectFile(root, path); if (current === generation.current) setTabs(previous => previous.map(tab => tab.path === path ? { ...result, saved: result.content } : tab)) }
     catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : String(failure)) }
-    finally { if (current === generation.current) setBusy('') }
+    finally { if (busyRef.current?.generation === current) busyRef.current = null; if (current === generation.current) setBusy('') }
   }
   function close(path: string) {
     const tab = tabs.find(item => item.path === path)
@@ -126,12 +150,16 @@ export function ProjectEditor({ root, children, onInsert }: { root?: string; chi
     </div>{error && <p role="alert" className="flex shrink-0 items-center justify-between gap-2 border-b border-line bg-review-tint px-4 py-2 text-xs text-review-ink">{error}<button onClick={() => setError('')} aria-label={ar ? 'إخفاء الخطأ' : 'Dismiss error'}><X className="h-3 w-3" /></button></p>}</>
     <div className={selected ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>{children}</div>
     {file && <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+      <button type="button" aria-pressed={autoSave} title={ar ? 'حفظ التعديلات تلقائيًا بعد التوقف عن الكتابة' : 'Save edits automatically after a typing pause'} onClick={() => setAutoSave(value => !value)} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 ${autoSave ? 'border-relay/40 bg-relay-tint text-relay-ink' : 'border-line text-ink-soft hover:bg-paper'}`}>
+        <span aria-hidden="true" className={`relative h-3.5 w-6 rounded-full transition-colors ${autoSave ? 'bg-relay' : 'bg-ink-soft/30'}`}><span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-card transition-all ${autoSave ? 'end-0.5' : 'start-0.5'}`} /></span>
+        {ar ? 'حفظ تلقائي' : 'Auto Save'}
+      </button>
       <button disabled={Boolean(busy) || file.content === file.saved} onClick={() => void save(file.path)} className="inline-flex items-center gap-1.5 rounded-md bg-relay px-3 py-2 text-xs font-bold text-on-accent disabled:opacity-40"><Save className="h-3.5 w-3.5" />{ar ? 'حفظ' : 'Save'}</button>
       <button disabled={Boolean(busy)} onClick={() => void reload()} className="rounded-md border border-line p-2 text-ink-soft" title={ar ? 'إعادة تحميل الملف' : 'Reload file'} aria-label={ar ? 'إعادة تحميل الملف' : 'Reload file'}><RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} /></button>
       <button onClick={insert} className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-xs font-bold text-relay-ink"><Send className="h-3.5 w-3.5" />{ar ? 'أضف الكود للشات' : 'Add code to chat'}</button>
       <form onSubmit={event => { event.preventDefault(); const view = views.current.get(selected); if (!view) return; view.gotoLine(Number(goTo) || 1) }} className="ms-auto flex items-center gap-1"><input aria-label={ar ? 'رقم السطر' : 'Line number'} type="number" min={1} value={goTo} onChange={event => setGoTo(event.target.value)} placeholder={ar ? 'سطر' : 'Line'} className="w-20 rounded-md border border-line bg-paper px-2 py-1.5 text-xs" /><button className="rounded-md border border-line px-2 py-1.5 text-xs">{ar ? 'انتقل' : 'Go'}</button></form>
     </div>}
     {tabs.map(tab => <div key={tab.path} className={selected === tab.path ? 'min-h-0 flex-1 overflow-hidden' : 'hidden'}><Suspense fallback={<div className="p-5 text-sm text-ink-soft">Loading editor...</div>}><CodeEditor file={tab} register={view => { if (view) { views.current.set(tab.path, view); reveal(tab.path, view) } else views.current.delete(tab.path) }} onChange={content => change(tab.path, content)} onSave={() => void save(tab.path)} onPosition={(line, column) => { if (selected === tab.path) setPosition({ line, column }) }} /></Suspense></div>)}
-    {file && <footer className="flex shrink-0 justify-between gap-3 border-t border-line px-3 py-2 text-[10px] text-ink-soft"><span dir="ltr" className="truncate" title={file.path}>{file.path}</span><span className="shrink-0">Ln {position.line}, Col {position.column} · UTF-8{file.content !== file.saved ? (ar ? ' · مسودة' : ' · Draft') : ''}</span></footer>}
+    {file && <footer className="flex shrink-0 justify-between gap-3 border-t border-line px-3 py-2 text-[10px] text-ink-soft"><span dir="ltr" className="truncate" title={file.path}>{file.path}</span><span className="shrink-0">Ln {position.line}, Col {position.column} · UTF-8 · <span role="status">{busy === file.path ? (ar ? 'جارٍ الحفظ…' : 'Saving…') : file.content !== file.saved ? (ar ? 'مسودة' : 'Draft') : (ar ? 'محفوظ' : 'Saved')}</span></span></footer>}
   </div>
 }
