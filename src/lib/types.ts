@@ -19,11 +19,23 @@ export interface ExtensionWorkspaceStatus {
   running: boolean
   starting: boolean
   runtimeReady: boolean
+  runtimeCached: boolean
   installing: boolean
   nxInstalled: boolean
+  nxLocalAvailable: boolean
   nxWorkspace: boolean
   error: string | null
   path: string | null
+}
+
+export interface ExtensionItem {
+  iconUrl: string | null
+  id: string
+  name: string
+  publisher: string
+  description: string
+  version: string
+  installed: boolean
 }
 
 export interface RequestState<T> {

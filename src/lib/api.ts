@@ -1,5 +1,5 @@
 import { tr } from './i18n'
-import type { CodexWeeklyQuota, ExtensionWorkspaceStatus } from './types'
+import type { CodexWeeklyQuota, ExtensionWorkspaceStatus, ExtensionItem } from './types'
 /**
  * The one place that talks HTTP.
  *
@@ -64,7 +64,10 @@ export type ModelSelector = string
 export const api = {
   codexWeeklyQuota: () => requestJson<{ data: CodexWeeklyQuota }>('/api/codex/weekly-quota').then(unwrap),
   extensionsStatus: () => requestJson<{ data: ExtensionWorkspaceStatus }>('/api/extensions/status').then(unwrap),
-  startExtensions: (directory: string, acceptedTerms: boolean) => post<{ data: ExtensionWorkspaceStatus }>('/api/extensions/start', { directory, acceptedTerms }).then(unwrap),
+  installedExtensions: () => requestJson<{ data: ExtensionItem[] }>('/api/extensions/installed').then(unwrap),
+  searchExtensions: (query: string, page = 1) => requestJson<{ data: { items: ExtensionItem[]; page: number; hasMore: boolean } }>(`/api/extensions/search?${new URLSearchParams({ q: query, page: String(page) })}`).then(unwrap),
+  manageExtension: (id: string, action: 'install' | 'uninstall') => post<{ data: { id: string; installed: boolean } }>('/api/extensions/manage', { id, action }).then(unwrap),
+  startExtensions: (directory: string, acceptedTerms: boolean, updateRuntime = false) => post<{ data: ExtensionWorkspaceStatus }>('/api/extensions/start', { directory, acceptedTerms, updateRuntime }).then(unwrap),
   stopExtensions: () => post('/api/extensions/stop'),
   installNxConsole: () => post<{ data: { installed: boolean; id: string } }>('/api/extensions/install-nx').then(unwrap),
   licenseStatus: () => window.codingRoomLicense

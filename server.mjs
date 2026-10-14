@@ -5,6 +5,7 @@ import { SourceControl } from './server/source-control.mjs'
 import { generateCommitMessage } from './server/commit-message.mjs'
 import { projectPreviewFiles } from './server/project-preview.mjs'
 import { ExtensionWorkbench, workbenchPath, trustedExtensionRequest } from './server/extension-workbench.mjs'
+import { searchExtensions, installedExtensionIcon } from './server/extension-catalog.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
@@ -2345,11 +2346,38 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, { data: extensionWorkbench.status(watchRoot) })
       return
     }
+    if (url.pathname === '/api/extensions/installed' && request.method === 'GET') {
+      sendJson(response, 200, { data: extensionWorkbench.listExtensions() })
+      return
+    }
+    if (url.pathname === '/api/extensions/icon' && request.method === 'GET') {
+      try {
+        const icon = installedExtensionIcon(path.join(extensionWorkbench.storage, 'data', 'extensions'), url.searchParams.get('id'))
+        if (!icon) { response.writeHead(404); response.end(); return }
+        const contents = await readFile(icon.file)
+        response.writeHead(200, { 'Content-Type': icon.contentType, 'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" })
+        response.end(contents)
+      } catch { response.writeHead(404); response.end() }
+      return
+    }
+    if (url.pathname === '/api/extensions/search' && request.method === 'GET') {
+      try { sendJson(response, 200, { data: await searchExtensions(url.searchParams.get('q'), url.searchParams.get('page')) }) }
+      catch { sendJson(response, 502, { error: 'The extension marketplace is unavailable. Try again later.' }) }
+      return
+    }
+    if (url.pathname === '/api/extensions/manage' && request.method === 'POST') {
+      try {
+        const input = await readJson(request)
+        sendJson(response, 200, { data: await extensionWorkbench.manageExtension(input.id, input.action) })
+      } catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
+      return
+    }
     if (url.pathname === '/api/extensions/start' && request.method === 'POST') {
       try {
         const input = await readJson(request)
         if (path.resolve(input.directory ?? '') !== path.resolve(watchRoot)) throw new HttpError(409, 'The selected project changed. Reopen the Extensions tab.')
-        sendJson(response, 200, { data: await extensionWorkbench.start(watchRoot, input.acceptedTerms) })
+        sendJson(response, 200, { data: await extensionWorkbench.start(watchRoot, input.acceptedTerms, { updateRuntime: input.updateRuntime === true }) })
       } catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
       return
     }
