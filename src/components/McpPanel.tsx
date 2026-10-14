@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { ChevronDown, Plug, RefreshCw } from 'lucide-react'
 import { api } from '../lib/api'
 import { usePolling } from '../hooks/usePolling'
+import { useProviderActivity } from '../hooks/useProviderActivity'
 import { Spinner } from './ui/Spinner'
 import { cx } from '../lib/cx'
 
@@ -12,11 +13,12 @@ function statusLabel(status: string) {
 }
 
 export function McpPanel({ agent, busy = false }: { agent: 'codex' | 'opencode'; busy?: boolean }) {
+  const activity = useProviderActivity()
   const [open, setOpen] = useState(false)
   const [changing, setChanging] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
-  const servers = usePolling(open ? () => api.mcpServers(agent) : null, 0, { resetKey: agent })
+  const servers = usePolling(open && activity.providers[agent] ? () => api.mcpServers(agent) : null, 0, { resetKey: agent })
   const label = agent === 'codex' ? 'Codex' : 'OpenCode'
   async function toggle(name: string, enabled: boolean) {
     if (changing || busy) return

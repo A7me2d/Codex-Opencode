@@ -73,6 +73,7 @@ assert.equal(starts.length, 1)
 const persisted = { workflow: { planner: 'opencode', executor: 'codex' }, threads: { existing: { workflow: defaultWorkflow } } }
 let startParams
 const creation = vm.createContext({
+  providerActivity: { require: async () => {} },
   readCodexState: async () => persisted, validateWorkflow, watchRoot: 'D:/project', codexExecutorInstructions,
   relayCodexInstructions: 'Codex plans', relayDynamicTools: ['delegate'], shortThreadTitle: value => value,
   codexSandboxMode: value => value,

@@ -47,10 +47,11 @@ function selectable(options = []) {
 }
 
 export class ClineBridge {
-  constructor(stateDirectory, { launch = spawn, resolveExecutable = findClineExecutable, credentials = clineCredentials } = {}) {
+  constructor(stateDirectory, { launch = spawn, resolveExecutable = findClineExecutable, credentials = clineCredentials, requireEnabled = async () => {} } = {}) {
     this.storage = path.join(stateDirectory, 'cline')
     this.file = path.join(this.storage, 'sessions.json')
     this.launch = launch; this.resolveExecutable = resolveExecutable; this.credentials = credentials
+    this.requireEnabled = requireEnabled
     this.sessions = new Map(); this.connections = new Map(); this.saves = Promise.resolve()
     this.ready = this.restore()
   }
@@ -74,6 +75,7 @@ export class ClineBridge {
     return { available: Boolean(this.resolveExecutable()), providers: providers.map(provider => ({ ...provider, configured: Boolean(this.credentials(provider.id).key) })) }
   }
   async models(provider = 'cline') {
+    await this.requireEnabled()
     if (!providers.some(item => item.id === provider)) throw new Error('Choose a supported Cline provider.')
     let directory = path.dirname(this.resolveExecutable() || '')
     for (let depth = 0; depth < 8; depth++) {
@@ -101,6 +103,7 @@ export class ClineBridge {
   }
   async get(id) { await this.ready; const session = this.sessions.get(id); if (!session) throw Object.assign(new Error('Cline conversation was not found.'), { status: 404 }); return session }
   async connect(session) {
+    await this.requireEnabled()
     if (this.connections.has(session.id)) return this.connections.get(session.id).ready
     const executable = this.resolveExecutable()
     if (!executable) throw Object.assign(new Error('Install Cline CLI with npm i -g cline first.'), { status: 503 })

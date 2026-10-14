@@ -36,6 +36,7 @@ const bridge = {
 }
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status } }
 const context = vm.createContext({
+  providerActivity: { enabled: () => true, codexLists: new Map() },
   conversationTime, conversationTitle, codexBridge: bridge, HttpError, Date,
   readCodexState: async () => state, updateCodexState: async change => change(state),
   safeCodexThreadId: id => id, existsSync: () => true, isWorkRoot: root => root === 'project', defaultWorkflow: {},

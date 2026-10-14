@@ -10,6 +10,7 @@ import { AgentExtensions } from './server/agent-extensions.mjs'
 import { TailwindCompletions } from './server/tailwind-completions.mjs'
 import { ClineBridge } from './server/cline-bridge.mjs'
 import { ClineWorkflow, workflowRolePrompt } from './server/cline-workflow.mjs'
+import { ProviderActivity, requestProvider } from './server/provider-activity.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
@@ -32,7 +33,8 @@ const stateDirectory = process.env.RELAY_STATE_DIR
 const eventsPath = path.join(stateDirectory, 'events.json')
 const agentExtensions = new AgentExtensions(stateDirectory)
 const tailwindCompletions = new TailwindCompletions()
-const clineBridge = new ClineBridge(stateDirectory)
+const providerActivity = new ProviderActivity(stateDirectory)
+const clineBridge = new ClineBridge(stateDirectory, { requireEnabled: () => providerActivity.require('cline') })
 const sourceControl = new SourceControl()
 const commitMessageJobs = new Set()
 const codexStatePath = path.join(stateDirectory, 'codex.json')
@@ -492,6 +494,7 @@ function invokeOpenCode(method, apiPath, body) {
 }
 
 async function openCodeApi(method, apiPath, body) {
+  await providerActivity.require('opencode')
   const output = await invokeOpenCode(method, apiPath, body)
   const trimmed = output.trim()
 
@@ -609,7 +612,8 @@ const relayDynamicTools = [
 ]
 
 class CodexAppServerBridge {
-  constructor() {
+  constructor({ requireEnabled = async () => {} } = {}) {
+    this.requireEnabled = requireEnabled
     this.child = null
     this.started = null
     this.nextId = 1
@@ -636,11 +640,13 @@ class CodexAppServerBridge {
   }
 
   async ensureStarted() {
+    await this.requireEnabled()
     if (!this.started) {
-      this.started = this.start().catch((error) => {
-        this.started = null
+      const starting = this.start().catch((error) => {
+        if (this.started === starting) this.started = null
         throw error
       })
+      this.started = starting
     }
     return this.started
   }
@@ -1027,7 +1033,7 @@ class CodexAppServerBridge {
   }
 }
 
-const codexBridge = new CodexAppServerBridge()
+const codexBridge = new CodexAppServerBridge({ requireEnabled: () => providerActivity.require('codex') })
 
 async function readCodexWeeklyQuota() {
   await codexBridge.ensureStarted()
@@ -1240,13 +1246,14 @@ function isWorkRoot(directory) {
 async function listAllCodexThreads(archived = false) {
   const state = await readCodexState()
 
-  const response = await codexBridge.call('thread/list', {
+  const response = providerActivity.enabled('codex') ? await codexBridge.call('thread/list', {
     limit: 200,
     sortKey: 'updated_at',
     sortDirection: 'desc',
     archived,
-  }).catch(error => { if (Object.values(state.threads).some(thread => thread.localWorkflow)) return { data: [] }; throw error })
+  }).catch(error => { if (Object.values(state.threads).some(thread => thread.localWorkflow)) return { data: [] }; throw error }) : { data: providerActivity.codexLists.get(archived) || [] }
   const remote = Array.isArray(response?.data) ? response.data : []
+  if (providerActivity.enabled('codex')) providerActivity.codexLists.set(archived, remote)
   if (!archived) adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
 
   // Codex does not include a freshly started, empty app-server thread in
@@ -1258,7 +1265,7 @@ async function listAllCodexThreads(archived = false) {
   const activeLocalOnly = Object.values(state.threads)
     .filter((saved) => {
       const id = safeCodexThreadId(saved?.id)
-      return id && !remoteIds.has(id) && (saved.localWorkflow ? Boolean(saved.archived) === archived : !archived && codexBridge.activeThreads.has(id) && !saved.archived)
+      return id && !remoteIds.has(id) && (saved.localWorkflow || !providerActivity.enabled('codex') ? Boolean(saved.archived) === archived : !archived && codexBridge.activeThreads.has(id) && !saved.archived)
     })
     .map((saved) => ({
       id: saved.id,
@@ -1357,6 +1364,7 @@ async function manageCodexThread(threadId, action, input = {}) {
 async function createRelayCodexThread(input) {
   const title = shortThreadTitle(input?.title)
   const workflow = validateWorkflow((await readCodexState()).workflow)
+  await providerActivity.require(workflow.planner)
   if ([workflow.planner, workflow.executor].includes('cline') && workflow.planner !== 'codex') {
     const id = `workflow-${randomUUID()}`
     const saved = { id, title, workflow, localWorkflow: true, workflowRole: 'planner', directory: watchRoot, createdAt: Date.now(), updatedAt: Date.now() }
@@ -2257,10 +2265,12 @@ async function setMcpEnabled(agent, name, enabled) {
 
 const clineWorkflow = new ClineWorkflow({
   cline: clineBridge,
+  requireEnabled: id => providerActivity.require(id),
   getThread: async id => (await requireRelayCodexThread(id)).saved,
   patchThread: async (id, patch) => updateCodexState(state => { state.threads[id] = { ...state.threads[id], ...patch } }),
   getExternalRole: async (id, role, saved) => {
     const agent = saved.workflow[role]
+    if (!providerActivity.enabled(agent)) return { agent, active: false, messages: [] }
     if (agent === 'codex') {
       const source = role === 'planner' ? id : saved.executorThreadId
       if (!source) return { agent, active: false, messages: [] }
@@ -2407,6 +2417,29 @@ codexBridge.onTurnCompleted = async (threadId) => {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+  try { await providerActivity.ready } catch { sendJson(response, 503, { error: 'Could not read provider activity settings.' }); return }
+  if (url.pathname === '/api/provider-activity') {
+    try {
+      if (!trustedExtensionRequest(request)) throw new HttpError(403, 'Change provider activity from Open Zero.')
+      if (request.method === 'GET') { sendJson(response, 200, { data: providerActivity.snapshot() }); return }
+      if (request.method !== 'POST') throw new HttpError(405, 'Only GET and POST are supported.')
+      const input = await readJson(request)
+      const data = await providerActivity.set(input.id, input.enabled, {
+        beforeDisable: async () => {
+          if (input.id === 'codex' && (codexBridge.runningTurns.size || codexBridge.resumingThreads.size || commitMessageJobs.size)) throw new HttpError(409, 'Stop or finish the active Codex task before disabling it.')
+          if (input.id === 'cline' && [...clineBridge.sessions.values()].some(session => session.active || session.preparing || session.loading)) throw new HttpError(409, 'Stop or finish the active Cline task before disabling it.')
+        },
+        afterDisable: async () => { if (input.id === 'codex') codexBridge.stop(); if (input.id === 'cline') await clineBridge.stop() },
+      })
+      sendJson(response, 200, { data })
+    } catch (error) { sendJson(response, error.status ?? 500, { error: publicError(error) }) }
+    return
+  }
+  const requestedProvider = requestProvider(url.pathname)
+  if (requestedProvider) {
+    try { await providerActivity.require(requestedProvider) }
+    catch (error) { sendJson(response, error.status ?? 503, { error: publicError(error) }); return }
+  }
   if (url.pathname.startsWith('/api/cline/')) {
     try {
       if (!trustedExtensionRequest(request)) throw new HttpError(403, 'Open Cline from Open Zero.')
@@ -2536,6 +2569,7 @@ const server = createServer(async (request, response) => {
       if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported.')
       const input = await readJson(request)
       const saved = (await requireRelayCodexThread(workflowMatch[1])).saved
+      await providerActivity.require(saved.workflow?.[workflowMatch[2] === 'execute' ? 'executor' : 'planner'] || (workflowMatch[2] === 'execute' ? 'opencode' : 'codex'))
       if ([saved.workflow?.planner, saved.workflow?.executor].includes('cline')) {
         if (!trustedExtensionRequest(request) || !isWorkRoot(saved.directory)) throw new HttpError(403, 'Open this workflow from its project in Open Zero.')
         sendJson(response, 202, { data: await clineWorkflow.action(saved.id, workflowMatch[2], input, () => consumeLicensedMessage(input, response)) })

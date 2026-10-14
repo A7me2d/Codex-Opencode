@@ -4,6 +4,7 @@ import { memo, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { readDiffLines } from '../../lib/diff'
 import { usePolling } from '../../hooks/usePolling'
+import { useProviderActivity } from '../../hooks/useProviderActivity'
 import { cx } from '../../lib/cx'
 import type { SessionFileDiff } from '../../lib/types'
 
@@ -14,7 +15,8 @@ function statusLabel(status: string) {
 
 /** Scoped to one session; accepting Codex edits records a review decision. */
 export function ChangedFiles({ sessionId, active, source = 'opencode', files: suppliedFiles }: { sessionId: string; active: boolean; source?: 'codex' | 'opencode'; files?: SessionFileDiff[] }) {
-  const diff = usePolling(suppliedFiles ? null : () => source === 'codex' ? api.codexDiff(sessionId) : api.sessionDiff(sessionId), active ? 5000 : 60_000)
+  const activity = useProviderActivity()
+  const diff = usePolling(suppliedFiles || !activity.providers[source] ? null : () => source === 'codex' ? api.codexDiff(sessionId) : api.sessionDiff(sessionId), active ? 5000 : 60_000)
   const [visibleCount, setVisibleCount] = useState(30)
   const [accepted, setAccepted] = useState<Set<string>>(() => new Set())
   const [accepting, setAccepting] = useState(false)
