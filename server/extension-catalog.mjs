@@ -3,7 +3,7 @@ import path from 'node:path'
 
 export const extensionIdPattern = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/i
 
-function installedPackages(directory) {
+export function installedPackages(directory) {
   if (!existsSync(directory)) return []
   let obsolete = {}
   try { obsolete = JSON.parse(readFileSync(path.join(directory, '.obsolete'), 'utf8')) } catch { /* optional vendor metadata */ }
@@ -17,6 +17,7 @@ function installedPackages(directory) {
       const item = { id, name: manifest.displayName || manifest.name, publisher: manifest.publisher,
         description: manifest.description || '', version: manifest.version, installed: true,
         packageDirectory: path.join(directory, entry.name), icon: typeof manifest.icon === 'string' ? manifest.icon : null }
+      item.support = id.toLowerCase() === 'bradlc.vscode-tailwindcss' ? 'tailwind' : Array.isArray(manifest.contributes?.snippets) && manifest.contributes.snippets.length ? 'snippets' : 'unsupported'
       const previous = packages.get(id.toLowerCase())
       if (!previous || item.version.localeCompare(previous.version, 'en', { numeric: true }) > 0) packages.set(id.toLowerCase(), item)
     } catch { /* Ignore incomplete packages without exposing their contents. */ }

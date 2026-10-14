@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import type { FileTab, CodeEditorHandle } from './ProjectEditor'
 import { basicSetup, EditorView } from 'codemirror'
-import { EditorState } from '@codemirror/state'
+import { Compartment, EditorState } from '@codemirror/state'
+import { snippetSource, tailwindSource, loadEditorExtensions, invalidateEditorExtensions } from '../lib/agent-editor-extensions'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { javascript } from '@codemirror/lang-javascript'
@@ -56,14 +57,15 @@ const editorHighlighting = syntaxHighlighting(HighlightStyle.define([
   { tag: [tags.regexp, tags.escape], color: '#d7ba7d' },
   { tag: tags.invalid, color: '#f44747' },
 ]))
-export default function CodeEditor({ file, onChange, register, onSave, onPosition }: {
-  file: FileTab; onChange: (text: string) => void; register: (view: CodeEditorHandle | null) => void; onSave: () => void; onPosition: (line: number, column: number) => void
+export default function CodeEditor({ file, root, onChange, register, onSave, onPosition }: {
+  file: FileTab; root?: string; onChange: (text: string) => void; register: (view: CodeEditorHandle | null) => void; onSave: () => void; onPosition: (line: number, column: number) => void
 }) {
   const host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null)
   const callbacks = useRef({ onChange, register, onSave, onPosition })
   callbacks.current = { onChange, register, onSave, onPosition }
+  const extensions = useRef(new Compartment())
   useEffect(() => {
-    const editor = new EditorView({ parent: host.current!, state: EditorState.create({ doc: file.content, extensions: [basicSetup, language(file.path), editorTheme, editorHighlighting,
+    const editor = new EditorView({ parent: host.current!, state: EditorState.create({ doc: file.content, extensions: [basicSetup, language(file.path), editorTheme, editorHighlighting, extensions.current.of([]),
       EditorView.contentAttributes.of({ 'aria-label': `Code editor: ${file.path}`, spellcheck: 'false' }),
       keymap.of([{ key: 'Mod-s', run: () => { callbacks.current.onSave(); return true } }, indentWithTab]),
       EditorView.updateListener.of(update => {
@@ -87,6 +89,22 @@ export default function CodeEditor({ file, onChange, register, onSave, onPositio
     })
     return () => { callbacks.current.register(null); editor.destroy(); view.current = null }
   }, [file.path])
+  useEffect(() => {
+    let active = true; let generation = 0
+    const refresh = () => {
+      const request = ++generation
+      void loadEditorExtensions().then(config => {
+        const editor = view.current
+        if (!active || request !== generation || !editor) return
+        const sources = [snippetSource(config, file.path), ...(config.tailwind && root ? [tailwindSource(root, file.path)] : [])]
+        editor.dispatch({ effects: extensions.current.reconfigure(EditorState.languageData.of(() => sources.map(source => ({ autocomplete: source })))) })
+      }).catch(() => {})
+    }
+    const changed = () => { invalidateEditorExtensions(); refresh() }
+    refresh()
+    window.addEventListener('openzero:extensions-changed', changed)
+    return () => { active = false; window.removeEventListener('openzero:extensions-changed', changed) }
+  }, [file.path, root])
   useEffect(() => {
     const editor = view.current
     if (editor && editor.state.doc.toString() !== file.content) editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: file.content } })

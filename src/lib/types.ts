@@ -12,23 +12,18 @@ export interface CodexAllowance { available: boolean; remainingPercent: number |
 export interface CodexWeeklyQuota extends CodexAllowance { fiveHour?: CodexAllowance }
 
 export interface ExtensionWorkspaceStatus {
-  phase: 'stopped' | 'starting' | 'downloading' | 'ready' | 'error'
-  downloadPercent: number | null
+  phase: 'ready'
   directory: string
   available: boolean
-  running: boolean
-  starting: boolean
   runtimeReady: boolean
-  runtimeCached: boolean
   installing: boolean
-  nxInstalled: boolean
-  nxLocalAvailable: boolean
-  nxWorkspace: boolean
-  error: string | null
-  path: string | null
+  revision: number
+  path: null
 }
 
 export interface ExtensionItem {
+  enabled?: boolean
+  support?: 'snippets' | 'tailwind' | 'unsupported'
   iconUrl: string | null
   id: string
   name: string
@@ -36,6 +31,12 @@ export interface ExtensionItem {
   description: string
   version: string
   installed: boolean
+}
+
+export interface EditorExtensionConfig {
+  snippets: Array<{ label: string; body: string; description: string; language: string; extension: string }>
+  tailwind: boolean
+  revision: number
 }
 
 export interface RequestState<T> {
