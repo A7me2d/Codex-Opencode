@@ -1,15 +1,17 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { installationMarker } from './publish-extension.mjs'
 
 export const extensionIdPattern = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/i
 
-function installedPackages(directory) {
+export function installedPackages(directory) {
   if (!existsSync(directory)) return []
   let obsolete = {}
   try { obsolete = JSON.parse(readFileSync(path.join(directory, '.obsolete'), 'utf8')) } catch { /* optional vendor metadata */ }
   const packages = new Map()
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.isSymbolicLink() || obsolete[entry.name]) continue
+    if (existsSync(path.join(directory, entry.name, installationMarker))) continue
     try {
       const manifest = JSON.parse(readFileSync(path.join(directory, entry.name, 'package.json'), 'utf8'))
       const id = `${manifest.publisher}.${manifest.name}`
@@ -17,6 +19,7 @@ function installedPackages(directory) {
       const item = { id, name: manifest.displayName || manifest.name, publisher: manifest.publisher,
         description: manifest.description || '', version: manifest.version, installed: true,
         packageDirectory: path.join(directory, entry.name), icon: typeof manifest.icon === 'string' ? manifest.icon : null }
+      item.support = id.toLowerCase() === 'bradlc.vscode-tailwindcss' ? 'tailwind' : Array.isArray(manifest.contributes?.snippets) && manifest.contributes.snippets.length ? 'snippets' : 'unsupported'
       const previous = packages.get(id.toLowerCase())
       if (!previous || item.version.localeCompare(previous.version, 'en', { numeric: true }) > 0) packages.set(id.toLowerCase(), item)
     } catch { /* Ignore incomplete packages without exposing their contents. */ }

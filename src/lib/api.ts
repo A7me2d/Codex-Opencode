@@ -1,5 +1,5 @@
 import { tr } from './i18n'
-import type { CodexWeeklyQuota, ExtensionWorkspaceStatus, ExtensionItem } from './types'
+import type { CodexWeeklyQuota, ExtensionWorkspaceStatus, ExtensionItem, EditorExtensionConfig } from './types'
 /**
  * The one place that talks HTTP.
  *
@@ -66,10 +66,9 @@ export const api = {
   extensionsStatus: () => requestJson<{ data: ExtensionWorkspaceStatus }>('/api/extensions/status').then(unwrap),
   installedExtensions: () => requestJson<{ data: ExtensionItem[] }>('/api/extensions/installed').then(unwrap),
   searchExtensions: (query: string, page = 1) => requestJson<{ data: { items: ExtensionItem[]; page: number; hasMore: boolean } }>(`/api/extensions/search?${new URLSearchParams({ q: query, page: String(page) })}`).then(unwrap),
-  manageExtension: (id: string, action: 'install' | 'uninstall') => post<{ data: { id: string; installed: boolean } }>('/api/extensions/manage', { id, action }).then(unwrap),
-  startExtensions: (directory: string, acceptedTerms: boolean, updateRuntime = false) => post<{ data: ExtensionWorkspaceStatus }>('/api/extensions/start', { directory, acceptedTerms, updateRuntime }).then(unwrap),
-  stopExtensions: () => post('/api/extensions/stop'),
-  installNxConsole: () => post<{ data: { installed: boolean; id: string } }>('/api/extensions/install-nx').then(unwrap),
+  manageExtension: (id: string, action: 'install' | 'uninstall' | 'enable' | 'disable') => post<{ data: { id: string; installed?: boolean; enabled?: boolean } }>('/api/extensions/manage', { id, action }).then(unwrap),
+  editorExtensions: () => requestJson<{ data: EditorExtensionConfig }>('/api/extensions/editor').then(unwrap),
+  tailwindCompletions: (input: { root: string; path: string; language: string; text: string; position: { line: number; character: number } }) => post<{ data: Array<{ label: string; detail?: string; insertText?: string; insertTextFormat?: number; textEdit?: { newText: string; range?: { start: { line: number; character: number }; end: { line: number; character: number } } } }> }>('/api/extensions/completions', input).then(unwrap),
   licenseStatus: () => window.codingRoomLicense
     ? window.codingRoomLicense.status()
     : requestJson<NonNullable<Awaited<ReturnType<NonNullable<Window['codingRoomLicense']>['status']>>>>('/api/license/status'),

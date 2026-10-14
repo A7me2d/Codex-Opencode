@@ -4,8 +4,10 @@ import { searchProjectContents } from './server/project-content-search.mjs'
 import { SourceControl } from './server/source-control.mjs'
 import { generateCommitMessage } from './server/commit-message.mjs'
 import { projectPreviewFiles } from './server/project-preview.mjs'
-import { ExtensionWorkbench, workbenchPath, trustedExtensionRequest } from './server/extension-workbench.mjs'
+import { workbenchPath, trustedExtensionRequest } from './server/extension-workbench.mjs'
 import { searchExtensions, installedExtensionIcon } from './server/extension-catalog.mjs'
+import { AgentExtensions } from './server/agent-extensions.mjs'
+import { TailwindCompletions } from './server/tailwind-completions.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
@@ -26,7 +28,8 @@ const stateDirectory = process.env.RELAY_STATE_DIR
   ? path.resolve(process.env.RELAY_STATE_DIR)
   : path.join(appDirectory, '.relay-state')
 const eventsPath = path.join(stateDirectory, 'events.json')
-const extensionWorkbench = new ExtensionWorkbench(stateDirectory)
+const agentExtensions = new AgentExtensions(stateDirectory)
+const tailwindCompletions = new TailwindCompletions()
 const sourceControl = new SourceControl()
 const commitMessageJobs = new Set()
 const codexStatePath = path.join(stateDirectory, 'codex.json')
@@ -2337,22 +2340,18 @@ const server = createServer(async (request, response) => {
       sendJson(response, 403, { error: 'Open the extensions workspace from Open Zero.' })
       return
     }
-    if (url.pathname.startsWith(workbenchPath)) {
-      try { extensionWorkbench.proxy(request, response) }
-      catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
-      return
-    }
+    if (url.pathname.startsWith(workbenchPath)) { sendJson(response, 410, { error: 'The embedded workspace was replaced by Agent editor extensions.' }); return }
     if (url.pathname === '/api/extensions/status' && request.method === 'GET') {
-      sendJson(response, 200, { data: extensionWorkbench.status(watchRoot) })
+      sendJson(response, 200, { data: agentExtensions.status(watchRoot) })
       return
     }
     if (url.pathname === '/api/extensions/installed' && request.method === 'GET') {
-      sendJson(response, 200, { data: extensionWorkbench.listExtensions() })
+      sendJson(response, 200, { data: agentExtensions.listExtensions() })
       return
     }
     if (url.pathname === '/api/extensions/icon' && request.method === 'GET') {
       try {
-        const icon = installedExtensionIcon(path.join(extensionWorkbench.storage, 'data', 'extensions'), url.searchParams.get('id'))
+        const icon = installedExtensionIcon(agentExtensions.directory, url.searchParams.get('id'))
         if (!icon) { response.writeHead(404); response.end(); return }
         const contents = await readFile(icon.file)
         response.writeHead(200, { 'Content-Type': icon.contentType, 'Cache-Control': 'no-cache',
@@ -2369,28 +2368,34 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/extensions/manage' && request.method === 'POST') {
       try {
         const input = await readJson(request)
-        sendJson(response, 200, { data: await extensionWorkbench.manageExtension(input.id, input.action) })
+        const result = await agentExtensions.manageExtension(input.id, input.action)
+        if (input.id.toLowerCase() === 'bradlc.vscode-tailwindcss') tailwindCompletions.stop()
+        sendJson(response, 200, { data: result })
       } catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
       return
     }
-    if (url.pathname === '/api/extensions/start' && request.method === 'POST') {
+    if (url.pathname === '/api/extensions/editor' && request.method === 'GET') {
+      try { sendJson(response, 200, { data: agentExtensions.snippets() }) }
+      catch { sendJson(response, 500, { error: 'Could not load editor extensions.' }) }
+      return
+    }
+    if (url.pathname === '/api/extensions/completions' && request.method === 'POST') {
       try {
         const input = await readJson(request)
-        if (path.resolve(input.directory ?? '') !== path.resolve(watchRoot)) throw new HttpError(409, 'The selected project changed. Reopen the Extensions tab.')
-        sendJson(response, 200, { data: await extensionWorkbench.start(watchRoot, input.acceptedTerms, { updateRuntime: input.updateRuntime === true }) })
-      } catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
+        if (!agentExtensions.listExtensions().some(item => item.id.toLowerCase() === 'bradlc.vscode-tailwindcss' && item.enabled)) { sendJson(response, 200, { data: [] }); return }
+        if (path.resolve(input.root ?? '') !== path.resolve(watchRoot)) throw new HttpError(409, 'The selected project changed.')
+        const root = await realpath(watchRoot)
+        const file = await realpath(path.resolve(root, input.path ?? ''))
+        const relative = path.relative(root, file)
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new HttpError(400, 'File is outside the selected project.')
+        if (typeof input.text !== 'string' || input.text.length > 2_000_000 || !Number.isInteger(input.position?.line) || !Number.isInteger(input.position?.character) || input.position.line < 0 || input.position.character < 0) throw new HttpError(400, 'Invalid editor document.')
+        const language = ['html', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact', 'css', 'vue', 'svelte', 'astro', 'php'].includes(input.language) ? input.language : 'plaintext'
+        sendJson(response, 200, { data: await tailwindCompletions.complete(root, file, language, input.text, input.position) })
+      } catch (error) { sendJson(response, error.status ?? 503, { error: error.message }) }
       return
     }
-    if (url.pathname === '/api/extensions/stop' && request.method === 'POST') {
-      try { await extensionWorkbench.stop(); sendJson(response, 200, { data: { stopped: true } }) }
-      catch { sendJson(response, 502, { error: 'Could not stop the extensions workspace.' }) }
-      return
-    }
-    if (url.pathname === '/api/extensions/install-nx' && request.method === 'POST') {
-      try { sendJson(response, 200, { data: await extensionWorkbench.installNx() }) }
-      catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
-      return
-    }
+    if (url.pathname === '/api/extensions/start' && request.method === 'POST') { sendJson(response, 200, { data: agentExtensions.status(watchRoot) }); return }
+    if (['/api/extensions/stop', '/api/extensions/install-nx'].includes(url.pathname) && request.method === 'POST') { sendJson(response, 410, { error: 'Use the Agent extension manager. Nx Console is not supported by the Agent editor yet.' }); return }
   if (url.pathname === '/api/license/status' && request.method === 'GET') {
     try { sendJson(response, 200, await readLicenseStatus()) }
     catch (error) { sendJson(response, error.status ?? 503, { error: publicError(error) }) }
@@ -2999,12 +3004,12 @@ const server = createServer(async (request, response) => {
 
 server.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
-  if (url.pathname.startsWith(workbenchPath)) extensionWorkbench.upgrade(request, socket, head)
-  else socket.destroy()
+  socket.destroy()
 })
 
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
-  void Promise.allSettled([extensionWorkbench.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
+  tailwindCompletions.stop()
+  void Promise.resolve().then(() => codexBridge.stop()).finally(() => process.exit(0))
 })
 
 server.listen(port, '127.0.0.1', () => {
@@ -3024,6 +3029,7 @@ process.parentPort?.on('message', event => {
   }
   if (event.data?.type === 'shutdown' && server.listening) {
     server.close()
-    void Promise.allSettled([extensionWorkbench.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
+    tailwindCompletions.stop()
+    void Promise.resolve().then(() => codexBridge.stop()).finally(() => process.exit(0))
   }
 })
