@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { request as httpRequest } from 'node:http'
+import { extensionIdPattern, installedExtensions } from './extension-catalog.mjs'
 
 export const workbenchPath = '/api/extensions/workbench/'
 
@@ -36,13 +37,34 @@ export function workbenchFolder(directory, platform = process.platform) {
   return platform === 'win32' && !normalized.startsWith('/') ? `/${normalized}` : normalized
 }
 
+export function findInstalledNxExtension(directory = path.join(homedir(), '.vscode', 'extensions')) {
+  try {
+    const root = realpathSync(directory)
+    const obsolete = existsSync(path.join(root, '.obsolete')) ? JSON.parse(readFileSync(path.join(root, '.obsolete'), 'utf8')) : {}
+    return readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && entry.name.startsWith('nrwl.angular-console-') && !obsolete[entry.name])
+      .map(entry => {
+        const location = path.join(root, entry.name)
+        const manifest = JSON.parse(readFileSync(path.join(location, 'package.json'), 'utf8'))
+        if (manifest.publisher !== 'nrwl' || manifest.name !== 'angular-console' || !manifest.main || !existsSync(path.join(location, manifest.main))) return null
+        return { directory: location, name: entry.name, version: manifest.version }
+      }).filter(Boolean).sort((a, b) => b.version.localeCompare(a.version, 'en', { numeric: true }))[0] ?? null
+  } catch { return null }
+}
+
+export function desktopRuntimeCache(env = process.env, platform = process.platform) {
+  if (platform !== 'win32') return []
+  return [path.join(env.APPDATA || path.join(homedir(), 'AppData', 'Roaming'), 'Relay Room', 'relay-state', 'extension-workbench', 'cli')]
+}
+
 /** A private, on-demand VS Code host. No runtime is launched during import. */
 export class ExtensionWorkbench {
-  constructor(stateDirectory, { launch = spawn, request = httpRequest, resolveCLI = findVSCodeCLI, readinessTimeoutMs = 600_000 } = {}) {
+  constructor(stateDirectory, { launch = spawn, request = httpRequest, resolveCLI = findVSCodeCLI, resolveLocalNx = findInstalledNxExtension, runtimeCaches = desktopRuntimeCache(), readinessTimeoutMs = 600_000 } = {}) {
     this.storage = path.join(stateDirectory, 'extension-workbench')
     this.launch = launch
     this.request = request
     this.resolveCLI = resolveCLI
+    this.resolveLocalNx = resolveLocalNx
+    this.runtimeCaches = runtimeCaches
     this.child = null
     this.starting = null
     this.port = null
@@ -64,30 +86,31 @@ export class ExtensionWorkbench {
     return { directory, available: Boolean(cli), running: Boolean(this.child && this.port), starting: Boolean(this.starting),
       error: this.error, nxWorkspace: existsSync(path.join(directory, 'nx.json')),
       phase: this.phase, downloadPercent: this.downloadPercent,
-      runtimeReady: this.editorReady && Boolean(this.findRuntime()), installing: Boolean(this.installing), nxInstalled: this.nxInstalled(),
+      runtimeReady: this.editorReady && Boolean(this.findRuntime()), runtimeCached: Boolean(this.findRuntime()), installing: Boolean(this.installing), nxInstalled: this.nxInstalled(), nxLocalAvailable: Boolean(this.resolveLocalNx()),
       path: this.port && this.editorReady ? `${workbenchPath}?${new URLSearchParams({ folder: workbenchFolder(directory) })}` : null }
   }
 
-  async start(directory, acceptedTerms) {
+  async start(directory, acceptedTerms, { updateRuntime = false } = {}) {
     if (this.child && this.port) return this.status(directory)
     if (this.starting) { await this.starting; return this.status(directory) }
     if (acceptedTerms !== true) throw Object.assign(new Error('Accept the VS Code Server terms to start the extensions workspace.'), { status: 400 })
     const cli = this.resolveCLI()
     if (!cli) throw Object.assign(new Error('Install Visual Studio Code or configure VSCODE_CLI_EXE to use extensions.'), { status: 503 })
-    this.starting = this.launchHost(cli, directory)
+    this.starting = this.launchHost(cli, directory, updateRuntime)
     try { await this.starting; return this.status(directory) }
     finally { this.starting = null }
   }
 
-  async launchHost(cli, directory) {
+  async launchHost(cli, directory, updateRuntime = false) {
     await mkdir(this.storage, { recursive: true })
     this.token = randomBytes(32).toString('hex')
     const tokenFile = path.join(this.storage, 'connection-token')
     await writeFile(tokenFile, this.token, { mode: 0o600 })
     this.error = null
     this.phase = 'starting'; this.editorReady = false; this.downloadPercent = null
-    const child = this.launch(cli, ['serve-web', '--host', '127.0.0.1', '--port', '0',
-      '--cli-data-dir', path.join(this.storage, 'cli'), '--server-data-dir', path.join(this.storage, 'data'),
+    const cached = updateRuntime ? null : this.findRuntime()
+    const child = this.launch(cli, ['serve-web', ...(cached ? ['--commit-id', cached.commit] : []), '--host', '127.0.0.1', '--port', '0',
+      '--cli-data-dir', cached?.cacheRoot || path.join(this.storage, 'cli'), '--server-data-dir', path.join(this.storage, 'data'),
       '--server-base-path', workbenchPath.slice(0, -1), '--connection-token-file', tokenFile,
       '--default-folder', directory, '--disable-telemetry', '--accept-server-license-terms'],
     { cwd: this.storage, windowsHide: true, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -111,7 +134,7 @@ export class ExtensionWorkbench {
         const port = Number(match[1])
         if (port < 1 || port > 65535) return
         this.port = port; ready = true; clearTimeout(timeout)
-        this.phase = 'downloading'
+        this.phase = cached ? 'starting' : 'downloading'
         this.monitorReadiness(child)
         resolve()
       }
@@ -208,15 +231,29 @@ export class ExtensionWorkbench {
   }
 
   findRuntime() {
-    const root = path.join(this.storage, 'cli')
+    // Prefer this host's runtime, then reuse the desktop binary cache when running the web app.
+    // Extension data, connection tokens and account settings remain in this host's own storage.
+    const roots = [...new Set([path.join(this.storage, 'cli'), ...this.runtimeCaches].map(root => path.resolve(root)))]
+    for (const root of roots) {
+      const runtime = this.findRuntimeIn(root)
+      if (runtime) return { ...runtime, cacheRoot: root }
+    }
+    return null
+  }
+
+  findRuntimeIn(root) {
     if (!existsSync(root)) return null
     const candidates = []
     const walk = (directory, depth) => {
       const node = path.join(directory, process.platform === 'win32' ? 'node.exe' : 'node')
       const main = path.join(directory, 'out', 'server-main.js')
-      if (existsSync(node) && existsSync(main)) {
+      const workbench = path.join(directory, 'out', 'vs', 'code', 'browser', 'workbench', 'workbench.html')
+      const entrypoint = path.join(directory, 'bin', process.platform === 'win32' ? 'code-server.cmd' : 'code-server')
+      if (existsSync(node) && existsSync(main) && existsSync(workbench) && existsSync(entrypoint) && existsSync(path.join(directory, 'product.json'))) {
         const relative = path.relative(realpathSync(root), realpathSync(directory))
-        if (!relative.startsWith('..') && !path.isAbsolute(relative)) candidates.push({ node, main, updated: statSync(main).mtimeMs })
+        let product
+        try { product = JSON.parse(readFileSync(path.join(directory, 'product.json'), 'utf8')) } catch { return }
+        if (!relative.startsWith('..') && !path.isAbsolute(relative) && /^[a-f0-9]{40}$/i.test(product.commit) && path.basename(directory) === product.commit && product.quality === 'stable') candidates.push({ node, main, commit: product.commit, updated: statSync(main).mtimeMs })
         return
       }
       if (depth >= 4) return
@@ -235,7 +272,7 @@ export class ExtensionWorkbench {
         if (!entry.isDirectory() || !entry.name.startsWith('nrwl.angular-console-')) return false
         try {
           const manifest = JSON.parse(readFileSync(path.join(directory, entry.name, 'package.json'), 'utf8'))
-          return manifest.publisher === 'nrwl' && manifest.name === 'angular-console'
+          return manifest.publisher === 'nrwl' && manifest.name === 'angular-console' && typeof manifest.main === 'string' && existsSync(path.join(directory, entry.name, manifest.main))
         } catch { return false }
       })
     } catch { return false }
@@ -246,6 +283,28 @@ export class ExtensionWorkbench {
     if (this.installing) return this.installing
     const runtime = this.findRuntime()
     if (!this.editorReady || !runtime) throw Object.assign(new Error('VS Code is still downloading. Wait for the editor to load, then install Nx Console.'), { status: 409 })
+    const local = this.nxInstalled() ? null : this.resolveLocalNx()
+    if (local) {
+      this.installing = (async () => {
+        // Copy just the already installed extension package, never VS Code settings/accounts.
+        const extensions = path.join(this.storage, 'data', 'extensions')
+        await mkdir(extensions, { recursive: true })
+        const target = path.join(extensions, local.name)
+        const staging = path.join(this.storage, `.nx-import-${randomBytes(8).toString('hex')}`)
+        if (path.dirname(path.resolve(target)) !== path.resolve(extensions) || path.dirname(path.resolve(staging)) !== path.resolve(this.storage)) throw new Error('Invalid local Nx Console package.')
+        try {
+          await cp(local.directory, staging, { recursive: true, filter: async source => !(await lstat(source)).isSymbolicLink() })
+          const manifest = JSON.parse(readFileSync(path.join(staging, 'package.json'), 'utf8'))
+          if (manifest.publisher !== 'nrwl' || manifest.name !== 'angular-console' || !existsSync(path.join(staging, manifest.main))) throw new Error('Could not import the locally installed Nx Console package.')
+          await rename(staging, target)
+        } finally {
+          // This verified absolute staging path is owned by this import, outside the live extensions directory.
+          if (path.dirname(path.resolve(staging)) === path.resolve(this.storage)) await rm(staging, { recursive: true, force: true })
+        }
+        return { installed: true, id: 'nrwl.angular-console' }
+      })().finally(() => { this.installing = null })
+      return this.installing
+    }
     this.installing = new Promise((resolve, reject) => {
       const child = this.launch(runtime.node, [runtime.main, '--server-data-dir', path.join(this.storage, 'data'),
         '--extensions-dir', path.join(this.storage, 'data', 'extensions'), '--install-extension', 'nrwl.angular-console',
@@ -258,6 +317,34 @@ export class ExtensionWorkbench {
         clearTimeout(timeout)
         if (code === 0 && this.nxInstalled()) resolve({ installed: true, id: 'nrwl.angular-console' })
         else reject(new Error('Could not install Nx Console. Open the Extensions view inside VS Code for details.'))
+      })
+    }).finally(() => { this.installing = null; this.installer = null })
+    return this.installing
+  }
+
+  listExtensions() {
+    return installedExtensions(path.join(this.storage, 'data', 'extensions'))
+  }
+
+  async manageExtension(id, action) {
+    if (typeof id !== 'string' || !extensionIdPattern.test(id) || !['install', 'uninstall'].includes(action)) throw Object.assign(new Error('Invalid extension or action.'), { status: 400 })
+    if (this.installing) throw Object.assign(new Error('Wait for the current extension operation to finish.'), { status: 409 })
+    const runtime = this.findRuntime()
+    if (!this.child || !this.editorReady || !runtime) throw Object.assign(new Error('Start the extension workspace and wait for setup to finish.'), { status: 409 })
+    if (id.toLowerCase() === 'nrwl.angular-console' && action === 'install' && !this.nxInstalled()) return this.installNx()
+    this.installing = new Promise((resolve, reject) => {
+      const child = this.launch(runtime.node, [runtime.main, '--server-data-dir', path.join(this.storage, 'data'),
+        '--extensions-dir', path.join(this.storage, 'data', 'extensions'), `--${action}-extension`, id,
+        '--accept-server-license-terms', '--disable-telemetry', ...(action === 'install' ? ['--force'] : [])],
+      { cwd: this.storage, windowsHide: true, shell: false, stdio: 'ignore' })
+      this.installer = child
+      const timeout = setTimeout(() => { child.kill(); reject(new Error('The extension operation timed out. Try again.')) }, 180_000)
+      child.once('error', () => { clearTimeout(timeout); reject(new Error('Could not start the extension operation.')) })
+      child.once('exit', code => {
+        clearTimeout(timeout)
+        const installed = this.listExtensions().some(item => item.id.toLowerCase() === id.toLowerCase())
+        if (code === 0 && installed === (action === 'install')) resolve({ id, installed })
+        else reject(new Error('The extension operation failed. Check compatibility and connectivity in the extension tools.'))
       })
     }).finally(() => { this.installing = null; this.installer = null })
     return this.installing

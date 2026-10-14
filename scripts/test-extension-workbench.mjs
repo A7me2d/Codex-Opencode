@@ -4,7 +4,7 @@ import { PassThrough } from 'node:stream'
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { ExtensionWorkbench, workbenchFolder, workbenchPath, trustedExtensionRequest } from '../server/extension-workbench.mjs'
+import { ExtensionWorkbench, findInstalledNxExtension, workbenchFolder, workbenchPath, trustedExtensionRequest } from '../server/extension-workbench.mjs'
 
 assert.equal(workbenchFolder('D:\\Nx Projects\\demo', 'win32'), '/D:/Nx Projects/demo')
 assert.equal(workbenchFolder('/home/project', 'linux'), '/home/project')
@@ -43,7 +43,7 @@ const responseRequest = (statusCode = 200) => (url, options, callback) => {
 }
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 try {
-  const host = new ExtensionWorkbench(root, { launch, request: responseRequest(), resolveCLI: () => 'synthetic-code-cli' })
+  const host = new ExtensionWorkbench(root, { launch, request: responseRequest(), resolveCLI: () => 'synthetic-code-cli', resolveLocalNx: () => null, runtimeCaches: [] })
   assert.equal(host.status(root).running, false)
   assert.equal(launches.length, 0)
   await assert.rejects(host.start(root, false), /Accept/)
@@ -81,10 +81,17 @@ try {
   assert.equal(host.status(root).runtimeReady, false, 'partial extraction cannot be used to install extensions')
 
   // Synthetic vendor layout only. Never downloads or executes a real extension.
-  const runtime = path.join(host.storage, 'cli', 'serve-web', 'commit')
+  const commit = 'a'.repeat(40)
+  const runtime = path.join(host.storage, 'cli', 'serve-web', commit)
   await mkdir(path.join(runtime, 'out'), { recursive: true })
   await writeFile(path.join(runtime, process.platform === 'win32' ? 'node.exe' : 'node'), '')
   await writeFile(path.join(runtime, 'out', 'server-main.js'), '')
+  assert.equal(host.status(root).runtimeCached, false, 'Node and server-main alone are not a complete web runtime')
+  await mkdir(path.join(runtime, 'out', 'vs', 'code', 'browser', 'workbench'), { recursive: true })
+  await writeFile(path.join(runtime, 'out', 'vs', 'code', 'browser', 'workbench', 'workbench.html'), '<html>synthetic editor</html>')
+  await mkdir(path.join(runtime, 'bin'), { recursive: true })
+  await writeFile(path.join(runtime, 'bin', process.platform === 'win32' ? 'code-server.cmd' : 'code-server'), '')
+  await writeFile(path.join(runtime, 'product.json'), JSON.stringify({ commit, quality: 'stable' }))
   assert.equal(host.status(root).runtimeReady, true)
   const install = host.installNx()
   const concurrentInstall = host.installNx()
@@ -93,7 +100,8 @@ try {
   assert.equal(launches[1].options.shell, false)
   const extension = path.join(host.storage, 'data', 'extensions', 'nrwl.angular-console-1.0.0')
   await mkdir(extension, { recursive: true })
-  await writeFile(path.join(extension, 'package.json'), JSON.stringify({ publisher: 'nrwl', name: 'angular-console', version: '1.0.0' }))
+  await writeFile(path.join(extension, 'package.json'), JSON.stringify({ publisher: 'nrwl', name: 'angular-console', version: '1.0.0', main: 'main.js' }))
+  await writeFile(path.join(extension, 'main.js'), '// synthetic extension')
   children[1].emit('exit', 0)
   const results = await Promise.all([install, concurrentInstall])
   assert.equal(results.every(result => result.installed === true), true)
@@ -159,7 +167,7 @@ try {
   assert.equal(host.status(root).running, false)
   assert.throws(() => host.target(workbenchPath), /Start/)
 
-  const pending = new ExtensionWorkbench(path.join(root, 'pending'), { launch, request: responseRequest(202), resolveCLI: () => 'synthetic-code-cli', readinessTimeoutMs: 40 })
+  const pending = new ExtensionWorkbench(path.join(root, 'pending'), { launch, request: responseRequest(202), resolveCLI: () => 'synthetic-code-cli', resolveLocalNx: () => null, runtimeCaches: [], readinessTimeoutMs: 40 })
   await pending.start(root, true)
   await wait(20)
   assert.equal(pending.status(root).path, null, 'vendor download placeholder never becomes an iframe')
@@ -175,12 +183,56 @@ try {
   assert.equal(pending.status(root).phase, 'ready', 'retry can recover without deleting saved extensions')
   await pending.stop()
 
-  const failed = new ExtensionWorkbench(path.join(root, 'failed'), { launch, request: responseRequest(500), resolveCLI: () => 'synthetic-code-cli' })
+  const failed = new ExtensionWorkbench(path.join(root, 'failed'), { launch, request: responseRequest(500), resolveCLI: () => 'synthetic-code-cli', resolveLocalNx: () => null, runtimeCaches: [] })
   await failed.start(root, true); await wait(20)
   assert.equal(failed.status(root).phase, 'error')
   assert.equal(failed.status(root).path, null)
   failed.captureRuntimeProgress('error downloading https://example.invalid/?tkn=secret-value')
   assert.equal(failed.status(root).error.includes('secret-value'), false, 'raw vendor output stays private')
   await failed.stop()
-  console.log('Passed: startup/download/readiness separation; partial extraction excluded; stalled download timeout and retry; safe errors; serialized Nx installation; private token; HTTP/CSP proxy; WebSocket cleanup. All processes, downloads and extension files were synthetic.')
-} finally { await rm(root, { recursive: true, force: true }) }
+  // Cached starts stay on the completed runtime; explicit updates can fetch a newer one.
+  host.request = responseRequest()
+  const beforeCached = launches.length
+  await host.start(root, true)
+  assert.equal(launches[beforeCached].args[launches[beforeCached].args.indexOf('--commit-id') + 1], commit)
+  assert.equal(host.status(root).phase, 'starting', 'cached startup is not reported as a fresh download')
+  await wait(20); await host.stop()
+
+  const shared = new ExtensionWorkbench(path.join(root, 'web-host'), { launch, request: responseRequest(), resolveCLI: () => 'synthetic-code-cli', resolveLocalNx: () => null, runtimeCaches: [path.join(host.storage, 'cli')] })
+  assert.equal(shared.status(root).runtimeCached, true)
+  const beforeShared = launches.length
+  await shared.start(root, true)
+  assert.equal(launches[beforeShared].args[launches[beforeShared].args.indexOf('--cli-data-dir') + 1], path.resolve(host.storage, 'cli'))
+  assert.equal(launches[beforeShared].args[launches[beforeShared].args.indexOf('--server-data-dir') + 1], path.join(shared.storage, 'data'), 'only binaries are shared; profiles and extension data stay isolated')
+  await wait(20); await shared.stop()
+  const beforeUpdate = launches.length
+  await host.start(root, true, { updateRuntime: true })
+  assert.equal(launches[beforeUpdate].args.includes('--commit-id'), false, 'an explicit editor update is not pinned')
+  await wait(20); await host.stop()
+
+  // Import an already installed local package using fixtures, without any marketplace or CLI call.
+  const localDirectory = path.join(root, 'ordinary-vscode-extensions')
+  const localPackage = path.join(localDirectory, 'nrwl.angular-console-18.102.0')
+  await mkdir(localPackage, { recursive: true })
+  await writeFile(path.join(localPackage, 'package.json'), JSON.stringify({ publisher: 'nrwl', name: 'angular-console', version: '18.102.0', main: 'main.js' }))
+  await writeFile(path.join(localPackage, 'main.js'), '// synthetic Nx Console package')
+  const localNx = findInstalledNxExtension(localDirectory)
+  assert.equal(localNx.version, '18.102.0')
+  const imported = new ExtensionWorkbench(path.join(root, 'local-import'), { launch, request: responseRequest(), resolveCLI: () => 'synthetic-code-cli', resolveLocalNx: () => localNx, runtimeCaches: [] })
+  // Reuse only a synthetic runtime reference to exercise the installer independently of startup.
+  imported.findRuntime = () => ({ node: 'synthetic-node', main: 'synthetic-server', commit })
+  await imported.start(root, true); await wait(20)
+  assert.equal(imported.status(root).nxLocalAvailable, true)
+  const launchesBeforeImport = launches.length
+  await Promise.all([imported.installNx(), imported.installNx()])
+  assert.equal(launches.length, launchesBeforeImport, 'local import never downloads or starts an installer')
+  assert.equal(imported.status(root).nxInstalled, true)
+  assert.equal(await readFile(path.join(imported.storage, 'data', 'extensions', localNx.name, 'main.js'), 'utf8'), '// synthetic Nx Console package')
+  await imported.stop()
+  await writeFile(path.join(localDirectory, '.obsolete'), JSON.stringify({ [localNx.name]: true }))
+  assert.equal(findInstalledNxExtension(localDirectory), null, 'obsolete local extension versions are not imported')
+  console.log('Passed: cached runtime pinning, shared binary cache with isolated profiles, explicit updates, local Nx import, obsolete packages, startup/readiness, partial extraction, timeout/retry, private token, HTTP/CSP and WebSocket cleanup. All processes, downloads and extension files were synthetic.')
+} finally {
+  if (path.dirname(path.resolve(root)) !== path.resolve(tmpdir()) || !path.basename(root).startsWith('openzero-extension-test-')) throw new Error('Unsafe fixture cleanup path')
+  await rm(root, { recursive: true, force: true })
+}
