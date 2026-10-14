@@ -1,4 +1,5 @@
 import { tr } from './i18n'
+import type { ClineStatus, ClineSession } from './types'
 import type { CodexWeeklyQuota, ExtensionWorkspaceStatus, ExtensionItem, EditorExtensionConfig } from './types'
 /**
  * The one place that talks HTTP.
@@ -62,6 +63,15 @@ function unwrap<T>(body: { data?: T }): T {
 export type ModelSelector = string
 
 export const api = {
+  clineStatus: () => requestJson<{ data: ClineStatus }>('/api/cline/status').then(unwrap),
+  clineModels: (provider = 'cline') => requestJson<{ data: Array<{ id: string; name: string; free: boolean }> }>(`/api/cline/models?provider=${encodeURIComponent(provider)}`).then(unwrap),
+  clineWorkflow: (threadId: string) => requestJson<{ data: import('./types').ClineWorkflowState }>(`/api/workflow/threads/${encodeURIComponent(threadId)}`).then(unwrap),
+  ensureClineRole: (threadId: string, role: 'planner' | 'executor') => post<{ data: ClineSession }>(`/api/workflow/threads/${encodeURIComponent(threadId)}/cline/${role}`).then(unwrap),
+  sendClineRole: (threadId: string, role: 'planner' | 'executor', text: string) => post(`/api/workflow/threads/${encodeURIComponent(threadId)}/cline/${role}/messages`, { text, messageId: messageId() }),
+  connectCline: (id: string) => post<{ data: ClineSession }>(`/api/cline/sessions/${encodeURIComponent(id)}/connect`).then(unwrap),
+  configCline: (id: string, configId: string, value: string | boolean) => post<{ data: ClineSession }>(`/api/cline/sessions/${encodeURIComponent(id)}/config`, { configId, value }).then(unwrap),
+  permissionCline: (id: string, permissionId: string, optionId: string) => post(`/api/cline/sessions/${encodeURIComponent(id)}/permission`, { permissionId, optionId }),
+  stopCline: (id: string) => post(`/api/cline/sessions/${encodeURIComponent(id)}/cancel`),
   codexWeeklyQuota: () => requestJson<{ data: CodexWeeklyQuota }>('/api/codex/weekly-quota').then(unwrap),
   extensionsStatus: () => requestJson<{ data: ExtensionWorkspaceStatus }>('/api/extensions/status').then(unwrap),
   installedExtensions: () => requestJson<{ data: ExtensionItem[] }>('/api/extensions/installed').then(unwrap),

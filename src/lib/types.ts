@@ -8,6 +8,15 @@
 
 export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+export interface ClineStatus { available: boolean; providers: Array<{ id: string; name: string; configured: boolean }> }
+export interface ClineSessionSummary { id: string; title: string; provider: string; active: boolean; archived: boolean; updatedAt: number }
+export interface ClineOption { id: string; type: 'select' | 'boolean'; name: string; currentValue: string | boolean; options?: Array<{ value?: string; name: string; options?: Array<{ value: string; name: string }> }> }
+export interface ClineSession extends ClineSessionSummary {
+  directory: string; remoteId: string | null; loading: boolean; error: string | null
+  messages: ChatMessage[]; tools: Array<{ id: string; title: string; status: string }>; configOptions: ClineOption[]
+  permissions: Array<{ id: string; title: string; options: Array<{ id: string; name: string; kind: string }> }>
+}
+
 export interface CodexAllowance { available: boolean; remainingPercent: number | null; resetsAt: number | null }
 export interface CodexWeeklyQuota extends CodexAllowance { fiveHour?: CodexAllowance }
 
@@ -78,7 +87,9 @@ export interface OpenCodeStatus {
   error?: string
 }
 
-export interface WorkflowSetup { planner: 'codex' | 'opencode'; plannerModel: string; executor: 'codex' | 'opencode'; executorModel: string }
+export interface WorkflowSetup { planner: 'codex' | 'opencode' | 'cline'; plannerModel: string; executor: 'codex' | 'opencode' | 'cline'; executorModel: string; clineProvider?: string }
+export interface WorkflowRoleView { agent: 'codex' | 'opencode' | 'cline'; active: boolean; messages: ChatMessage[]; session?: ClineSession | null }
+export interface ClineWorkflowState { thread: CodexThread; planner: WorkflowRoleView; executor: WorkflowRoleView }
 export interface WorkflowSettings { workflow: WorkflowSetup; agents: { id: string; name: string; available: boolean }[] }
 export interface ProjectFileEntry { name: string; path: string; kind: 'directory' | 'file' }
 export interface ProjectFiles { path: string; entries: ProjectFileEntry[]; truncated: boolean }
@@ -98,6 +109,9 @@ export interface CodexThread {
   workflow?: WorkflowSetup
   workflowRole?: 'planner' | 'executor'
   executorThreadId?: string
+  localWorkflow?: boolean
+  clinePlannerSessionId?: string
+  clineExecutorSessionId?: string
   id: string
   title?: string
   name?: string
@@ -194,7 +208,7 @@ export interface ChatMessage {
   userMessageId?: string
 }
 
-export type Speaker = 'codex' | 'opencode'
+export type Speaker = 'codex' | 'opencode' | 'cline'
 
 export interface SessionFileDiff {
   /** The completed Codex edit events contributing to this file's patch. */

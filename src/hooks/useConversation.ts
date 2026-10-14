@@ -85,7 +85,7 @@ function messageOf(draft: string, attachments: string[]) {
 export function useConversation(thread: CodexThread | null): ConversationController {
   const threadId = thread?.id ?? null
   const scope = threadId ?? 'none'
-  const catalog = usePolling(api.codexModels, 300_000)
+  const catalog = usePolling(thread?.localWorkflow ? null : api.codexModels, 300_000)
   const savedSettings = usePolling(threadId ? () => api.codexSettings(threadId) : null, 0, { resetKey: scope })
   const [permissionChange, setPermissionChange] = useState<{ scope: string; changing: boolean; error: string | null }>({ scope, changing: false, error: null })
   const [selection, setSelection] = useState<{ scope: string; settings: CodexSettings } | null>(null)

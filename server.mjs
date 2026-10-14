@@ -8,6 +8,8 @@ import { workbenchPath, trustedExtensionRequest } from './server/extension-workb
 import { searchExtensions, installedExtensionIcon } from './server/extension-catalog.mjs'
 import { AgentExtensions } from './server/agent-extensions.mjs'
 import { TailwindCompletions } from './server/tailwind-completions.mjs'
+import { ClineBridge } from './server/cline-bridge.mjs'
+import { ClineWorkflow, workflowRolePrompt } from './server/cline-workflow.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
@@ -30,6 +32,7 @@ const stateDirectory = process.env.RELAY_STATE_DIR
 const eventsPath = path.join(stateDirectory, 'events.json')
 const agentExtensions = new AgentExtensions(stateDirectory)
 const tailwindCompletions = new TailwindCompletions()
+const clineBridge = new ClineBridge(stateDirectory)
 const sourceControl = new SourceControl()
 const commitMessageJobs = new Set()
 const codexStatePath = path.join(stateDirectory, 'codex.json')
@@ -1042,6 +1045,10 @@ async function readCodexWeeklyQuota() {
 }
 
 function threadInstructionSelection(saved) {
+  if (saved.workflow && [saved.workflow.planner, saved.workflow.executor].includes('cline')) {
+    const role = saved.workflowRole === 'executor' ? 'executor' : 'planner'
+    return { source: `clineWorkflowCodex${role}`, text: workflowRolePrompt(role, '', 'Codex', 'Cline') }
+  }
   if (saved.workflowRole === 'executor' && saved.workflow?.planner === 'codex') {
     return { source: 'codexToCodexExecutorInstructions', text: codexToCodexExecutorInstructions }
   }
@@ -1180,6 +1187,7 @@ async function requireRelayCodexThread(threadId) {
 
 async function ensureRelayCodexThreadLoaded(threadId) {
   const { saved } = await requireRelayCodexThread(threadId)
+  if (saved.localWorkflow) throw new HttpError(409, 'This conversation is a workflow container. Send to its assigned agent role.')
   // Resume in the folder the session belongs to. A session opened from another
   // project must not be re-rooted into this one.
   const cwd = typeof saved.directory === 'string' && saved.directory ? saved.directory : watchRoot
@@ -1237,7 +1245,7 @@ async function listAllCodexThreads(archived = false) {
     sortKey: 'updated_at',
     sortDirection: 'desc',
     archived,
-  })
+  }).catch(error => { if (Object.values(state.threads).some(thread => thread.localWorkflow)) return { data: [] }; throw error })
   const remote = Array.isArray(response?.data) ? response.data : []
   if (!archived) adoptedLookupCache = { at: Date.now(), byId: new Map(remote.map((thread) => [thread?.id, thread])) }
 
@@ -1250,7 +1258,7 @@ async function listAllCodexThreads(archived = false) {
   const activeLocalOnly = Object.values(state.threads)
     .filter((saved) => {
       const id = safeCodexThreadId(saved?.id)
-      return !archived && id && !remoteIds.has(id) && codexBridge.activeThreads.has(id) && !saved.archived
+      return id && !remoteIds.has(id) && (saved.localWorkflow ? Boolean(saved.archived) === archived : !archived && codexBridge.activeThreads.has(id) && !saved.archived)
     })
     .map((saved) => ({
       id: saved.id,
@@ -1265,6 +1273,7 @@ async function listAllCodexThreads(archived = false) {
     .filter((thread) => safeCodexThreadId(thread?.id))
     .map((thread) => {
       const saved = state.threads[thread.id]
+      const clineRoles = [saved?.clinePlannerSessionId, saved?.clineExecutorSessionId].filter(Boolean).map(id => clineBridge.sessions.get(id)).filter(Boolean)
       // A rollout that has been moved or deleted cannot be opened; keep it out
       // unless the bridge is holding it open right now.
       if (thread?.path && !existsSync(thread.path) && !codexBridge.activeThreads.has(thread.id)) return null
@@ -1275,14 +1284,14 @@ async function listAllCodexThreads(archived = false) {
         // can lag behind or fall back to a console code-page.
         title: saved?.title ?? thread.name ?? thread.title ?? 'محادثة جديدة',
         directory,
-        updatedAt: Math.max(conversationTime(thread.updatedAt ?? thread.updated_at), conversationTime(saved?.lastMessageAt))
+        updatedAt: Math.max(conversationTime(thread.updatedAt ?? thread.updated_at), conversationTime(saved?.lastMessageAt), conversationTime(state.threads[saved?.executorThreadId]?.lastMessageAt), ...clineRoles.map(session => conversationTime(session.updatedAt)))
           || conversationTime(saved?.updatedAt ?? thread.createdAt ?? thread.created_at),
         createdAt: saved?.createdAt ?? thread.createdAt ?? thread.created_at,
         /** The folder this instance works in. */
         inProject: isWorkRoot(directory),
         /** Still running here, so its state is live rather than read from disk. */
         active: codexBridge.activeThreads.has(thread.id),
-        running: codexBridge.getTurnState(thread.id).active || thread.status?.type === 'active',
+        running: codexBridge.getTurnState(thread.id).active || thread.status?.type === 'active' || Boolean(saved?.executorThreadId && codexBridge.getTurnState(saved.executorThreadId).active) || clineRoles.some(session => session.active || session.loading || session.preparing),
         archived,
         /** Open Zero has not recorded this session yet; opening it will. */
         needsRegistration: !saved,
@@ -1290,6 +1299,9 @@ async function listAllCodexThreads(archived = false) {
         workflow: saved?.workflow ?? defaultWorkflow,
         workflowRole: saved?.workflowRole ?? (saved?.workflow?.planner === 'opencode' && saved?.workflow?.executor === 'codex' ? 'executor' : 'planner'),
         executorThreadId: saved?.executorThreadId,
+        localWorkflow: Boolean(saved?.localWorkflow),
+        clinePlannerSessionId: saved?.clinePlannerSessionId,
+        clineExecutorSessionId: saved?.clineExecutorSessionId,
       }
     })
     .filter(Boolean)
@@ -1302,6 +1314,15 @@ async function manageCodexThread(threadId, action, input = {}) {
   const id = safeCodexThreadId(threadId)
   if (!id) throw new HttpError(400, 'Invalid Codex thread id.')
   const title = action === 'rename' ? conversationTitle(input.title) : null
+  const current = (await readCodexState()).threads[id]
+  if (current?.workflow && [current.workflow.planner, current.workflow.executor].includes('cline')) {
+    const roles = await clineWorkflow.read(id)
+    if (action === 'archive' && (roles.planner.active || roles.executor.active)) throw new HttpError(409, 'Wait for both workflow agents to finish before archiving.')
+    if (current.localWorkflow) {
+      await updateCodexState(state => { state.threads[id] = { ...state.threads[id], ...(title ? { title } : { archived: action === 'archive' }) } })
+      return { id, ...(title ? { title } : { archived: action === 'archive' }) }
+    }
+  }
   // Metadata operations must not resume a conversation or replace its instructions.
   const response = await codexBridge.call('thread/read', { threadId: id, includeTurns: false })
   const thread = response?.thread
@@ -1336,15 +1357,22 @@ async function manageCodexThread(threadId, action, input = {}) {
 async function createRelayCodexThread(input) {
   const title = shortThreadTitle(input?.title)
   const workflow = validateWorkflow((await readCodexState()).workflow)
+  if ([workflow.planner, workflow.executor].includes('cline') && workflow.planner !== 'codex') {
+    const id = `workflow-${randomUUID()}`
+    const saved = { id, title, workflow, localWorkflow: true, workflowRole: 'planner', directory: watchRoot, createdAt: Date.now(), updatedAt: Date.now() }
+    await updateCodexState(state => { state.threads[id] = saved })
+    return saved
+  }
   const codexIsPlanner = workflow.planner === 'codex'
   const codexIsPlannerOnly = codexIsPlanner && workflow.executor === 'codex'
   const codexIsOnlyExecutor = workflow.executor === 'codex' && workflow.planner !== 'codex'
+  const instructions = workflow.executor === 'cline' ? workflowRolePrompt('planner', '', 'Codex', 'Cline') : codexIsOnlyExecutor ? codexExecutorInstructions : codexIsPlannerOnly ? codexPlannerInstructions : relayCodexInstructions
   const response = await codexBridge.call('thread/start', {
     cwd: watchRoot,
     sandbox: codexIsOnlyExecutor ? 'workspace-write' : 'read-only',
     approvalPolicy: 'never',
-    developerInstructions: codexIsOnlyExecutor ? codexExecutorInstructions : codexIsPlannerOnly ? codexPlannerInstructions : relayCodexInstructions,
-    dynamicTools: codexIsOnlyExecutor ? [] : relayDynamicTools,
+    developerInstructions: instructions,
+    dynamicTools: codexIsOnlyExecutor || workflow.executor === 'cline' ? [] : relayDynamicTools,
     threadSource: 'appServer',
   })
   const thread = response?.thread ?? response?.data ?? response
@@ -1360,7 +1388,7 @@ async function createRelayCodexThread(input) {
       state.threads[saved.id].codexEffort = ''
     }
   })
-  codexBridge.markThreadActive(saved.id, codexIsOnlyExecutor ? codexExecutorInstructions : codexIsPlannerOnly ? codexPlannerInstructions : relayCodexInstructions)
+  codexBridge.markThreadActive(saved.id, instructions)
 
   try {
     await codexBridge.call('thread/name/set', { threadId: saved.id, name: title })
@@ -1382,7 +1410,8 @@ function textFromCodexInput(content) {
 async function listRelayCodexMessages(threadId) {
   // Persisted item pagination is read-only. Resuming here unnecessarily claims
   // writer ownership and fails for sessions open in Codex Desktop or another API.
-  await requireRelayCodexThread(threadId)
+  const { saved } = await requireRelayCodexThread(threadId)
+  if (saved.localWorkflow) return []
   const items = []
   let cursor
   const seenCursors = new Set()
@@ -1442,7 +1471,7 @@ async function sendRelayCodexMessage(threadId, input) {
     settings.effort = effort
   }
 
-  const delegation = saved.workflow?.executor === 'codex' ? { hasExplicitTag: false, task: '' } : extractOpenCodeTask(text)
+  const delegation = ['codex', 'cline'].includes(saved.workflow?.executor) ? { hasExplicitTag: false, task: '' } : extractOpenCodeTask(text)
   if (delegation.hasExplicitTag && !delegation.task) {
     throw new HttpError(400, 'Write the OpenCode request after $opencode.')
   }
@@ -1487,11 +1516,12 @@ async function sendRelayCodexMessage(threadId, input) {
 
 async function createCodexExecutorThread(workflow, title) {
   const name = shortThreadTitle(title)
+  const instructions = workflow.planner === 'cline' ? workflowRolePrompt('executor', '', 'Codex', 'Cline') : codexToCodexExecutorInstructions
   const response = await codexBridge.call('thread/start', {
     cwd: watchRoot,
     sandbox: 'workspace-write',
     approvalPolicy: 'never',
-    developerInstructions: codexToCodexExecutorInstructions,
+    developerInstructions: instructions,
     dynamicTools: [],
     threadSource: 'appServer',
   })
@@ -1504,7 +1534,7 @@ async function createCodexExecutorThread(workflow, title) {
     state.threads[saved.id].codexModel = workflow.executorModel || ''
     state.threads[saved.id].codexEffort = ''
   })
-  codexBridge.markThreadActive(saved.id, codexToCodexExecutorInstructions)
+  codexBridge.markThreadActive(saved.id, instructions)
   try { await codexBridge.call('thread/name/set', { threadId: saved.id, name }) } catch { /* cosmetic */ }
   return { ...thread, ...saved, id: saved.id, title: name, workflow }
 }
@@ -2225,6 +2255,47 @@ async function setMcpEnabled(agent, name, enabled) {
   } finally { mcpMutation = null }
 }
 
+const clineWorkflow = new ClineWorkflow({
+  cline: clineBridge,
+  getThread: async id => (await requireRelayCodexThread(id)).saved,
+  patchThread: async (id, patch) => updateCodexState(state => { state.threads[id] = { ...state.threads[id], ...patch } }),
+  getExternalRole: async (id, role, saved) => {
+    const agent = saved.workflow[role]
+    if (agent === 'codex') {
+      const source = role === 'planner' ? id : saved.executorThreadId
+      if (!source) return { agent, active: false, messages: [] }
+      const items = await listRelayCodexMessages(source)
+      return { agent, active: codexBridge.getTurnState(source).active, messages: items.filter(item => ['userMessage', 'agentMessage'].includes(item.type)).map(item => ({ id: item.id, role: item.type === 'userMessage' ? 'user' : 'assistant', text: item.text || textFromCodexInput(item.content) })) }
+    }
+    const handoff = await readOpenCodeHandoff(id)
+    const messages = handoff.messages.map(item => {
+      const role = item.type || item.info?.role
+      const content = item.text ?? item.content ?? item.parts ?? item.message
+      const text = typeof content === 'string' ? content : Array.isArray(content) ? content.filter(part => part.type === 'text').map(part => part.text || '').join('\n') : ''
+      return { id: item.id || item.info?.id, role, text }
+    }).filter(item => ['user', 'assistant'].includes(item.role) && item.text).reverse()
+    return { agent, active: handoff.active, messages }
+  },
+  sendExternalRole: async (id, role, text, saved) => {
+    if (saved.workflow[role] === 'codex') {
+      let destination = id
+      if (role === 'executor') {
+        destination = saved.executorThreadId
+        if (!destination) {
+          const created = await createCodexExecutorThread(saved.workflow, `${saved.title} · executor`)
+          destination = created.id
+          await updateCodexState(state => { state.threads[id].executorThreadId = destination })
+        }
+      }
+      return sendRelayCodexMessage(destination, { text, model: saved.workflow[`${role}Model`] || undefined })
+    }
+    const link = await ensureOpenCodeLink(id, `${role} · ${saved.title}`)
+    const response = await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/prompt`, { text, delivery: 'queue' })
+    const receipt = response?.data
+    if (!receipt?.id || receipt.sessionID !== link.opencodeSessionId || (receipt.delivery ?? response.delivery) !== 'queue') throw new Error('OpenCode did not confirm the queued workflow request.')
+    return receipt
+  },
+})
 const workflowActions = new Set()
 async function queuePlannerMessage(link, text) {
   const response = await openCodeApi('POST', `/api/session/${link.opencodeSessionId}/prompt`, { text: plannerPrompt(text), delivery: 'queue' })
@@ -2336,7 +2407,46 @@ codexBridge.onTurnCompleted = async (threadId) => {
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
-    if (url.pathname.startsWith('/api/extensions/') && !trustedExtensionRequest(request)) {
+  if (url.pathname.startsWith('/api/cline/')) {
+    try {
+      if (!trustedExtensionRequest(request)) throw new HttpError(403, 'Open Cline from Open Zero.')
+      if (url.pathname === '/api/cline/status' && request.method === 'GET') { sendJson(response, 200, { data: clineBridge.status() }); return }
+      if (url.pathname === '/api/cline/models' && request.method === 'GET') { sendJson(response, 200, { data: await clineBridge.models(url.searchParams.get('provider') || 'cline') }); return }
+      const match = url.pathname.match(/^\/api\/cline\/sessions\/([a-zA-Z0-9-]{6,200})\/(config|permission|cancel|connect)$/)
+      if (!match) throw new HttpError(404, 'Unknown Cline endpoint.')
+      const session = await clineBridge.get(match[1])
+      if (path.resolve(session.directory).toLowerCase() !== path.resolve(watchRoot).toLowerCase()) throw new HttpError(409, 'Open this conversation’s project folder first.')
+      const parent = Object.values((await readCodexState()).threads).find(thread => thread.clinePlannerSessionId === session.id || thread.clineExecutorSessionId === session.id)
+      if (!parent || parent.archived) throw new HttpError(409, 'Open an active conversation assigned to this Cline role.')
+      if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported.')
+      const input = await readJson(request)
+      if (match[2] === 'config') { sendJson(response, 200, { data: await clineBridge.configure(session.id, input.configId, input.value) }); return }
+      if (match[2] === 'connect') { sendJson(response, 200, { data: await clineBridge.reconnect(session.id) }); return }
+      if (match[2] === 'permission') { await clineBridge.permission(session.id, input.permissionId, input.optionId); sendJson(response, 200, { data: { accepted: true } }); return }
+      if (match[2] === 'cancel') { await clineBridge.cancel(session.id); sendJson(response, 200, { data: { cancelled: true } }); return }
+      throw new HttpError(404, 'Unknown Cline endpoint.')
+    } catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
+    return
+  }
+  const clineRoleMatch = url.pathname.match(/^\/api\/workflow\/threads\/([A-Za-z0-9_-]{6,200})(?:\/cline\/(planner|executor)(?:\/(messages))?)?$/)
+  if (clineRoleMatch) {
+    try {
+      if (!trustedExtensionRequest(request)) throw new HttpError(403, 'Open this workflow from Open Zero.')
+      const saved = (await requireRelayCodexThread(clineRoleMatch[1])).saved
+      if (!isWorkRoot(saved.directory)) throw new HttpError(409, 'Open this conversation’s project folder first.')
+      if (![saved.workflow?.planner, saved.workflow?.executor].includes('cline')) throw new HttpError(409, 'This workflow does not use Cline.')
+      if (request.method === 'GET' && !clineRoleMatch[2]) { sendJson(response, 200, { data: await clineWorkflow.read(saved.id) }); return }
+      if (request.method === 'POST' && clineRoleMatch[3]) {
+        const input = await readJson(request)
+        if (saved.workflow[clineRoleMatch[2]] !== 'cline') throw new HttpError(409, 'This role is not assigned to Cline.')
+        sendJson(response, 202, { data: await clineWorkflow.action(saved.id, 'message', { ...input, role: clineRoleMatch[2] }, () => consumeLicensedMessage(input, response)) }); return
+      }
+      if (request.method === 'POST' && clineRoleMatch[2]) { const session = await clineWorkflow.ensure(saved.id, clineRoleMatch[2]); sendJson(response, 200, { data: clineBridge.snapshot(session) }); return }
+      throw new HttpError(405, 'Unsupported workflow method.')
+    } catch (error) { sendJson(response, error.status ?? 502, { error: error.message }) }
+    return
+  }
+  if (url.pathname.startsWith('/api/extensions/') && !trustedExtensionRequest(request)) {
       sendJson(response, 403, { error: 'Open the extensions workspace from Open Zero.' })
       return
     }
@@ -2425,8 +2535,14 @@ const server = createServer(async (request, response) => {
     try {
       if (request.method !== 'POST') throw new HttpError(405, 'Only POST is supported.')
       const input = await readJson(request)
-      await consumeLicensedMessage(input, response)
-      sendJson(response, 202, { data: await reverseWorkflowAction(workflowMatch[1], workflowMatch[2], input) })
+      const saved = (await requireRelayCodexThread(workflowMatch[1])).saved
+      if ([saved.workflow?.planner, saved.workflow?.executor].includes('cline')) {
+        if (!trustedExtensionRequest(request) || !isWorkRoot(saved.directory)) throw new HttpError(403, 'Open this workflow from its project in Open Zero.')
+        sendJson(response, 202, { data: await clineWorkflow.action(saved.id, workflowMatch[2], input, () => consumeLicensedMessage(input, response)) })
+      } else {
+        await consumeLicensedMessage(input, response)
+        sendJson(response, 202, { data: await reverseWorkflowAction(workflowMatch[1], workflowMatch[2], input) })
+      }
     } catch (error) { sendJson(response, error.statusCode ?? error.status ?? 500, { error: publicError(error) }) }
     return
   }
@@ -3009,7 +3125,7 @@ server.on('upgrade', (request, socket, head) => {
 
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
   tailwindCompletions.stop()
-  void Promise.resolve().then(() => codexBridge.stop()).finally(() => process.exit(0))
+  void Promise.allSettled([clineBridge.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
 })
 
 server.listen(port, '127.0.0.1', () => {
@@ -3030,6 +3146,6 @@ process.parentPort?.on('message', event => {
   if (event.data?.type === 'shutdown' && server.listening) {
     server.close()
     tailwindCompletions.stop()
-    void Promise.resolve().then(() => codexBridge.stop()).finally(() => process.exit(0))
+    void Promise.allSettled([clineBridge.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
   }
 })

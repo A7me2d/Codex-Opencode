@@ -6,12 +6,12 @@ import type { ChatMessage, Speaker } from '../lib/types'
 import { AccountAvatar } from './AccountAvatar'
 import { accountIdentity } from '../lib/accountIdentity'
 
-const agentName: Record<Speaker, string> = { codex: 'Codex', opencode: 'OpenCode' }
+const agentName: Record<Speaker, string> = { codex: 'Codex', opencode: 'OpenCode', cline: 'Cline' }
 
 /** One chat line. The two agents stay visually distinct without splitting the flow. */
 export const MessageBubble = memo(function MessageBubble({ message, speaker, codexIdentity }: { message: ChatMessage; speaker: Speaker; codexIdentity?: string }) {
   const isUser = message.role === 'user'
-  const accountUser = isUser && speaker === 'codex'
+  const accountUser = isUser && (speaker === 'codex' || speaker === 'cline')
   const accountName = accountIdentity(codexIdentity).name || tr('Codex Desktop')
   const lines = message.text.split('\n')
 
