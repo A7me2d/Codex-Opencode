@@ -88,6 +88,7 @@ const persisted = { threads: {}, workflow: validateWorkflow({ planner: 'cline', 
 const calls = []
 const bridge = { activeThreads: new Set(), getTurnState: () => ({ active: false }), call: async method => { calls.push(method); throw new Error('Codex unavailable') } }
 const context = vm.createContext({ validateWorkflow, workflowRolePrompt, randomUUID, watchRoot: 'D:/synthetic-project',
+  providerActivity: { require: async () => {}, enabled: () => true, codexLists: new Map() },
   shortThreadTitle: value => value, readCodexState: async () => persisted, updateCodexState: async change => change(persisted),
   codexBridge: bridge, safeCodexThreadId: id => id, existsSync: () => true, isWorkRoot: () => true, defaultWorkflow,
   conversationTime: value => value || 0, conversationTitle: value => value, adoptedLookupCache: null,

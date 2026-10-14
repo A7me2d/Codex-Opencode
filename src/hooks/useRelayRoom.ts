@@ -10,6 +10,7 @@ import { useAgentAlerts } from './useAgentAlerts'
 import type { Notify } from './useAgentAlerts'
 import { useConversation } from './useConversation'
 import { usePolling } from './usePolling'
+import { useProviderActivity } from './useProviderActivity'
 
 /**
  * The desk's top-level state: which conversations exist, which one is open,
@@ -19,22 +20,25 @@ import { usePolling } from './usePolling'
  * *which* conversation is current and keeps the shell honest.
  */
 export function useRelayRoom() {
-  const codexStatus = usePolling(api.codexStatus, Math.max(config.poll.codexStatusMs, 30_000))
-  const openCodeStatus = usePolling(api.openCodeStatus, Math.max(config.poll.openCodeStatusMs, 30_000))
+  const activity = useProviderActivity()
+  const codexStatus = usePolling(activity.providers.codex ? api.codexStatus : null, Math.max(config.poll.codexStatusMs, 30_000))
+  const openCodeStatus = usePolling(activity.providers.opencode ? api.openCodeStatus : null, Math.max(config.poll.openCodeStatusMs, 30_000))
   const project = usePolling(api.project, config.poll.projectMs)
-  const threadList = usePolling(api.threads, Math.max(config.poll.threadsMs, 30_000))
+  const threadList = usePolling(activity.ready ? api.threads : null, Math.max(config.poll.threadsMs, 30_000))
+  useEffect(() => { if (activity.ready) void threadList.refresh() }, [activity.ready, activity.providers.codex, threadList.refresh])
   const [showArchived, setShowArchived] = useState(false)
-  const archivedList = usePolling(showArchived ? api.archivedThreads : null, 30_000)
+  const archivedList = usePolling(showArchived && activity.ready ? api.archivedThreads : null, 30_000, { resetKey: String(activity.providers.codex) })
   const relayEvents = usePolling(api.relayEvents, Math.max(config.poll.relayEventsMs, 30_000))
-  const models = usePolling(api.models, Math.max(config.poll.modelsMs, 300_000))
+  const models = usePolling(activity.providers.opencode ? api.models : null, Math.max(config.poll.modelsMs, 300_000))
   const workflowDefaults = usePolling(api.workflow, 30_000)
   useEffect(() => {
     const changed = () => { void workflowDefaults.refresh() }
     window.addEventListener('openzero:workflow-changed', changed)
     return () => window.removeEventListener('openzero:workflow-changed', changed)
   }, [workflowDefaults.refresh])
-  const canCreateThread = Boolean(codexStatus.data?.connected || workflowDefaults.data?.workflow.planner === 'cline' || workflowDefaults.data?.workflow.executor === 'cline')
-  const openCodeSessions = usePolling(api.openCodeSessions, Math.max(config.poll.sessionsMs, 30_000))
+  const setup = workflowDefaults.data?.workflow
+  const canCreateThread = Boolean(setup && activity.providers[setup.planner] && (setup.planner === 'cline' || (setup.planner === 'opencode' && setup.executor === 'cline') || (activity.providers.codex && codexStatus.data?.connected)))
+  const openCodeSessions = usePolling(activity.providers.opencode ? api.openCodeSessions : null, Math.max(config.poll.sessionsMs, 30_000))
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -43,6 +47,11 @@ export function useRelayRoom() {
   /** Errors from the shell itself (create thread, open folder). */
   const [shellError, setShellError] = useState<string | null>(null)
   const [recentActivity, setRecentActivity] = useState<Record<string, number>>({})
+  const [pendingThreads, setPendingThreads] = useState<CodexThread[]>([])
+  useEffect(() => {
+    const registered = new Set(asArray<CodexThread>(threadList.data).map(thread => thread.id))
+    setPendingThreads(previous => previous.some(thread => registered.has(thread.id)) ? previous.filter(thread => !registered.has(thread.id)) : previous)
+  }, [threadList.data])
   useEffect(() => {
     const changed = (event: Event) => {
       const id = (event as CustomEvent<string>).detail
@@ -58,12 +67,12 @@ export function useRelayRoom() {
     // Tolerate duplicate rollout records, then include just-sent messages in
     // recency order while the provider's list catches up.
     const seen = new Set<string>()
-    return asArray<CodexThread>(threadList.data).filter((thread) => {
+    return [...pendingThreads, ...asArray<CodexThread>(threadList.data)].filter((thread) => {
       if (seen.has(thread.id)) return false
       seen.add(thread.id)
       return true
     }).sort((a, b) => Math.max(toEpoch(b.updatedAt), recentActivity[b.id] ?? 0) - Math.max(toEpoch(a.updatedAt), recentActivity[a.id] ?? 0))
-  }, [threadList.data, recentActivity])
+  }, [threadList.data, recentActivity, pendingThreads])
   const workRoot = (project.data as ProjectInfo | null)?.workRoot
   const threads = useMemo(() => {
     if (!workRoot) return projectThreads
@@ -118,6 +127,8 @@ export function useRelayRoom() {
     setShellError(null)
     try {
       const created = await api.createThread(tr("محادثة جديدة"))
+      setPendingThreads(previous => [created, ...previous.filter(thread => thread.id !== created.id)])
+      setRecentActivity(previous => ({ ...previous, [created.id]: Date.now() }))
       setShowArchived(false)
       setSelectedId(created.id)
       await threadList.refresh()
@@ -215,7 +226,7 @@ export function useRelayRoom() {
     archivedError: archivedList.error,
     onShowArchived: setShowArchived,
     onRenameThread: async (id: string, title: string) => { await api.renameThread(id, title); await Promise.all([threadList.refresh(), archivedList.refresh()]) },
-    onArchiveThread: async (id: string) => { await api.archiveThread(id); await Promise.all([threadList.refresh(), archivedList.refresh()]); if (selectedId === id) setSelectedId(null) },
+    onArchiveThread: async (id: string) => { await api.archiveThread(id); setPendingThreads(previous => previous.filter(thread => thread.id !== id)); await Promise.all([threadList.refresh(), archivedList.refresh()]); if (selectedId === id) setSelectedId(null) },
     onRestoreThread: async (id: string) => { await api.restoreThread(id); await Promise.all([threadList.refresh(), archivedList.refresh()]); setShowArchived(false); setSelectedId(id) },
     selectedId,
     events,
@@ -228,6 +239,7 @@ export function useRelayRoom() {
     onRefreshSessions: () => void openCodeSessions.refresh(),
     onCreateThread: () => void createThread(),
     canCreateThread,
+    providerActivity: activity,
     onOpenProjectFolder: () => void openProjectFolder(),
     onOpenWorkRoot: () => void openWorkRootFolder(),
     onChooseWorkRoot: () => void chooseWorkRoot(),

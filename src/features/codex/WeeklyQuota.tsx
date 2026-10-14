@@ -2,9 +2,11 @@ import { Clock3, Gauge } from 'lucide-react'
 import { api } from '../../lib/api'
 import { tr } from '../../lib/i18n'
 import { usePolling } from '../../hooks/usePolling'
+import { useProviderActivity } from '../../hooks/useProviderActivity'
 
 export function WeeklyQuota() {
-  const usage = usePolling(api.codexWeeklyQuota, 60_000)
+  const activity = useProviderActivity()
+  const usage = usePolling(activity.providers.codex ? api.codexWeeklyQuota : null, 60_000)
   const remaining = usage.data?.available ? usage.data.remainingPercent : null
   const fiveHour = usage.data?.fiveHour
   const fiveHourLabel = tr('المتبقي من رصيد Codex لكل 5 ساعات: {{0}}%', [fiveHour?.remainingPercent ?? 0])

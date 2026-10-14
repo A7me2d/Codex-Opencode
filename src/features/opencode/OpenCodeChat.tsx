@@ -12,6 +12,7 @@ import { readOpenCodeChat } from '../../lib/chat'
 import { clip, relativeTime } from '../../lib/format'
 import { MessageChanges } from './MessageChanges'
 import { usePolling } from '../../hooks/usePolling'
+import { useProviderActivity } from '../../hooks/useProviderActivity'
 import type { Notify } from '../../hooks/useAgentAlerts'
 import type { OpenCodeSession } from '../../lib/types'
 
@@ -37,6 +38,7 @@ export interface OpenCodeChatProps {
  * somewhere else entirely.
  */
 export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionId, onNotify, onRefreshSessions }: OpenCodeChatProps) {
+  const activity = useProviderActivity()
   const [selected, setSelected] = useState<string>('')
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -61,7 +63,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
     setSelected((value) => (value && sessions.some((entry) => entry.id === value) ? value : ''))
   }, [linkedSessionId, sessions])
 
-  const transcript = usePolling(selected ? () => api.sessionMessages(selected) : null, running ? 2_500 : 15_000, { resetKey: selected })
+  const transcript = usePolling(selected && activity.providers.opencode ? () => api.sessionMessages(selected) : null, running ? 2_500 : 15_000, { resetKey: selected })
   const messages = useMemo(() => readOpenCodeChat(transcript.data), [transcript.data])
   const scroll = useChatHistory(messages, selected)
   const loading = transcript.status === 'loading'

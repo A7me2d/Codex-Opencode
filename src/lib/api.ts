@@ -63,6 +63,8 @@ function unwrap<T>(body: { data?: T }): T {
 export type ModelSelector = string
 
 export const api = {
+  providerActivity: () => requestJson<{ data: import('./types').ProviderActivitySettings }>('/api/provider-activity').then(unwrap),
+  setProviderActivity: (id: import('./types').ProviderId, enabled: boolean) => post<{ data: import('./types').ProviderActivitySettings }>('/api/provider-activity', { id, enabled }).then(unwrap),
   clineStatus: () => requestJson<{ data: ClineStatus }>('/api/cline/status').then(unwrap),
   clineModels: (provider = 'cline') => requestJson<{ data: Array<{ id: string; name: string; free: boolean }> }>(`/api/cline/models?provider=${encodeURIComponent(provider)}`).then(unwrap),
   clineWorkflow: (threadId: string) => requestJson<{ data: import('./types').ClineWorkflowState }>(`/api/workflow/threads/${encodeURIComponent(threadId)}`).then(unwrap),

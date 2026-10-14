@@ -7,6 +7,8 @@
  */
 
 export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
+export type ProviderId = 'codex' | 'opencode' | 'cline'
+export interface ProviderActivitySettings { providers: Record<ProviderId, boolean> }
 
 export interface ClineStatus { available: boolean; providers: Array<{ id: string; name: string; configured: boolean }> }
 export interface ClineSessionSummary { id: string; title: string; provider: string; active: boolean; archived: boolean; updatedAt: number }

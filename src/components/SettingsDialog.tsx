@@ -1,14 +1,15 @@
 import { openSupport } from './SupportChat'
 import { direction, tr } from '../lib/i18n'
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
-import { Settings, X, Check, Brain, Wrench, Palette, Puzzle, SlidersHorizontal, Languages, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, Wifi, WifiOff, KeyRound, ArrowUpRight } from 'lucide-react'
+import { Settings, X, Check, Brain, Wrench, Palette, Puzzle, SlidersHorizontal, Languages, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, Wifi, KeyRound, ArrowUpRight, Bot, TerminalSquare, TriangleAlert, Info } from 'lucide-react'
 import { api } from '../lib/api'
 import { usePolling } from '../hooks/usePolling'
 import { cx } from '../lib/cx'
 import type { CodexModelInfo, ModelInfo, WorkflowSetup } from '../lib/types'
 import { ThemePanel } from './ThemePanel'
-import { StateDot } from './ui/StateDot'
 import { SettingsSelect } from './ui/SettingsSelect'
+import { useProviderActivity } from '../hooks/useProviderActivity'
+import type { ProviderId } from '../lib/types'
 
 type UpdateCheckResult = { status: string; version?: string; message?: string }
 
@@ -39,6 +40,9 @@ interface SettingsDialogProps {
 export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff, onOpenExtensions }: SettingsDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [open, setOpen] = useState(false)
+  const activity = useProviderActivity()
+  const [changingProvider, setChangingProvider] = useState<ProviderId | null>(null)
+  const [providerError, setProviderError] = useState('')
   const [tab, setTab] = useState<'application' | 'account' | 'setup' | 'themes' | 'system'>('application')
   const [checkingUpdates, setCheckingUpdates] = useState(false)
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
@@ -48,7 +52,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
   const [openCodeModels, setOpenCodeModels] = useState<ModelInfo[]>([])
   const [clineModels, setClineModels] = useState<{ id: string; name: string; free: boolean }[]>([])
   const [clineError, setClineError] = useState('')
-  const clineStatus = usePolling(open ? api.clineStatus : null, 0)
+  const clineStatus = usePolling(open && activity.providers.cline ? api.clineStatus : null, 0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -68,18 +72,29 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
   }, [saved.data])
   useEffect(() => {
     if (!open) return
-    void Promise.all([api.codexModels().catch(() => []), api.models().catch(() => [])]).then(([codex, opencode]) => {
+    let current = true
+    void Promise.all([activity.providers.codex ? api.codexModels().catch(() => []) : Promise.resolve([]), activity.providers.opencode ? api.models().catch(() => []) : Promise.resolve([])]).then(([codex, opencode]) => {
+      if (!current) return
       setCodexModels(codex)
       setOpenCodeModels(opencode)
     })
-  }, [open])
+    return () => { current = false }
+  }, [open, activity.providers.codex, activity.providers.opencode])
   useEffect(() => {
-    if (!open || (setup.planner !== 'cline' && setup.executor !== 'cline')) return
+    if (!open) return
+    if (!activity.providers.cline || (setup.planner !== 'cline' && setup.executor !== 'cline')) { setClineModels([]); return }
     let current = true
     setClineModels([]); setClineError('')
     void api.clineModels(setup.clineProvider || 'cline').then(models => { if (current) setClineModels(models) }).catch(failure => { if (current) setClineError(failure instanceof Error ? failure.message : String(failure)) })
     return () => { current = false }
-  }, [open, setup.planner, setup.executor, setup.clineProvider])
+  }, [open, setup.planner, setup.executor, setup.clineProvider, activity.providers.cline])
+  async function toggleProvider(id: ProviderId) {
+    if (changingProvider) return
+    setChangingProvider(id); setProviderError('')
+    try { await activity.set(id, !activity.providers[id]) }
+    catch (failure) { setProviderError(failure instanceof Error ? failure.message : String(failure)); await activity.refresh() }
+    finally { setChangingProvider(null) }
+  }
   useEffect(() => {
     let current = true
     const refresh = async () => {
@@ -165,7 +180,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
             {sections.map(section => <button key={section.id} type="button" aria-current={tab === section.id ? 'page' : undefined} onClick={() => setTab(section.id)} className={cx('inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-start text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', tab === section.id ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-card hover:text-ink')}><section.icon className="h-4 w-4 shrink-0" aria-hidden="true" />{section.label}</button>)}
           </nav>
           <div className="thin-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-5 sm:p-6" key={tab}>
-            <header className="mb-5"><h3 className="text-lg font-semibold text-ink">{currentSection.label}</h3>{tab !== 'setup' ? <p className="mt-1 text-xs leading-5 text-ink-soft">{currentSection.description}</p> : null}</header>
+            <header className="mb-5"><h3 className="text-lg font-semibold text-ink">{currentSection.label}</h3>{tab !== 'setup' && tab !== 'system' ? <p className="mt-1 text-xs leading-5 text-ink-soft">{currentSection.description}</p> : null}</header>
             {tab === 'application' ? <section className="space-y-5">
               <div className="divide-y divide-line rounded-xl border border-line px-4">
                 <div className={row}><div><p className="text-xs font-semibold">{locale === 'ar' ? 'لغة الواجهة' : 'Interface language'}</p><p className="mt-1 text-[11px] text-ink-soft">{locale === 'ar' ? 'العربية' : 'English'}</p></div><button type="button" onClick={onToggleLanguage} className={action}><Languages className="h-4 w-4" />{locale === 'en' ? 'العربية' : 'English'}</button></div>
@@ -193,33 +208,42 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
         <button type="button" onClick={() => { dialog.current?.close(); openSupport() }} className="w-full rounded-lg border border-line bg-relay-tint px-4 py-3 text-start text-sm font-bold text-relay-ink">{locale === 'ar' ? 'شات الدعم' : 'Support chat'}<span className="mt-1 block text-xs font-normal text-ink-soft">{locale === 'ar' ? 'اطلب مفتاح تفعيل أو تواصل مع الدعم' : 'Request an activation key or contact support'}</span></button>
 
             </section> : null}
-            {tab === 'system' ? <section className="space-y-5">
-        <div>
-          <h3 className="text-sm font-bold">{tr("حالة التطبيق والاتصال")}</h3>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div className="flex items-center gap-3 rounded-xl border border-line bg-paper px-3 py-3">
-              {codexConnected ? <Wifi className="h-4 w-4 text-relay" aria-hidden="true" /> : <WifiOff className="h-4 w-4 text-review" aria-hidden="true" />}
-              <div className="min-w-0"><p className="text-xs font-bold">Codex Desktop</p><p className="mt-1 text-[10px] text-ink-soft">{codexConnected ? tr("متصل") : tr("غير متصل")}</p></div>
-            </div>
-            <div className="flex items-center gap-3 rounded-xl border border-line bg-paper px-3 py-3">
-              <StateDot active={openCodeOnline} warning={!openCodeOnline} />
-              <div className="min-w-0"><p className="text-xs font-bold">OpenCode</p><p className="mt-1 text-[10px] text-ink-soft">{openCodeOnline ? tr("متاح") : tr("لا يرد")}</p></div>
-            </div>
+            {tab === 'system' ? <section className="space-y-6">
+        <section aria-labelledby="settings-agents-title">
+          <h4 id="settings-agents-title" className="mb-3 text-xs font-semibold text-ink-soft">{locale === 'ar' ? 'المساعدون' : 'AI assistants'}</h4>
+          <div className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+            {(['codex', 'opencode', 'cline'] as const).map(id => {
+              const enabled = activity.providers[id]
+              const available = id === 'codex' ? codexConnected : id === 'opencode' ? openCodeOnline : clineStatus.data?.available
+              const name = id === 'codex' ? 'Codex' : id === 'opencode' ? 'OpenCode' : 'Cline'
+              const Icon = id === 'opencode' ? TerminalSquare : id === 'cline' ? Brain : Bot
+              const loading = !activity.ready || (enabled && id === 'cline' && clineStatus.status === 'loading')
+              return <div key={id} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-paper/40">
+                <span aria-hidden="true" className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-paper text-ink-soft', enabled && 'text-relay-ink')}><Icon className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1"><p className="text-sm font-semibold"><bdi>{name}</bdi></p><span className={cx('mt-1 inline-flex items-center gap-1.5 text-[11px]', !enabled || loading ? 'text-ink-soft' : available ? 'text-ready-ink' : 'text-review-ink')}><span aria-hidden="true" className={cx('h-1.5 w-1.5 rounded-full', loading ? 'bg-ink-soft/40' : !enabled ? 'bg-ink-soft/30' : available ? 'bg-ready' : 'bg-review')} />{loading ? (locale === 'ar' ? 'جارٍ الفحص…' : 'Checking…') : !enabled ? (locale === 'ar' ? 'موقوف' : 'Disabled') : available ? (locale === 'ar' ? 'متاح' : 'Available') : id === 'cline' ? (locale === 'ar' ? 'غير متاح' : 'Unavailable') : (locale === 'ar' ? 'غير متصل' : 'Offline')}</span></div>
+                <button type="button" role="switch" aria-checked={enabled} aria-busy={changingProvider === id} title={`${locale === 'ar' ? enabled ? 'إيقاف' : 'تشغيل' : enabled ? 'Disable' : 'Enable'} ${name}`} aria-label={`${locale === 'ar' ? enabled ? 'إيقاف' : 'تشغيل' : enabled ? 'Disable' : 'Enable'} ${name}`} disabled={!activity.ready || Boolean(changingProvider)} onClick={() => void toggleProvider(id)} className="inline-flex h-10 w-12 shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-wait disabled:opacity-40">
+                  <span aria-hidden="true" className={cx('relative inline-flex h-5 w-9 items-center rounded-full transition-colors', enabled ? 'bg-relay' : 'bg-ink-soft/25')}>{changingProvider === id ? <RefreshCw className="mx-auto h-3 w-3 animate-spin text-on-accent" /> : <span className={cx('absolute left-0.5 h-4 w-4 rounded-full bg-card shadow-sm transition-transform', enabled && 'translate-x-4')} />}</span>
+                </button>
+              </div>
+            })}
           </div>
-          {!codexConnected && codexError ? <p role="status" className="mt-3 rounded-lg bg-review-tint px-3 py-2 text-xs leading-5 text-review-ink">{tr("افتح Codex Desktop وسجّل الدخول. سيحاول التطبيق الاتصال تلقائيًا.")} {tr(codexError)}</p> : null}
-        </div>
+          <p className="mt-3 text-[11px] leading-5 text-ink-soft">{locale === 'ar' ? 'إيقاف المساعد يوقف طلباته في الخلفية.' : 'Disabled assistants stop making background requests.'}</p>
+          {providerError || activity.error ? <div role="alert" className="mt-3 flex items-start gap-2.5 rounded-lg bg-review-tint p-3 text-review-ink"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p className="min-w-0 flex-1 break-words text-xs leading-5">{providerError || activity.error}</p><button type="button" onClick={() => { setProviderError(''); void activity.refresh() }} aria-label={locale === 'ar' ? 'إعادة المحاولة' : 'Retry'} title={locale === 'ar' ? 'إعادة المحاولة' : 'Retry'} className="rounded-md p-1.5 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-review/40"><RefreshCw className="h-3.5 w-3.5" /></button></div> : null}
+          {activity.providers.codex && !codexConnected && codexError ? <details className="mt-3 text-xs text-ink-soft"><summary className="cursor-pointer py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40">{locale === 'ar' ? 'تفاصيل اتصال Codex' : 'Codex connection details'}</summary><p className="mt-2 break-words rounded-lg bg-paper p-3 text-[11px] leading-5">{tr(codexError)}</p></details> : null}
+        </section>
 
-              <div className="rounded-xl border border-line p-4"><div className={row}><div><h4 className="text-xs font-semibold">{locale === 'ar' ? 'تحديثات التطبيق' : 'Application updates'}</h4><p className="mt-1 text-[11px] text-ink-soft">{locale === 'ar' ? 'تحقق من توفر إصدار جديد' : 'Check for a newer version'}</p></div><button type="button" onClick={() => void checkForUpdates()} disabled={checkingUpdates} className={cx(action, 'disabled:cursor-wait disabled:opacity-60')}><RefreshCw className={cx('h-4 w-4', checkingUpdates && 'animate-spin')} />{locale === 'ar' ? 'تحقق من التحديثات' : 'Check for updates'}</button></div>
-        {checkingUpdates || updateResult ? <p role="status" aria-live="polite" className="text-xs leading-5 text-ink-soft">
+              <section aria-labelledby="settings-updates-title" className="border-t border-line pt-5"><div className="flex flex-wrap items-center justify-between gap-3"><h4 id="settings-updates-title" className="inline-flex items-center gap-2 text-sm font-semibold"><RotateCcw className="h-4 w-4 text-ink-soft" aria-hidden="true" />{locale === 'ar' ? 'تحديثات التطبيق' : 'Application updates'}</h4><button type="button" onClick={() => void checkForUpdates()} disabled={checkingUpdates} className={cx(action, 'w-full justify-center sm:w-auto disabled:cursor-wait disabled:opacity-60')}><RefreshCw className={cx('h-3.5 w-3.5', checkingUpdates && 'animate-spin')} aria-hidden="true" />{checkingUpdates ? (locale === 'ar' ? 'جارٍ الفحص…' : 'Checking…') : (locale === 'ar' ? 'فحص التحديثات' : 'Check for updates')}</button></div>
+        {checkingUpdates || updateResult ? <div role="status" aria-live="polite" className={cx('mt-4 flex items-start gap-2.5 rounded-lg p-3 text-xs leading-5', !checkingUpdates && ['available', 'current'].includes(updateResult?.status || '') ? 'bg-ready-tint text-ready-ink' : !checkingUpdates && updateResult?.status === 'error' ? 'bg-review-tint text-review-ink' : 'bg-paper text-ink-soft')}>
+          {checkingUpdates ? <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> : ['available', 'current'].includes(updateResult?.status || '') ? <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : updateResult?.status === 'error' ? <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}<p className="min-w-0 break-words">
           {checkingUpdates ? tr("جارٍ التحقق من تحديثات التطبيق…") : updateResult?.status === 'available'
             ? tr("يتوفر الإصدار {{0}} ويجري تنزيله في الخلفية.", [updateResult.version ?? ''])
             : updateResult?.status === 'current' ? tr("التطبيق محدّث بالفعل ({{0}}).", [updateResult.version ?? ''])
               : updateResult?.status === 'portable' ? tr("التحديث التلقائي غير متاح لنسخة Portable؛ ثبّت نسخة Setup.")
                 : updateResult?.status === 'unsupported' || updateResult?.status === 'unavailable' ? tr("فحص التحديثات متاح في نسخة سطح المكتب المثبّتة.")
                   : tr("تعذر التحقق من التحديثات: {{0}}", [updateResult?.message ?? ''])}
-        </p> : null}
+        </p></div> : null}
 
-              </div>
+              </section>
             </section> : null}
             {tab === 'themes' ? <ThemePanel /> : null}
             {tab === 'setup' ? <section className="space-y-5">

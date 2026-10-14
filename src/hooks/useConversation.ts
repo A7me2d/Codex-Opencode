@@ -8,6 +8,7 @@ import { readCodexFileChanges } from '../lib/diff'
 import type { SessionFileDiff } from '../lib/types'
 import type { ChatMessage, CodexThread, CodexTurnState, HandoffData } from '../lib/types'
 import { usePolling } from './usePolling'
+import { useProviderActivity } from './useProviderActivity'
 import type { CodexModelInfo, CodexSettings } from '../lib/types'
 export interface CodexSelection {
  permissionsPending: boolean
@@ -83,10 +84,12 @@ function messageOf(draft: string, attachments: string[]) {
  * briefly showing one session's transcript under another's title.
  */
 export function useConversation(thread: CodexThread | null): ConversationController {
+  const activity = useProviderActivity()
   const threadId = thread?.id ?? null
   const scope = threadId ?? 'none'
-  const catalog = usePolling(thread?.localWorkflow ? null : api.codexModels, 300_000)
-  const savedSettings = usePolling(threadId ? () => api.codexSettings(threadId) : null, 0, { resetKey: scope })
+  const codexEnabled = activity.providers.codex && !thread?.localWorkflow
+  const catalog = usePolling(codexEnabled ? api.codexModels : null, 300_000)
+  const savedSettings = usePolling(threadId && codexEnabled ? () => api.codexSettings(threadId) : null, 0, { resetKey: scope })
   const [permissionChange, setPermissionChange] = useState<{ scope: string; changing: boolean; error: string | null }>({ scope, changing: false, error: null })
   const [selection, setSelection] = useState<{ scope: string; settings: CodexSettings } | null>(null)
   const availableModels = catalog.data ?? []
@@ -108,11 +111,11 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const [queued, setQueued] = useState<{ threadId: string; text: string; attachments: string[] } | null>(null)
   const [modelChange, setModelChange] = useState<{ changing: boolean; error: string | null }>({ changing: false, error: null })
 
-  const turnRequest = usePolling(threadId ? () => api.turnState(threadId) : null,
+  const turnRequest = usePolling(threadId && codexEnabled ? () => api.turnState(threadId) : null,
     (data) => data?.active || sending ? config.poll.turnStateMs : 5_000, { resetKey: scope })
-  const messages = usePolling(threadId ? () => api.messages(threadId) : null,
+  const messages = usePolling(threadId && codexEnabled ? () => api.messages(threadId) : null,
     turnRequest.data?.active || sending ? config.poll.codexMessagesMs : 15_000, { resetKey: scope })
-  const handoff = usePolling(threadId ? () => api.handoff(threadId) : null,
+  const handoff = usePolling(threadId && activity.providers.opencode ? () => api.handoff(threadId) : null,
     (data) => data?.active || sending || turnRequest.data?.active ? config.poll.handoffMs : 15_000, { resetKey: scope })
   const lastActivity = useRef({ scope, active: false })
   useEffect(() => {

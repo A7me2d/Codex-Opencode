@@ -6,8 +6,8 @@ export function workflowRolePrompt(role, text, agent, otherAgent) {
 }
 
 export class ClineWorkflow {
-  constructor({ cline, getThread, patchThread, getExternalRole, sendExternalRole }) {
-    Object.assign(this, { cline, getThread, patchThread, getExternalRole, sendExternalRole })
+  constructor({ cline, getThread, patchThread, getExternalRole, sendExternalRole, requireEnabled = async () => {} }) {
+    Object.assign(this, { cline, getThread, patchThread, getExternalRole, sendExternalRole, requireEnabled })
     this.bindings = new Map(); this.actions = new Set()
   }
   async ensure(threadId, role) {
@@ -80,6 +80,7 @@ export class ClineWorkflow {
         input = { ...input, replyId: reply.id }
       } else throw new Error('Unknown workflow action.')
       if (!text || workflowRolePrompt(role, text, state.thread.workflow[role], state.thread.workflow[role === 'planner' ? 'executor' : 'planner']).length > 100000) throw new Error('This message is too long. Shorten it before sending.')
+      await this.requireEnabled(state.thread.workflow[role])
       if (state.thread.workflow[role] === 'cline') await this.ensure(threadId, role)
       await charge()
       await this.sendRole(threadId, role, text, input.messageId)
