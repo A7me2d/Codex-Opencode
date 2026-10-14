@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto'
 import { unzipSync } from 'fflate'
 import { parse } from 'jsonc-parser'
 import { extensionIdPattern, installedPackages, installedExtensions } from './extension-catalog.mjs'
+import { installationMarker, publishExtension, retryFileOperation } from './publish-extension.mjs'
 
 export class AgentExtensions {
   constructor(stateDirectory, { fetcher = fetch } = {}) {
@@ -30,7 +31,8 @@ export class AgentExtensions {
     preferences[id.toLowerCase()] = enabled
     const temporary = `${this.preferencesFile}.${randomBytes(8).toString('hex')}.tmp`
     await writeFile(temporary, JSON.stringify(preferences))
-    await rename(temporary, this.preferencesFile)
+    try { await retryFileOperation(() => rename(temporary, this.preferencesFile)) }
+    finally { await rm(temporary, { force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {}) }
     this.revision++
     return { id, enabled }
   }
@@ -97,13 +99,22 @@ export class AgentExtensions {
         await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, contents)
       }
       const destination = path.join(this.directory, `${id.toLowerCase()}-${manifest.version}-openzero`)
-      if (existsSync(destination)) return { id, installed: true }
-      await rename(staging, destination)
+      if (existsSync(destination)) {
+        let existing
+        try { existing = JSON.parse(readFileSync(path.join(destination, 'package.json'), 'utf8')) } catch { /* incomplete destination */ }
+        if (!existsSync(path.join(destination, installationMarker)) && `${existing?.publisher}.${existing?.name}`.toLowerCase() === id.toLowerCase() && existing.version === manifest.version) return { id, installed: true }
+        throw new Error('An incomplete extension installation already exists. Remove that installation before retrying.')
+      }
+      try { await publishExtension(staging, destination, { extensionDirectory: this.directory }) }
+      catch (error) {
+        if (['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw new Error('Windows is blocking extension files. Close programs using those files, then retry installation.')
+        throw error
+      }
       // Old VS Code uninstall metadata must not hide a fresh native install.
       this.revision++
       return { id, installed: true }
     } finally {
-      if (path.dirname(path.resolve(staging)) === path.resolve(this.storage)) await rm(staging, { recursive: true, force: true })
+      if (path.dirname(path.resolve(staging)) === path.resolve(this.storage)) await rm(staging, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {})
     }
   }
   snippets() {

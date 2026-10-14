@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { installationMarker } from './publish-extension.mjs'
 
 export const extensionIdPattern = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/i
 
@@ -10,6 +11,7 @@ export function installedPackages(directory) {
   const packages = new Map()
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.isSymbolicLink() || obsolete[entry.name]) continue
+    if (existsSync(path.join(directory, entry.name, installationMarker))) continue
     try {
       const manifest = JSON.parse(readFileSync(path.join(directory, entry.name, 'package.json'), 'utf8'))
       const id = `${manifest.publisher}.${manifest.name}`
