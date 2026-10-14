@@ -2,6 +2,7 @@ export const defaultWorkflow = { planner: 'codex', plannerModel: '', executor: '
 export const agentRegistry = [
   { id: 'codex', name: 'Codex', available: true },
   { id: 'opencode', name: 'OpenCode', available: true },
+  { id: 'cline', name: 'Cline', available: true },
   { id: 'claude', name: 'Claude', available: false },
   { id: 'glm', name: 'GLM', available: false },
 ]
@@ -9,12 +10,14 @@ export const agentRegistry = [
 export function validateWorkflow(value) {
   const available = new Set(agentRegistry.filter(agent => agent.available).map(agent => agent.id))
   if (!available.has(value?.planner) || !available.has(value?.executor)) throw new Error('Choose an available agent for each role.')
-  if (value.planner === value.executor && value.planner !== 'codex') throw new Error('Using the same agent for both roles is currently supported with Codex.')
+  if (value.planner === value.executor && !['codex', 'cline'].includes(value.planner)) throw new Error('Using the same agent for both roles is supported with Codex or Cline.')
+  for (const role of ['planner', 'executor']) if (value[role] === 'cline' && !String(value[`${role}Model`] || '').trim()) throw new Error(`Choose a Cline model for the ${role} role.`)
   return {
     planner: value.planner,
     plannerModel: typeof value.plannerModel === 'string' ? value.plannerModel : '',
     executor: value.executor,
     executorModel: typeof value.executorModel === 'string' ? value.executorModel : '',
+    ...([value.planner, value.executor].includes('cline') ? { clineProvider: ['cline', 'openrouter', 'anthropic'].includes(value.clineProvider) ? value.clineProvider : 'cline' } : {}),
   }
 }
 

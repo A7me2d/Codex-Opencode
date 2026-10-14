@@ -27,6 +27,13 @@ export function useRelayRoom() {
   const archivedList = usePolling(showArchived ? api.archivedThreads : null, 30_000)
   const relayEvents = usePolling(api.relayEvents, Math.max(config.poll.relayEventsMs, 30_000))
   const models = usePolling(api.models, Math.max(config.poll.modelsMs, 300_000))
+  const workflowDefaults = usePolling(api.workflow, 30_000)
+  useEffect(() => {
+    const changed = () => { void workflowDefaults.refresh() }
+    window.addEventListener('openzero:workflow-changed', changed)
+    return () => window.removeEventListener('openzero:workflow-changed', changed)
+  }, [workflowDefaults.refresh])
+  const canCreateThread = Boolean(codexStatus.data?.connected || workflowDefaults.data?.workflow.planner === 'cline' || workflowDefaults.data?.workflow.executor === 'cline')
   const openCodeSessions = usePolling(api.openCodeSessions, Math.max(config.poll.sessionsMs, 30_000))
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -106,7 +113,7 @@ export function useRelayRoom() {
   })
 
   const createThread = useCallback(async () => {
-    if (creating || !codexStatus.data?.connected) return
+    if (creating || !canCreateThread) return
     setCreating(true)
     setShellError(null)
     try {
@@ -119,7 +126,7 @@ export function useRelayRoom() {
     } finally {
       setCreating(false)
     }
-  }, [codexStatus.data?.connected, creating, threadList])
+  }, [canCreateThread, creating, threadList])
 
   const openProjectFolder = useCallback(async () => {
     if (openingProject) return
@@ -220,6 +227,7 @@ export function useRelayRoom() {
     openCodeSessions: asArray<OpenCodeSession>(openCodeSessions.data),
     onRefreshSessions: () => void openCodeSessions.refresh(),
     onCreateThread: () => void createThread(),
+    canCreateThread,
     onOpenProjectFolder: () => void openProjectFolder(),
     onOpenWorkRoot: () => void openWorkRootFolder(),
     onChooseWorkRoot: () => void chooseWorkRoot(),

@@ -46,6 +46,9 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
   const [setup, setSetup] = useState<WorkflowSetup>({ planner: 'codex', plannerModel: '', executor: 'opencode', executorModel: '' })
   const [codexModels, setCodexModels] = useState<CodexModelInfo[]>([])
   const [openCodeModels, setOpenCodeModels] = useState<ModelInfo[]>([])
+  const [clineModels, setClineModels] = useState<{ id: string; name: string; free: boolean }[]>([])
+  const [clineError, setClineError] = useState('')
+  const clineStatus = usePolling(open ? api.clineStatus : null, 0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -60,6 +63,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
       plannerModel: saved.data.workflow.plannerModel ?? '',
       executor: saved.data.workflow.executor ?? 'opencode',
       executorModel: saved.data.workflow.executorModel ?? '',
+      clineProvider: saved.data.workflow.clineProvider ?? 'cline',
     })
   }, [saved.data])
   useEffect(() => {
@@ -69,6 +73,13 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
       setOpenCodeModels(opencode)
     })
   }, [open])
+  useEffect(() => {
+    if (!open || (setup.planner !== 'cline' && setup.executor !== 'cline')) return
+    let current = true
+    setClineModels([]); setClineError('')
+    void api.clineModels(setup.clineProvider || 'cline').then(models => { if (current) setClineModels(models) }).catch(failure => { if (current) setClineError(failure instanceof Error ? failure.message : String(failure)) })
+    return () => { current = false }
+  }, [open, setup.planner, setup.executor, setup.clineProvider])
   useEffect(() => {
     let current = true
     const refresh = async () => {
@@ -123,13 +134,14 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
     setNotice(null)
   }
   function modelOptions(agent: WorkflowSetup['planner']) {
+    if (agent === 'cline') return clineModels.map(model => ({ id: model.id, name: `${model.free ? 'FREE · ' : ''}${model.name}` }))
     return agent === 'codex'
       ? codexModels.map(model => ({ id: model.model, name: model.displayName }))
       : openCodeModels.filter(model => model.tools).map(model => ({ id: model.id, name: model.name }))
   }
   async function save() {
     setSaving(true); setError(null)
-    try { await api.saveWorkflow(setup); setNotice(tr("تم حفظ الإعداد. افتح محادثة جديدة لتبدأ بالأدوار المختارة.")); await saved.refresh() }
+    try { await api.saveWorkflow(setup); window.dispatchEvent(new Event('openzero:workflow-changed')); setNotice(locale === 'ar' ? 'تم الحفظ. افتح محادثة جديدة.' : 'Saved. Open a new conversation.'); await saved.refresh() }
     catch (failure) { setError(failure instanceof Error ? failure.message : tr("تعذّر حفظ الإعدادات.")) }
     finally { setSaving(false) }
   }
@@ -153,7 +165,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
             {sections.map(section => <button key={section.id} type="button" aria-current={tab === section.id ? 'page' : undefined} onClick={() => setTab(section.id)} className={cx('inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-start text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', tab === section.id ? 'bg-relay-tint text-relay-ink' : 'text-ink-soft hover:bg-card hover:text-ink')}><section.icon className="h-4 w-4 shrink-0" aria-hidden="true" />{section.label}</button>)}
           </nav>
           <div className="thin-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-5 sm:p-6" key={tab}>
-            <header className="mb-5"><h3 className="text-lg font-semibold text-ink">{currentSection.label}</h3><p className="mt-1 text-xs leading-5 text-ink-soft">{currentSection.description}</p></header>
+            <header className="mb-5"><h3 className="text-lg font-semibold text-ink">{currentSection.label}</h3>{tab !== 'setup' ? <p className="mt-1 text-xs leading-5 text-ink-soft">{currentSection.description}</p> : null}</header>
             {tab === 'application' ? <section className="space-y-5">
               <div className="divide-y divide-line rounded-xl border border-line px-4">
                 <div className={row}><div><p className="text-xs font-semibold">{locale === 'ar' ? 'لغة الواجهة' : 'Interface language'}</p><p className="mt-1 text-[11px] text-ink-soft">{locale === 'ar' ? 'العربية' : 'English'}</p></div><button type="button" onClick={onToggleLanguage} className={action}><Languages className="h-4 w-4" />{locale === 'en' ? 'العربية' : 'English'}</button></div>
@@ -211,24 +223,34 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
             </section> : null}
             {tab === 'themes' ? <ThemePanel /> : null}
             {tab === 'setup' ? <section className="space-y-5">
-        <p className="text-xs leading-6 text-ink-soft">{tr("وزّع الشغل بين الطرفين. الاختيار يُحفظ للمحادثات الجديدة؛ كل محادثة موجودة تحتفظ بأدوارها.")}</p>
-        {(['planner', 'executor'] as const).map((role, index) => <fieldset key={role} disabled={saving || !saved.data} className="rounded-xl border border-line bg-paper/40 p-4">
-          <legend className="mb-3 flex items-center gap-2 text-sm font-bold">{role === 'planner' ? <Brain className="h-4 w-4 text-relay" /> : <Wrench className="h-4 w-4 text-ready" />}{index + 1}. {role === 'planner' ? tr("تحب مين المفكّر والمراجع؟") : tr("تحب مين المنفّذ؟")}</legend>
-          <div className="grid grid-cols-2 gap-3">{saved.data?.agents.filter(agent => agent.available).map(agent => <label key={agent.id} className={cx('flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors', setup[role] === agent.id ? 'border-relay bg-relay-tint/50' : 'border-line bg-paper hover:border-relay/40')}>
-            <input type="radio" name={role} value={agent.id} checked={setup[role] === agent.id} disabled={agent.id === 'opencode' && setup[role === 'planner' ? 'executor' : 'planner'] === 'opencode'} onChange={() => choose(role, agent.id as WorkflowSetup['planner'])} className="accent-relay" /><span className="flex-1 text-sm font-semibold" dir="ltr">{agent.name}</span>{setup[role] === agent.id ? <Check className="h-4 w-4 text-relay" /> : null}
-          </label>)}</div>
-          <div className="mt-3"><label htmlFor={`settings-model-${role}`} className="block text-xs font-semibold text-ink-soft">{tr('الموديل')}</label>
-            <SettingsSelect id={`settings-model-${role}`} label={`${tr('الموديل')} · ${role === 'planner' ? tr('المفكّر') : tr('المنفّذ')}`} value={setup[`${role}Model`]} disabled={saving || !saved.data}
-              options={[{ value: '', label: tr('استخدم الموديل الافتراضي') }, ...modelOptions(setup[role]).map(model => ({ value: model.id, label: model.name }))]}
-              onChange={value => setSetup(current => ({ ...current, [`${role}Model`]: value }))} />
-          </div>
-        </fieldset>)}
-        <p className="rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink-soft">{tr("المفكّر يخطط ويراجع، والمنفّذ يعدّل الملفات ويختبر النتيجة.")}</p>
-        <div className="border-t border-line pt-4"><p className="text-xs text-ink-soft">{tr("أطراف إضافية مستقبلًا")}</p><div className="mt-2 flex gap-2">{saved.data?.agents.filter(agent => !agent.available).map(agent => <span key={agent.id} className="rounded-lg border border-dashed border-line px-3 py-1.5 text-xs text-ink-soft">{agent.name} {' '}{tr("· لاحقًا")}</span>)}</div></div>
-        {error || saved.error ? <p role="alert" className="text-xs text-review-ink">{tr(error || saved.error || '')}</p> : null}
-        {notice ? <p role="status" className="text-xs leading-6 text-ready-ink">{tr(notice)}</p> : null}
-        <button onClick={() => void save()} disabled={saving || !saved.data} className="w-full rounded-xl bg-relay px-4 py-3 text-sm font-bold text-on-accent hover:bg-relay-ink disabled:opacity-45">{saving ? tr("جارٍ الحفظ…") : tr("حفظ توزيع الأدوار")}</button>
-      </section> : null}
+              <div className="divide-y divide-line">
+                {(['planner', 'executor'] as const).map(role => <fieldset key={role} disabled={saving || !saved.data} className="min-w-0 py-5 first:pt-0 last:pb-0">
+                  <legend className="sr-only">{role === 'planner' ? (locale === 'ar' ? 'المفكّر والمراجع' : 'Planner & reviewer') : (locale === 'ar' ? 'المنفّذ' : 'Executor')}</legend>
+                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold">{role === 'planner' ? <Brain className="h-4 w-4 text-ink-soft" aria-hidden="true" /> : <Wrench className="h-4 w-4 text-ink-soft" aria-hidden="true" />}{role === 'planner' ? (locale === 'ar' ? 'المفكّر والمراجع' : 'Planner & reviewer') : (locale === 'ar' ? 'المنفّذ' : 'Executor')}</div>
+                  <div className="flex flex-wrap gap-2">{saved.data?.agents.filter(agent => agent.available).map(agent => {
+                    const unavailable = agent.id === 'opencode' && setup[role === 'planner' ? 'executor' : 'planner'] === 'opencode'
+                    return <label key={agent.id} title={unavailable ? (locale === 'ar' ? 'OpenCode مستخدم في الدور الآخر' : 'OpenCode is assigned to the other role') : undefined} className={cx('relative flex min-h-10 min-w-24 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors focus-within:ring-2 focus-within:ring-relay/40', setup[role] === agent.id ? 'border-relay/50 bg-relay-tint text-relay-ink' : 'border-line bg-transparent text-ink-soft hover:bg-paper hover:text-ink', unavailable && 'cursor-not-allowed opacity-40')}>
+                      <input type="radio" name={role} value={agent.id} checked={setup[role] === agent.id} disabled={unavailable} onChange={() => choose(role, agent.id as WorkflowSetup['planner'])} className="sr-only" /><span dir="ltr">{agent.name}</span>{setup[role] === agent.id ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                    </label>
+                  })}</div>
+                  <div className="mt-3"><label htmlFor={`settings-model-${role}`} className="text-[11px] font-medium text-ink-soft">{locale === 'ar' ? 'الموديل' : 'Model'}</label>
+                    <SettingsSelect id={`settings-model-${role}`} label={`${locale === 'ar' ? 'الموديل' : 'Model'} · ${role === 'planner' ? (locale === 'ar' ? 'المفكّر' : 'Planner') : (locale === 'ar' ? 'المنفّذ' : 'Executor')}`} value={setup[`${role}Model`]} disabled={saving || !saved.data}
+                      options={[{ value: '', label: setup[role] === 'cline' ? (locale === 'ar' ? 'اختر الموديل' : 'Choose a model') : (locale === 'ar' ? 'الافتراضي' : 'Default') }, ...modelOptions(setup[role]).map(model => ({ value: model.id, label: model.name }))]}
+                      onChange={value => { setNotice(null); setSetup(current => ({ ...current, [`${role}Model`]: value })) }} />
+                  </div>
+                </fieldset>)}
+              </div>
+              {setup.planner === 'cline' || setup.executor === 'cline' ? <div className="border-t border-line pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2"><label htmlFor="settings-cline-provider" className="text-xs font-semibold">{locale === 'ar' ? 'مزوّد Cline' : 'Cline provider'}</label>{clineStatus.data ? <span className="text-[11px] text-ink-soft">{clineStatus.data.providers.find(provider => provider.id === (setup.clineProvider || 'cline'))?.configured ? (locale === 'ar' ? 'تسجيل الدخول محفوظ' : 'Login saved') : <code dir="ltr">cline auth</code>}</span> : null}</div>
+                <SettingsSelect id="settings-cline-provider" label={locale === 'ar' ? 'مزوّد Cline' : 'Cline provider'} value={setup.clineProvider || 'cline'} disabled={saving} options={[{ value: 'cline', label: 'Cline' }, { value: 'openrouter', label: 'OpenRouter' }, { value: 'anthropic', label: 'Anthropic' }]} onChange={value => { setNotice(null); setSetup(current => ({ ...current, clineProvider: value, plannerModel: current.planner === 'cline' ? '' : current.plannerModel, executorModel: current.executor === 'cline' ? '' : current.executorModel })) }} />
+                {clineError || clineStatus.error ? <p role="alert" className="mt-2 text-xs text-review-ink">{clineError || clineStatus.error}</p> : null}
+              </div> : null}
+              {error || saved.error ? <p role="alert" className="text-xs text-review-ink">{tr(error || saved.error || '')}</p> : null}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+                <p role={notice ? 'status' : undefined} className={cx('text-[11px]', notice ? 'text-ready-ink' : 'text-ink-soft')}>{notice || (locale === 'ar' ? 'يُطبّق على المحادثات الجديدة' : 'Applies to new conversations')}</p>
+                <button type="button" onClick={() => void save()} disabled={saving || !saved.data || (setup.planner === 'cline' && !setup.plannerModel) || (setup.executor === 'cline' && !setup.executorModel)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-relay px-5 py-2 text-xs font-semibold text-on-accent hover:bg-relay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:opacity-45"><Check className="h-3.5 w-3.5" aria-hidden="true" />{saving ? (locale === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : (locale === 'ar' ? 'حفظ' : 'Save')}</button>
+              </div>
+            </section> : null}
           </div>
         </div>
       </div>

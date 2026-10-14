@@ -19,6 +19,8 @@ import { useRelayRoom } from './hooks/useRelayRoom'
 import { useAutomaticPreview } from './hooks/useAutomaticPreview'
 import { persistPreference, preferenceKeys, readHandoffVisibility } from './lib/preferences'
 import { api } from './lib/api'
+import { ClineConversation } from './features/cline/ClineConversation'
+import { usePolling } from './hooks/usePolling'
 
 type PanelName = 'sessions' | 'handoff'
 type PanelSizes = Record<PanelName, number>
@@ -63,6 +65,24 @@ function WorkspaceApp() {
   const [sessionsCollapsed, setSessionsCollapsed] = useState(false)
   const [handoffVisible, setHandoffVisible] = useState(readHandoffVisibility)
   const [extensionsOpen, setExtensionsOpen] = useState(false)
+  const thread = conversation.view.thread
+  const clineWorkflow = Boolean(thread?.workflow && [thread.workflow.planner, thread.workflow.executor].includes('cline'))
+  const roleState = usePolling(clineWorkflow && thread ? () => api.clineWorkflow(thread.id) : null, state => state?.planner.active || state?.executor.active ? 1_000 : 3_000, { resetKey: thread?.id })
+  const workflowState = roleState.data?.thread.id === thread?.id ? roleState.data : null
+  const [workflowBusy, setWorkflowBusy] = useState(false), [workflowError, setWorkflowError] = useState('')
+  useEffect(() => { setWorkflowError('') }, [thread?.id])
+  const workflowBlocked = Boolean(workflowBusy || !workflowState || workflowState.planner.active || workflowState.executor.active)
+  async function workflowAction(action: 'execute' | 'review') {
+    if (!thread || workflowBusy) return
+    setWorkflowBusy(true); setWorkflowError('')
+    try {
+      await api.workflowAction(thread.id, action)
+      window.dispatchEvent(new CustomEvent('coding-room:conversation-activity', { detail: thread.id }))
+      conversation.refreshHandoff()
+      await roleState.refresh()
+    } catch (failure) { setWorkflowError(failure instanceof Error ? failure.message : String(failure)) }
+    finally { setWorkflowBusy(false) }
+  }
   const [automaticPreview, setAutomaticPreview] = useState(false)
   const [automaticError, setAutomaticError] = useState('')
   useAutomaticPreview(automaticPreview && !extensionsOpen, room.workRoot, message => {
@@ -161,7 +181,7 @@ function WorkspaceApp() {
           onRemoveAttachment={conversation.composer.onRemoveAttachment}
           onStop={conversation.composer.onStop}
         />
-  const plannerPane = <PlannerConversation key={conversation.view.thread?.id} codexActive={conversation.turn.active} codexHasReply={conversation.view.messages.some(message => message.role === 'assistant')}
+  const plannerPane = <PlannerConversation key={conversation.view.thread?.id} workflowControls={!clineWorkflow} codexActive={clineWorkflow ? workflowBlocked : conversation.turn.active} codexHasReply={clineWorkflow ? Boolean(workflowState?.executor.messages.some(message => message.role === 'assistant')) : conversation.view.messages.some(message => message.role === 'assistant')}
           thread={conversation.view.thread}
           handoff={conversation.view.handoff}
           loading={conversation.view.loading}
@@ -261,7 +281,7 @@ function WorkspaceApp() {
           onSelect={room.onSelectThread}
           onCreate={room.onCreateThread}
           creating={room.creating}
-          connected={room.codexConnected}
+          connected={room.canCreateThread}
           commitModel={conversation.codexSelection.current.model}
           codexIdentity={room.codexIdentity}
           workRoot={room.workRoot}
@@ -273,13 +293,17 @@ function WorkspaceApp() {
 
       <ErrorBoundary label={tr("محادثة Codex مش معروضة صح دلوقتي.")}>
         <ProjectEditor root={room.workRoot} automatic={automaticPreview && !extensionsOpen} onInsert={text => {
-          if (reverse) window.dispatchEvent(new CustomEvent('coding-room:insert-planner-code', { detail: text }))
+          if (thread?.workflow?.planner === 'cline') window.dispatchEvent(new CustomEvent('openzero:insert-cline-code', { detail: { threadId: thread.id, role: 'planner', text } }))
+          else if (reverse) window.dispatchEvent(new CustomEvent('coding-room:insert-planner-code', { detail: text }))
           else conversation.composer.onDraftChange([conversation.composer.draft, text].filter(Boolean).join('\n\n'))
-        }}>{reverse ? plannerPane : codexPane}</ProjectEditor>
+        }}><div className="flex h-full min-h-0 flex-1 flex-col">
+          {clineWorkflow && thread ? <div dir={direction()} className="shrink-0 space-y-2 border-b border-line bg-card px-4 py-2"><div className="flex flex-wrap items-center gap-2 text-xs"><span className="me-auto text-ink-soft">{thread.workflow?.planner} → {thread.workflow?.executor}</span><button type="button" disabled={workflowBlocked || !workflowState?.planner.messages.some(message => message.role === 'assistant' && message.text.trim())} onClick={() => { setHandoffVisible(true); void workflowAction('execute') }} className="rounded-lg border border-line px-3 py-2 font-semibold text-relay-ink hover:bg-relay-tint disabled:opacity-40">{locale === 'ar' ? 'إرسال الخطة للتنفيذ' : 'Send plan to executor'}</button><button type="button" disabled={workflowBlocked || !workflowState?.executor.messages.some(message => message.role === 'assistant' && message.text.trim())} onClick={() => void workflowAction('review')} className="rounded-lg border border-line px-3 py-2 font-semibold hover:bg-relay-tint disabled:opacity-40">{locale === 'ar' ? 'مراجعة رد المنفّذ' : 'Review executor reply'}</button></div>{workflowError || roleState.error ? <p role="alert" className="text-xs text-review-ink">{workflowError || roleState.error}</p> : null}</div> : null}
+          <div className="flex min-h-0 flex-1 flex-col">{thread?.workflow?.planner === 'cline' ? <ClineConversation thread={thread} role="planner" view={workflowState?.planner} blocked={workflowBlocked} visible={!extensionsOpen} identity={room.codexIdentity} onRefresh={roleState.refresh} /> : reverse ? plannerPane : codexPane}</div>
+        </div></ProjectEditor>
       </ErrorBoundary>
 
       <ErrorBoundary label={tr("مسار التفويض مش معروض صح دلوقتي.")}>
-        {handoffVisible ? (reverse ? codexPane : codexToCodex ? <aside dir={direction()} className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
+        {handoffVisible ? (thread?.workflow?.executor === 'cline' ? <aside className="flex min-h-[22rem] min-w-0 flex-col border-t border-line lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0"><ClineConversation thread={thread} role="executor" view={workflowState?.executor} blocked={workflowBlocked} visible={!extensionsOpen} identity={room.codexIdentity} onRefresh={roleState.refresh} /></aside> : clineWorkflow && thread?.workflow?.executor === 'codex' ? <aside className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">{executorPane ?? <p dir={direction()} className="p-5 text-xs leading-6 text-ink-soft">{locale === 'ar' ? 'هنا تظهر محادثة Codex المنفّذ بعد إرسال الخطة.' : 'Your Codex executor appears here after sending the plan.'}</p>}</aside> : reverse ? codexPane : codexToCodex ? <aside dir={direction()} className="flex min-h-[22rem] min-w-0 flex-col border-t border-line bg-card lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
           {executorPane ?? <div className="flex flex-1 flex-col px-5 py-6">
             <h2 className="text-sm font-bold text-ink">{tr("Codex · شات التنفيذ")}</h2>
             <p className="mt-2 text-xs leading-6 text-ink-soft">{tr("هنا هتظهر محادثة التنفيذ بعد إرسال الخطة من الشات الرئيسي.")}</p>
@@ -290,7 +314,7 @@ function WorkspaceApp() {
           handoff={conversation.view.handoff}
           loading={conversation.view.loading}
           events={room.events}
-          onReview={room.onReview}
+          onReview={clineWorkflow ? async () => { await workflowAction('review') } : room.onReview}
           reviewing={conversation.view.busy}
           onRefresh={conversation.refreshHandoff}
           onNotify={room.alerts.notify}
