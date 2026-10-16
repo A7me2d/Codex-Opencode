@@ -11,6 +11,7 @@ import { TailwindCompletions } from './server/tailwind-completions.mjs'
 import { ClineBridge } from './server/cline-bridge.mjs'
 import { ClineWorkflow, workflowRolePrompt } from './server/cline-workflow.mjs'
 import { ProviderActivity, requestProvider } from './server/provider-activity.mjs'
+import { SuperAgentStore, superAgentInstructions, isSuperSlotId } from './server/super-agent.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
 import { createServer } from 'node:http'
@@ -34,6 +35,7 @@ const eventsPath = path.join(stateDirectory, 'events.json')
 const agentExtensions = new AgentExtensions(stateDirectory)
 const tailwindCompletions = new TailwindCompletions()
 const providerActivity = new ProviderActivity(stateDirectory)
+const superAgent = new SuperAgentStore(stateDirectory)
 const clineBridge = new ClineBridge(stateDirectory, { requireEnabled: () => providerActivity.require('cline') })
 const sourceControl = new SourceControl()
 const commitMessageJobs = new Set()
@@ -667,6 +669,7 @@ class CodexAppServerBridge {
     this.resumingThreads.clear()
     this.threadInstructions.clear()
     this.runningTurns.clear()
+    this.manualThreads?.clear()
     this.completedTurns.clear()
     this.rateLimitsSnapshot = null
     this.rateLimitsReadAt = 0
@@ -680,6 +683,7 @@ class CodexAppServerBridge {
       this.child = null
       this.started = null
       this.runningTurns.clear()
+      this.manualThreads?.clear()
       this.completedTurns.clear()
       this.failAll(new Error(`Codex app-server stopped${code === null ? '' : ` with code ${code}`}.`))
     })
@@ -1027,6 +1031,7 @@ class CodexAppServerBridge {
     this.resumingThreads.clear()
     this.threadInstructions.clear()
     this.runningTurns.clear()
+    this.manualThreads?.clear()
     this.completedTurns.clear()
     this.failAll(new Error('Open Zero stopped the Codex app-server.'))
     if (child && !child.killed) child.kill()
@@ -1051,6 +1056,7 @@ async function readCodexWeeklyQuota() {
 }
 
 function threadInstructionSelection(saved) {
+  if (saved.superAgentRole) return { source: 'superAgentInstructions', text: superAgentInstructions(saved.superAgentRole) }
   if (saved.workflow && [saved.workflow.planner, saved.workflow.executor].includes('cline')) {
     const role = saved.workflowRole === 'executor' ? 'executor' : 'planner'
     return { source: `clineWorkflowCodex${role}`, text: workflowRolePrompt(role, '', 'Codex', 'Cline') }
@@ -1460,7 +1466,11 @@ async function listCodexModels() {
   return [...new Map(models.filter((model) => !model.hidden).map((model) => [model.model, model])).values()]
 }
 
-async function sendRelayCodexMessage(threadId, input) {
+async function sendRelayCodexMessage(threadId, input, { codexOnly = false } = {}) {
+  const starts = codexBridge.messageStarts ??= new Set()
+  if (starts.has(threadId) || codexBridge.getTurnState(threadId).active) throw new HttpError(409, 'Stop or finish the active Codex turn first.')
+  starts.add(threadId)
+  try {
   await ensureRelayCodexThreadLoaded(threadId)
   const { saved } = await requireRelayCodexThread(threadId)
   const text = String(input?.text ?? '').replaceAll('\u0000', '').trim()
@@ -1479,7 +1489,7 @@ async function sendRelayCodexMessage(threadId, input) {
     settings.effort = effort
   }
 
-  const delegation = ['codex', 'cline'].includes(saved.workflow?.executor) ? { hasExplicitTag: false, task: '' } : extractOpenCodeTask(text)
+  const delegation = codexOnly || ['codex', 'cline'].includes(saved.workflow?.executor) ? { hasExplicitTag: false, task: '' } : extractOpenCodeTask(text)
   if (delegation.hasExplicitTag && !delegation.task) {
     throw new HttpError(400, 'Write the OpenCode request after $opencode.')
   }
@@ -1487,6 +1497,7 @@ async function sendRelayCodexMessage(threadId, input) {
   if (delegation.hasExplicitTag) codexBridge.allowDelegation(threadId, delegation.task, attachments)
 
   try {
+    if (codexOnly) (codexBridge.manualThreads ??= new Set()).add(threadId)
     const requestedSandbox = saved.pendingCodexSandbox
     const sandboxPolicy = requestedSandbox === 'workspace-write'
       ? { type: 'workspaceWrite', writableRoots: [saved.directory ?? watchRoot], networkAccess: false }
@@ -1500,6 +1511,7 @@ async function sendRelayCodexMessage(threadId, input) {
     })
     const turnId = response?.turn?.id ?? response?.id
     if (response?.turn?.status !== 'completed') codexBridge.markTurnRunning(threadId, turnId)
+    else if (codexOnly) codexBridge.manualThreads?.delete(threadId)
     if (delegation.hasExplicitTag) codexBridge.bindDelegationTurn(threadId, turnId)
     await updateCodexState((state) => {
       if (state.threads[threadId]) {
@@ -1517,9 +1529,11 @@ async function sendRelayCodexMessage(threadId, input) {
     })
     return response
   } catch (error) {
+    if (codexOnly) codexBridge.manualThreads?.delete(threadId)
     codexBridge.clearDelegationGrant(threadId)
     throw error
   }
+  } finally { starts.delete(threadId) }
 }
 
 async function createCodexExecutorThread(workflow, title) {
@@ -2410,13 +2424,74 @@ async function relayCodexExecutorReplyToPlanner(executorThreadId) {
 }
 
 codexBridge.onTurnCompleted = async (threadId) => {
+  const manual = codexBridge.manualThreads?.delete(threadId)
   if (!(await readCodexState()).threads[threadId]) return
   await updateCodexState(state => { if (state.threads[threadId]) state.threads[threadId].lastMessageAt = Date.now() })
-  return relayCodexExecutorReplyToPlanner(threadId)
+  if (!manual) return relayCodexExecutorReplyToPlanner(threadId)
 }
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+  if (url.pathname.startsWith('/api/super-agent/')) {
+    try {
+      if (!trustedExtensionRequest(request)) throw new HttpError(403, 'Open Super Agent from Open Zero.')
+      if (url.pathname === '/api/super-agent/teams') {
+        if (request.method === 'GET') { sendJson(response, 200, { data: await superAgent.list() }); return }
+        if (request.method === 'POST') { sendJson(response, 201, { data: await superAgent.create((await readJson(request)).title) }); return }
+      }
+      if (url.pathname === '/api/super-agent/project-folder' && request.method === 'POST') {
+        const input = await readJson(request)
+        const selected = await selectProjectFolder(typeof input.directory === 'string' && existsSync(input.directory) ? input.directory : watchRoot)
+        sendJson(response, 200, { data: selected ? { directory: selected } : null }); return
+      }
+      const addSlotMatch = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/slots$/)
+      if (addSlotMatch && request.method === 'POST') { sendJson(response, 201, { data: await superAgent.addSlot(addSlotMatch[1]) }); return }
+      const match = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)(?:\/slots\/(manager|worker-[1-9]\d*)(?:\/(messages))?)?$/)
+      if (!match) throw new HttpError(404, 'Unknown Super Agent endpoint.')
+      if (!match[2] && request.method === 'PATCH') { sendJson(response, 200, { data: await superAgent.update(match[1], await readJson(request)) }); return }
+      if (match[2] && !match[3] && request.method === 'DELETE') { sendJson(response, 200, { data: await superAgent.removeSlot(match[1], match[2], id => codexBridge.getTurnState(id).active || codexBridge.messageStarts?.has(id)) }); return }
+      if (match[3] && request.method === 'POST') {
+        const input = await readJson(request)
+        const result = await superAgent.send(match[1], match[2], input, {
+          requireEnabled: () => providerActivity.require('codex'), resolveThread: async id => (await requireRelayCodexThread(id)).saved,
+          isBusy: id => codexBridge.getTurnState(id).active || codexBridge.messageStarts?.has(id),
+          charge: () => consumeLicensedMessage(input, response), dispatch: (id, body) => sendRelayCodexMessage(id, body, { codexOnly: true }),
+        })
+        sendJson(response, 202, { data: result }); return
+      }
+      if (match[2] && request.method === 'POST') {
+        const input = await readJson(request)
+        const team = await superAgent.bind(match[1], match[2], async current => {
+          const previous = current.slots.find(slot => slot.id === match[2])?.thread
+          if (previous && codexBridge.getTurnState(previous.id).active) throw new HttpError(409, 'Stop or finish this slot’s active turn before changing its conversation.')
+          if (input.clear) return null
+          await providerActivity.require('codex')
+          if (input.threadId) {
+            const saved = (await requireRelayCodexThread(input.threadId)).saved
+            if (saved.localWorkflow || saved.archived || !saved.directory) throw new HttpError(409, 'Choose an active Codex conversation with a project folder.')
+            return saved
+          }
+          if (!isSuperSlotId(match[2]) || typeof input.directory !== 'string' || !path.isAbsolute(input.directory)) throw new HttpError(400, 'Choose an absolute project folder.')
+          const directory = await realpath(input.directory)
+          if (!(await stat(directory)).isDirectory()) throw new HttpError(400, 'Choose a project folder.')
+          const role = match[2] === 'manager' ? 'manager' : 'worker'
+          const title = shortThreadTitle(input.title || `${current.title} · ${match[2]}`)
+          const instructions = superAgentInstructions(role)
+          const result = await codexBridge.call('thread/start', { cwd: directory, sandbox: 'workspace-write', approvalPolicy: 'never', developerInstructions: instructions, dynamicTools: [], threadSource: 'appServer' })
+          const thread = result.thread ?? result.data ?? result
+          const saved = await registerRelayCodexThread(thread, title, directory)
+          const metadata = { superAgentRole: role, workflow: { planner: 'codex', executor: 'codex', plannerModel: '', executorModel: '' }, workflowRole: role === 'manager' ? 'planner' : 'executor', codexSandbox: codexSandboxMode(result.sandbox?.type) }
+          await updateCodexState(state => { Object.assign(state.threads[saved.id], metadata) })
+          codexBridge.markThreadActive(saved.id, instructions)
+          try { await codexBridge.call('thread/name/set', { threadId: saved.id, name: title }) } catch { /* cosmetic */ }
+          return { ...saved, ...metadata }
+        }, input.label)
+        sendJson(response, 200, { data: team }); return
+      }
+      throw new HttpError(405, 'Unsupported Super Agent action.')
+    } catch (error) { sendJson(response, error.status ?? 500, { error: publicError(error) }) }
+    return
+  }
   try { await providerActivity.ready } catch { sendJson(response, 503, { error: 'Could not read provider activity settings.' }); return }
   if (url.pathname === '/api/provider-activity') {
     try {
@@ -2426,7 +2501,7 @@ const server = createServer(async (request, response) => {
       const input = await readJson(request)
       const data = await providerActivity.set(input.id, input.enabled, {
         beforeDisable: async () => {
-          if (input.id === 'codex' && (codexBridge.runningTurns.size || codexBridge.resumingThreads.size || commitMessageJobs.size)) throw new HttpError(409, 'Stop or finish the active Codex task before disabling it.')
+          if (input.id === 'codex' && (codexBridge.runningTurns.size || codexBridge.resumingThreads.size || superAgent.sending.size || commitMessageJobs.size)) throw new HttpError(409, 'Stop or finish the active Codex task before disabling it.')
           if (input.id === 'cline' && [...clineBridge.sessions.values()].some(session => session.active || session.preparing || session.loading)) throw new HttpError(409, 'Stop or finish the active Cline task before disabling it.')
         },
         afterDisable: async () => { if (input.id === 'codex') codexBridge.stop(); if (input.id === 'cline') await clineBridge.stop() },

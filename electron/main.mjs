@@ -33,6 +33,7 @@ const allowedPreferenceKeys = new Set([
   'relay-room.editor-chat-layout',
   'relay-room.panel-sizes',
   'relay-room.handoff-visible',
+  'openzero.super-agent.team',
 ])
 let preferenceWriteQueue = Promise.resolve()
 let licenseToken = ''

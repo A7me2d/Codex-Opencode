@@ -2,6 +2,14 @@
 
 A local web app for chatting with Codex and handing implementation tasks to OpenCode. It includes project selection, model and reasoning controls, session permissions, and file-change summaries.
 
+## Super Agent
+
+Select **Super Agent** in the title bar, create a team, then assign existing Codex conversations or create new ones in individually chosen project folders. Teams start with the central Brain (manager) only. Use **Add desk** for each worker you need; every added desk appears in the office overview. There is no fixed worker count or visibility switch. Click a desk or the Brain to open its conversation in the side panel, or switch to Chats for the grid. Removing a desk keeps its Codex conversation and history. Each conversation has its own composer, attachments, model, reasoning and permissions controls. Existing conversations retain their project, history and saved instructions.
+
+**Transfer to…** copies a message (or selected text within it) into another slot's draft for review; only **Send** submits it. There is no automatic manager dispatch or executor return in this workspace. Team archive/unlink actions do not delete Codex history. Active turns must finish before rebinding a slot; switching teams or workspace modes leaves running turns alone. Teams are stored in the local state directory as `super-agent.json`; drafts survive team switches during the current app run. Codex must be enabled in **Connections & updates**, and normal license checks apply to every send.
+
+Synthetic checks: `node scripts/test-super-agent.mjs` (temporary local storage and a fake Codex transport; no real messages).
+
 The **Auto** switch beside **Agent / IDE** enables visible automatic project previews. It opens a random source file and scrolls to a random position immediately, then every 30 seconds, using one reusable clean preview tab. Unsaved drafts pause navigation; switching to IDE or turning the switch off stops it. It starts disabled each launch, skips generated folders and common sensitive filenames, and does not edit files or capture screenshots.
 
 ## Requirements

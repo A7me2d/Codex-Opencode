@@ -7,6 +7,9 @@
  */
 
 export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
+export type SuperSlotId = 'manager' | `worker-${number}`
+export interface SuperAgentSlot { id: SuperSlotId; label: string; thread: CodexThread | null }
+export interface SuperAgentTeam { id: string; title: string; archived: boolean; updatedAt: number; slots: SuperAgentSlot[] }
 export type ProviderId = 'codex' | 'opencode' | 'cline'
 export interface ProviderActivitySettings { providers: Record<ProviderId, boolean> }
 

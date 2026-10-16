@@ -63,6 +63,14 @@ function unwrap<T>(body: { data?: T }): T {
 export type ModelSelector = string
 
 export const api = {
+  superTeams: () => requestJson<{ data: import('./types').SuperAgentTeam[] }>('/api/super-agent/teams').then(unwrap),
+  createSuperTeam: (title: string) => post<{ data: import('./types').SuperAgentTeam }>('/api/super-agent/teams', { title }).then(unwrap),
+  updateSuperTeam: (id: string, input: { title?: string; archived?: boolean }) => requestJson<{ data: import('./types').SuperAgentTeam }>(`/api/super-agent/teams/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }).then(unwrap),
+  addSuperSlot: (id: string) => post<{ data: import('./types').SuperAgentTeam }>(`/api/super-agent/teams/${encodeURIComponent(id)}/slots`).then(unwrap),
+  removeSuperSlot: (id: string, slot: import('./types').SuperSlotId) => requestJson<{ data: import('./types').SuperAgentTeam }>(`/api/super-agent/teams/${encodeURIComponent(id)}/slots/${slot}`, { method: 'DELETE' }).then(unwrap),
+  bindSuperSlot: (id: string, slot: import('./types').SuperSlotId, input: { threadId?: string; directory?: string; title?: string; label?: string; clear?: boolean }) => post<{ data: import('./types').SuperAgentTeam }>(`/api/super-agent/teams/${encodeURIComponent(id)}/slots/${slot}`, input).then(unwrap),
+  superProjectFolder: (directory: string) => post<{ data: { directory: string } | null }>('/api/super-agent/project-folder', { directory }).then(unwrap),
+  sendSuperMessage: (teamId: string, slot: import('./types').SuperSlotId, threadId: string, text: string, attachments: string[], settings?: { model: string; effort: string }) => post(`/api/super-agent/teams/${encodeURIComponent(teamId)}/slots/${slot}/messages`, { threadId, text, attachments, ...settings, messageId: messageId() }),
   providerActivity: () => requestJson<{ data: import('./types').ProviderActivitySettings }>('/api/provider-activity').then(unwrap),
   setProviderActivity: (id: import('./types').ProviderId, enabled: boolean) => post<{ data: import('./types').ProviderActivitySettings }>('/api/provider-activity', { id, enabled }).then(unwrap),
   clineStatus: () => requestJson<{ data: ClineStatus }>('/api/cline/status').then(unwrap),

@@ -8,6 +8,7 @@ export const preferenceKeys = {
   editorChatLayout: 'relay-room.editor-chat-layout',
   panelSizes: 'relay-room.panel-sizes',
   handoffVisible: 'relay-room.handoff-visible',
+  superTeam: 'openzero.super-agent.team',
 } as const
 
 type PreferenceKey = typeof preferenceKeys[keyof typeof preferenceKeys]

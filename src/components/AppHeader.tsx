@@ -17,8 +17,8 @@ export interface AppHeaderProps {
   handoffVisible: boolean
   onToggleHandoff: () => void
   onOpenExtensions: () => void
-  mode: 'agent' | 'ide'
-  onChangeMode: (mode: 'agent' | 'ide') => void
+  mode: 'agent' | 'ide' | 'super'
+  onChangeMode: (mode: 'agent' | 'ide' | 'super') => void
   automaticPreview: boolean
   automaticAvailable: boolean
   onToggleAutomaticPreview: () => void
@@ -37,13 +37,14 @@ export function AppHeader({ codexConnected, openCodeOnline, codexError, shellErr
       </div>
       <div className="flex shrink-0 items-center gap-3" dir="ltr" onDoubleClick={event => event.stopPropagation()}>
       <div role="tablist" aria-label={locale === 'ar' ? 'وضع مساحة العمل' : 'Workspace mode'} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="flex rounded-full border border-line bg-paper p-1">
-        {(['agent', 'ide'] as const).map(value => <button key={value} type="button" role="tab" id={`workspace-mode-${value}`} aria-controls={`workspace-${value}`} aria-selected={mode === value} tabIndex={mode === value ? 0 : -1}
+        {(['agent', 'super', 'ide'] as const).map(value => <button key={value} type="button" role="tab" id={`workspace-mode-${value}`} aria-controls={`workspace-${value}`} aria-selected={mode === value} tabIndex={mode === value ? 0 : -1}
           onClick={() => onChangeMode(value)} onKeyDown={event => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
             event.preventDefault()
-            const next = value === 'agent' ? 'ide' : 'agent'
+            const modes = ['agent', 'super', 'ide'] as const
+            const next = modes[(modes.indexOf(value) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]
             onChangeMode(next); document.getElementById(`workspace-mode-${next}`)?.focus()
-          }} className={`rounded-full px-4 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 ${mode === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink'}`}>{value === 'agent' ? 'Agent' : 'IDE'}</button>)}
+          }} className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 ${mode === value ? 'bg-card text-relay-ink shadow-sm ring-1 ring-line' : 'text-ink-soft hover:text-ink'}`}>{value === 'agent' ? 'Agent' : value === 'super' ? 'Super Agent' : 'IDE'}</button>)}
       </div>
       <button type="button" role="switch" aria-checked={automaticPreview} disabled={!automaticAvailable}
         aria-label={locale === 'ar' ? 'النظام الآلي' : 'Automatic preview'}

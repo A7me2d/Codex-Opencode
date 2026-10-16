@@ -83,16 +83,29 @@ function messageOf(draft: string, attachments: string[]) {
  * `resetKey` and drops the previous conversation's data on switch instead of
  * briefly showing one session's transcript under another's title.
  */
-export function useConversation(thread: CodexThread | null): ConversationController {
+interface ConversationOptions {
+  enabled?: boolean
+  codexOnly?: boolean
+  send?: typeof api.sendMessage
+  models?: CodexModelInfo[]
+  initialDraft?: { text: string; attachments: string[] }
+  saveDraft?: (text: string, attachments: string[]) => void
+  initialSettings?: CodexSettings
+  saveSettings?: (settings: CodexSettings) => void
+}
+
+export function useConversation(thread: CodexThread | null, options: ConversationOptions = {}): ConversationController {
+  const enabled = options.enabled !== false
   const activity = useProviderActivity()
   const threadId = thread?.id ?? null
   const scope = threadId ?? 'none'
-  const codexEnabled = activity.providers.codex && !thread?.localWorkflow
-  const catalog = usePolling(codexEnabled ? api.codexModels : null, 300_000)
+  const codexEnabled = enabled && activity.providers.codex && !thread?.localWorkflow
+  const catalog = usePolling(codexEnabled && !options.models ? api.codexModels : null, 300_000)
   const savedSettings = usePolling(threadId && codexEnabled ? () => api.codexSettings(threadId) : null, 0, { resetKey: scope })
   const [permissionChange, setPermissionChange] = useState<{ scope: string; changing: boolean; error: string | null }>({ scope, changing: false, error: null })
-  const [selection, setSelection] = useState<{ scope: string; settings: CodexSettings } | null>(null)
-  const availableModels = catalog.data ?? []
+  const [selection, setSelection] = useState<{ scope: string; settings: CodexSettings } | null>(options.initialSettings ? { scope, settings: options.initialSettings } : null)
+  useEffect(() => { if (selection?.scope === scope) options.saveSettings?.(selection.settings) }, [scope, selection, options.saveSettings])
+  const availableModels = options.models ?? catalog.data ?? []
   const requested = selection?.scope === scope ? selection.settings : savedSettings.data
   const selectedModel = availableModels.find((entry) => entry.model === requested?.model)
     ?? availableModels.find((entry) => entry.isDefault) ?? availableModels[0]
@@ -102,8 +115,9 @@ export function useConversation(thread: CodexThread | null): ConversationControl
       ? requested!.effort : selectedModel?.defaultReasoningEffort ?? '',
   }
 
-  const [draft, setDraft] = useState('')
-  const [attachments, setAttachments] = useState<string[]>([])
+  const [draft, setDraft] = useState(options.initialDraft?.text ?? '')
+  const [attachments, setAttachments] = useState<string[]>(options.initialDraft?.attachments ?? [])
+  useEffect(() => { options.saveDraft?.(draft, attachments) }, [draft, attachments, options.saveDraft])
   const [sending, setSending] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [attaching, setAttaching] = useState(false)
@@ -115,7 +129,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     (data) => data?.active || sending ? config.poll.turnStateMs : 5_000, { resetKey: scope })
   const messages = usePolling(threadId && codexEnabled ? () => api.messages(threadId) : null,
     turnRequest.data?.active || sending ? config.poll.codexMessagesMs : 15_000, { resetKey: scope })
-  const handoff = usePolling(threadId && activity.providers.opencode ? () => api.handoff(threadId) : null,
+  const handoff = usePolling(enabled && !options.codexOnly && threadId && activity.providers.opencode ? () => api.handoff(threadId) : null,
     (data) => data?.active || sending || turnRequest.data?.active ? config.poll.handoffMs : 15_000, { resetKey: scope })
   const lastActivity = useRef({ scope, active: false })
   useEffect(() => {
@@ -156,14 +170,14 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const send = useCallback(async (override?: string, files?: string[]) => {
     const attached = files ?? attachments
     const text = override ?? messageOf(draft, attached)
-    if (!threadId || !text || sending || turn.active) return false
+    if (!enabled || !threadId || !text || sending || turn.active) return false
     setSending(true)
     setError(null)
     try {
       // The files are sent as paths as well as being part of the text: Codex
       // reads the text, and the server uses the paths to tell OpenCode which
       // files the work is about.
-      await api.sendMessage(threadId, text, attached, codexSettings.model ? codexSettings : undefined)
+      await (options.send || api.sendMessage)(threadId, text, attached, codexSettings.model ? codexSettings : undefined)
       window.dispatchEvent(new CustomEvent('coding-room:conversation-activity', { detail: threadId }))
       if (override === undefined) { setDraft(''); setAttachments([]) }
       await refreshAll()
@@ -174,7 +188,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
     } finally {
       setSending(false)
     }
-  }, [attachments, draft, refreshAll, sending, threadId, turn.active, codexSettings.model, codexSettings.effort])
+  }, [attachments, draft, refreshAll, sending, threadId, turn.active, codexSettings.model, codexSettings.effort, enabled, options.send])
 
   // While Codex works, the operator keeps typing and the send button parks the
   // text instead of dropping it.
@@ -199,7 +213,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
   const parkedFilesRef = useRef(parkedFiles)
   parkedFilesRef.current = parkedFiles
   useEffect(() => {
-    if (!parkedRef.current || turn.active || sending) return
+    if (!enabled || options.codexOnly || !parkedRef.current || turn.active || sending) return
     const text = parkedRef.current
     const files = parkedFilesRef.current ?? []
     setQueued(null)
@@ -210,7 +224,7 @@ export function useConversation(thread: CodexThread | null): ConversationControl
         setAttachments((current) => (current.length > 0 ? current : files))
       }
     })
-  }, [send, sending, turn.active])
+  }, [send, sending, turn.active, enabled, options.codexOnly])
 
   const stop = useCallback(async () => {
     if (!threadId || !turn.active || turn.stopping) return
