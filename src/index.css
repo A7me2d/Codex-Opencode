@@ -637,3 +637,60 @@
   .welcome-loading { opacity: 1; animation: none !important; }
   .welcome-loading-bar { animation: none !important; transform: none; }
 }
+/* Super Agent: independent Codex conversations, not a project/sidebar layout. */
+.super-agent-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; }
+.super-agent-slot { min-height: 26rem; }
+.super-agent-slot[data-slot="manager"] { order: -1; }
+@media (min-width: 768px) {
+  .super-agent-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .super-agent-slot[data-slot="manager"] { grid-column: 1 / -1; }
+}
+@media (min-width: 1280px) {
+  .super-agent-grid { grid-template-columns: minmax(0, 1fr) minmax(22rem, 1.15fr) minmax(0, 1fr); grid-template-rows: repeat(var(--worker-rows, 1), minmax(18rem, 1fr)); align-content: stretch; }
+  .super-agent-slot { min-height: 0; }
+  .super-agent-slot[data-slot="manager"] { grid-column: 2; grid-row: 1 / span var(--worker-rows, 1); }
+  .super-agent-slot:not([data-slot="manager"]) { grid-column: var(--slot-column); grid-row: var(--slot-row); }
+}
+.super-agent-grid.super-agent-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-content: stretch; }
+.super-agent-grid.super-agent-focused .super-agent-slot { grid-column: 1; grid-row: 1; min-height: 0; }
+.super-agent-grid.super-agent-popup {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 30;
+  width: min(460px, 100%);
+  padding: 0;
+  background: var(--color-card);
+  border-inline-start: 1px solid var(--color-line);
+  box-shadow: -12px 0 36px color-mix(in srgb, var(--color-overlay) 18%, transparent);
+}
+.super-agent-popup .super-agent-slot { border: 0; border-radius: 0; }
+
+/* Compact transcripts apply only to the small Super Agent panes. */
+.super-agent-slot[data-compact="true"] .chat-message { gap: .4rem; }
+.super-agent-slot[data-compact="true"] .chat-message > [aria-hidden="true"] { width: 1.5rem; height: 1.5rem; border-radius: .5rem; }
+.super-agent-slot[data-compact="true"] .chat-message > div:last-child > div:first-child { margin-bottom: .2rem; gap: .35rem; min-height: 1.25rem; }
+.super-agent-slot[data-compact="true"] .chat-message > div:last-child > div:last-child { padding: .5rem .65rem; font-size: .75rem; line-height: 1.5; box-shadow: none; }
+.super-agent-slot[data-compact="true"] .super-agent-composer [role="menu"] .thin-scroll { max-height: 7.5rem; }
+.super-agent-slot[data-compact="true"] .super-agent-composer .inline-flex.h-8.w-8 { height: 1.75rem; width: 1.75rem; }
+@media (max-width: 1279px) { .super-agent-slot[data-compact="true"] { min-height: 22rem; } }
+
+.super-office { background-image: radial-gradient(circle, color-mix(in srgb, var(--color-ink-soft) 22%, transparent) .7px, transparent .8px); background-size: 24px 24px; }
+.super-office-station {
+  --office-floor: color-mix(in srgb, var(--office-accent) 22%, var(--color-card));
+  --office-wall: color-mix(in srgb, var(--office-accent) 15%, var(--color-card));
+  --office-wall-back: color-mix(in srgb, var(--office-accent) 8%, var(--color-paper));
+}
+.super-office-marker { color: var(--office-accent); background: color-mix(in srgb, var(--office-accent) 14%, var(--color-card)); }
+.super-office-room { transition: transform 180ms ease-out; }
+.super-office-station:hover .super-office-room, .super-office-station:focus-visible .super-office-room { transform: translateY(-4px); }
+.super-office-station[data-active="true"] .super-office-cursor { animation: super-office-cursor 1.2s steps(2, end) infinite; }
+@keyframes super-office-cursor { 50% { opacity: .15; } }
+.super-office-brain[data-active="true"] .super-brain-node { animation: super-office-cursor 1.8s ease-in-out infinite; }
+.super-office-brain[data-active="true"] .super-brain-halo { animation: super-brain-pulse 2.4s ease-in-out infinite; transform-origin: 140px 103px; }
+@keyframes super-brain-pulse { 50% { opacity: .6; transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) {
+  .super-office-room { transition: none; }
+  .super-office-station:hover .super-office-room, .super-office-station:focus-visible .super-office-room { transform: none; }
+  .super-office-station[data-active="true"] .super-office-cursor { animation: none; }
+  .super-office-brain[data-active="true"] :is(.super-brain-node, .super-brain-halo) { animation: none; }
+}

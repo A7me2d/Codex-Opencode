@@ -5,9 +5,9 @@ import { cx } from '../../lib/cx'
 
 export interface SettingsOption { value: string; label: string }
 
-/** Themed choice menu rendered inside the modal, outside its scrolling panel. */
-export function SettingsSelect({ id, label, value, options, disabled = false, onChange }: {
-  id?: string; label: string; value: string; options: SettingsOption[]; disabled?: boolean; onChange: (value: string) => void
+/** Themed choice menu outside scrolling panels, in the dialog top layer when needed. */
+export function SettingsSelect({ id, label, value, options, disabled = false, className, onChange }: {
+  id?: string; label: string; value: string; options: SettingsOption[]; disabled?: boolean; className?: string; onChange: (value: string) => void
 }) {
   const menuId = useId()
   const trigger = useRef<HTMLButtonElement>(null)
@@ -17,14 +17,17 @@ export function SettingsSelect({ id, label, value, options, disabled = false, on
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 0, top: 0, width: 0, height: 240 })
   const expanded = open && !disabled
-  const target = trigger.current?.closest('dialog')
+  const target = trigger.current?.closest('dialog') ?? document.body
+  const inDialog = target.tagName === 'DIALOG'
+  const menuDirection = trigger.current?.closest('[dir]')?.getAttribute('dir') || undefined
   const current = options.find(option => option.value === value)
   const close = () => { setOpen(false); trigger.current?.focus() }
 
   useLayoutEffect(() => {
     if (!expanded || !target || !trigger.current) return
     const place = () => {
-      const anchor = trigger.current!.getBoundingClientRect(), bounds = target.getBoundingClientRect()
+      const anchor = trigger.current!.getBoundingClientRect()
+      const bounds = inDialog ? target.getBoundingClientRect() : { left: 0, top: 0, bottom: window.innerHeight, width: window.innerWidth }
       const below = Math.min(bounds.bottom, window.innerHeight) - anchor.bottom - 12
       const above = anchor.top - Math.max(bounds.top, 0) - 12
       const upward = below < 160 && above > below
@@ -40,7 +43,7 @@ export function SettingsSelect({ id, label, value, options, disabled = false, on
     window.addEventListener('resize', place)
     target.addEventListener('scroll', scroll, true)
     return () => { window.removeEventListener('resize', place); target.removeEventListener('scroll', scroll, true) }
-  }, [expanded, target, options.length])
+  }, [expanded, target, inDialog, options.length])
 
   useEffect(() => {
     if (!expanded) return
@@ -64,12 +67,12 @@ export function SettingsSelect({ id, label, value, options, disabled = false, on
       onClick={() => setOpen(previous => !previous)} onKeyDown={event => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) }
         if (event.key === 'Escape' && expanded) { event.preventDefault(); event.stopPropagation(); close() }
-      }} className={cx('mt-2 flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-line bg-card px-3 py-2.5 text-start text-xs font-semibold text-ink transition-colors hover:border-relay/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-45', expanded && 'border-relay/50 ring-2 ring-relay/10')}>
+      }} className={cx('mt-2 flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-line bg-card px-3 py-2.5 text-start text-xs font-semibold text-ink transition-colors hover:border-relay/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-not-allowed disabled:opacity-45', expanded && 'border-relay/50 ring-2 ring-relay/10', className)}>
       <span dir="auto" className="min-w-0 truncate">{current?.label ?? value}</span><ChevronDown className={cx('h-3.5 w-3.5 shrink-0 text-ink-soft transition-transform', expanded && 'rotate-180')} aria-hidden="true" />
     </button>
-    {expanded && target ? createPortal(<div id={menuId} ref={menu} role="menu" aria-label={label} dir={target.dir || undefined}
+    {expanded && target ? createPortal(<div id={menuId} ref={menu} role="menu" aria-label={label} dir={menuDirection}
       style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.height }}
-      className="settings-select-menu thin-scroll absolute z-50 overflow-y-auto rounded-xl border border-line bg-card p-1.5 text-ink shadow-[0_12px_32px_rgba(20,28,40,0.2)]"
+      className={cx('settings-select-menu thin-scroll z-50 overflow-y-auto rounded-xl border border-line bg-card p-1.5 text-ink shadow-[0_12px_32px_rgba(20,28,40,0.2)]', inDialog ? 'absolute' : 'fixed')}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() } }}>
       {options.map((option, index) => <button key={option.value} ref={node => { items.current[index] = node }} type="button" role="menuitemradio" aria-checked={option.value === value} tabIndex={-1}
         onClick={() => { onChange(option.value); close() }} onKeyDown={event => {

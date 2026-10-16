@@ -19,17 +19,17 @@ import { useProviderActivity } from './useProviderActivity'
  * Conversation-scoped work lives in `useConversation`; this hook only decides
  * *which* conversation is current and keeps the shell honest.
  */
-export function useRelayRoom() {
+export function useRelayRoom(conversationEnabled = true) {
   const activity = useProviderActivity()
   const codexStatus = usePolling(activity.providers.codex ? api.codexStatus : null, Math.max(config.poll.codexStatusMs, 30_000))
-  const openCodeStatus = usePolling(activity.providers.opencode ? api.openCodeStatus : null, Math.max(config.poll.openCodeStatusMs, 30_000))
+  const openCodeStatus = usePolling(conversationEnabled && activity.providers.opencode ? api.openCodeStatus : null, Math.max(config.poll.openCodeStatusMs, 30_000))
   const project = usePolling(api.project, config.poll.projectMs)
   const threadList = usePolling(activity.ready ? api.threads : null, Math.max(config.poll.threadsMs, 30_000))
   useEffect(() => { if (activity.ready) void threadList.refresh() }, [activity.ready, activity.providers.codex, threadList.refresh])
   const [showArchived, setShowArchived] = useState(false)
   const archivedList = usePolling(showArchived && activity.ready ? api.archivedThreads : null, 30_000, { resetKey: String(activity.providers.codex) })
   const relayEvents = usePolling(api.relayEvents, Math.max(config.poll.relayEventsMs, 30_000))
-  const models = usePolling(activity.providers.opencode ? api.models : null, Math.max(config.poll.modelsMs, 300_000))
+  const models = usePolling(conversationEnabled && activity.providers.opencode ? api.models : null, Math.max(config.poll.modelsMs, 300_000))
   const workflowDefaults = usePolling(api.workflow, 30_000)
   useEffect(() => {
     const changed = () => { void workflowDefaults.refresh() }
@@ -38,7 +38,7 @@ export function useRelayRoom() {
   }, [workflowDefaults.refresh])
   const setup = workflowDefaults.data?.workflow
   const canCreateThread = Boolean(setup && activity.providers[setup.planner] && (setup.planner === 'cline' || (setup.planner === 'opencode' && setup.executor === 'cline') || (activity.providers.codex && codexStatus.data?.connected)))
-  const openCodeSessions = usePolling(activity.providers.opencode ? api.openCodeSessions : null, Math.max(config.poll.sessionsMs, 30_000))
+  const openCodeSessions = usePolling(conversationEnabled && activity.providers.opencode ? api.openCodeSessions : null, Math.max(config.poll.sessionsMs, 30_000))
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -101,12 +101,12 @@ export function useRelayRoom() {
     if (selectedThread?.workflowRole !== 'executor') return selectedThread
     return threads.find(thread => thread.executorThreadId === selectedThread.id) ?? selectedThread
   }, [selectedThread, threads])
-  const conversation = useConversation(primaryThread)
+  const conversation = useConversation(primaryThread, { enabled: conversationEnabled })
   const executorThread = useMemo(
     () => primaryThread?.executorThreadId ? threads.find(thread => thread.id === primaryThread.executorThreadId) ?? null : null,
     [primaryThread, threads],
   )
-  const executorConversation = useConversation(executorThread)
+  const executorConversation = useConversation(executorThread, { enabled: conversationEnabled })
 
   const executeCodexPlan = useCallback(async (threadId: string) => {
     await api.workflowAction(threadId, 'execute')
