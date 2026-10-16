@@ -1,13 +1,14 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import { ArrowUpRight, Minus, Orbit, Plus } from 'lucide-react'
+import { ArrowUpRight, Check, CircleAlert, Link2, Minus, Orbit, Plus, Radio, Scan, Send } from 'lucide-react'
 import { useProviderActivity } from '../../hooks/useProviderActivity'
 import { api } from '../../lib/api'
 import { usePolling } from '../../hooks/usePolling'
 import { useLocale } from '../../lib/i18n'
 import type { SuperAgentSlot, SuperSlotId } from '../../lib/types'
+import { connectionLabel, officeConnection, officeConnector, officePositions, stationWidth, type ConnectionState, type OfficePosition } from './office-connections'
 
 /** Small vector rooms keep the overview sharp without a WebGL runtime or image assets. */
-function OfficeRoom({ occupied, active }: { occupied: boolean; active: boolean }) {
+function OfficeRoom({ occupied, active, facing }: { occupied: boolean; active: boolean; facing: 'left' | 'right' }) {
   return <svg viewBox="0 0 280 230" aria-hidden="true" className="super-office-room w-full overflow-visible">
     <ellipse cx="140" cy="193" rx="112" ry="23" fill="var(--color-overlay)" opacity=".12" />
     <path d="M14 126 140 58 266 126 140 202Z" fill="var(--office-floor)" stroke="var(--office-accent)" strokeWidth="1.5" />
@@ -40,6 +41,10 @@ function OfficeRoom({ occupied, active }: { occupied: boolean; active: boolean }
     <path d="M235 139v-27" stroke="var(--color-ready-ink)" strokeWidth="3" />
     <ellipse cx="230" cy="117" rx="9" ry="6" transform="rotate(30 230 117)" fill="var(--color-ready)" />
     <ellipse cx="241" cy="111" rx="7" ry="9" transform="rotate(25 241 111)" fill="var(--color-ready-ink)" />
+    <g className="super-office-port" transform={`translate(${facing === 'left' ? 14 : 266} 126)`}>
+      <circle r="8" fill="var(--color-paper)" stroke="currentColor" strokeWidth="1.5" />
+      <circle r="3" fill="currentColor" />
+    </g>
   </svg>
 }
 
@@ -62,6 +67,7 @@ function BrainCore({ active }: { active: boolean }) {
     <ellipse cx="140" cy="177" rx="104" ry="30" fill="var(--color-paper)" stroke="var(--color-relay)" strokeWidth="1.5" />
     <ellipse cx="140" cy="177" rx="87" ry="22" fill="var(--color-relay-tint)" stroke="var(--color-relay)" opacity=".65" />
     <ellipse cx="140" cy="177" rx="65" ry="15" fill="none" stroke="var(--color-relay-ink)" opacity=".5" />
+    {[36, 244].map(x => <g key={x} transform={`translate(${x} 177)`}><circle r="7" fill="var(--color-paper)" stroke="var(--color-relay-ink)" strokeWidth="1.5" /><circle r="2.5" fill="var(--color-relay-ink)" /></g>)}
     <circle className="super-brain-halo" cx="140" cy="103" r="91" fill={`url(#${id}-halo)`} />
     <path d="M140 155v22m-12-22-7 21m31-21 7 21" stroke="var(--color-relay)" opacity=".5" />
     <circle cx="140" cy="103" r="51" fill={`url(#${id}-sphere)`} stroke="var(--color-relay-ink)" strokeWidth="1.5" />
@@ -84,36 +90,44 @@ function BrainCore({ active }: { active: boolean }) {
   </svg>
 }
 
-type OfficePosition = { left: number; top: number; accent: string }
-function officePositions(slots: SuperAgentSlot[]) {
-  const positions = new Map<SuperSlotId, OfficePosition>([['manager', { left: 50, top: 50, accent: 'var(--color-relay)' }]])
-  const workers = slots.filter(slot => slot.id !== 'manager')
-  workers.forEach((slot, index) => {
-    const sideCount = index % 2 === 0 ? Math.ceil(workers.length / 2) : Math.floor(workers.length / 2)
-    positions.set(slot.id, { left: index % 2 === 0 ? 79 : 21, top: (Math.floor(index / 2) + .5) / sideCount * 90 + 5, accent: ['var(--color-ready)', 'var(--color-review)', 'var(--color-relay)'][index % 3] })
-  })
-  return positions
-}
-
-function Station({ teamId, slot, enabled: visible, archived, position, onOpen }: { teamId: string; slot: SuperAgentSlot; enabled: boolean; archived: boolean; position: OfficePosition; onOpen: (slot: SuperAgentSlot) => void }) {
+function Station({ teamId, slot, enabled: visible, archived, position, width, selected, connection, onOpen }: { teamId: string; slot: SuperAgentSlot; enabled: boolean; archived: boolean; position: OfficePosition; width: number; selected: boolean; connection: ConnectionState; onOpen: (slot: SuperAgentSlot) => void }) {
   const ar = useLocale() === 'ar'
   const activity = useProviderActivity(), provider = slot.thread?.provider || 'codex', enabled = visible && activity.providers[provider]
   const status = usePolling(enabled && slot.thread ? () => provider === 'opencode' ? api.superOpenCodeStatus(teamId, slot.id) : api.turnState(slot.thread!.id) : null, 5000, { resetKey: slot.thread?.id })
-  const active = enabled && !status.error && Boolean(status.data?.active)
+  const active = enabled && !status.error && (Boolean(status.data?.active) || connection === 'running')
   const title = slot.label || (slot.id === 'manager' ? ar ? 'العقل' : 'Brain' : `${ar ? 'مهمة' : 'Task'} ${slot.id.slice(7)}`)
-  const state = !slot.thread ? ar ? 'اختيار محادثة' : 'Assign conversation' : !enabled ? ar ? 'المزود موقوف' : 'Provider paused' : status.error ? ar ? 'تعذّر تحديث الحالة' : 'Status unavailable' : !status.data ? ar ? 'جارٍ الاتصال' : 'Connecting' : active ? ar ? 'يعمل الآن' : 'Working' : ar ? 'جاهز' : 'Ready'
-  return <button type="button" disabled={archived && !slot.thread} onClick={() => onOpen(slot)} aria-label={`${title}: ${state}`} style={{ left: `${position.left}%`, top: `${position.top}%`, '--office-accent': position.accent } as CSSProperties} className="super-office-station group absolute w-[24%] max-w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-2xl text-start outline-none focus-visible:ring-2 focus-visible:ring-relay focus-visible:ring-offset-4 focus-visible:ring-offset-paper disabled:opacity-50" data-active={active}>
-    <div className="super-office-label relative z-10 mx-1 flex items-center gap-2 rounded-xl border border-line bg-card px-3 py-2 shadow-sm transition-colors group-hover:border-relay/60">
+  const state = !slot.thread ? ar ? 'اختيار محادثة' : 'Assign conversation' : !enabled ? connectionLabel('paused', ar) : status.error ? connectionLabel('unavailable', ar) : ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted'].includes(connection) ? connectionLabel(connection, ar) : !status.data ? ar ? 'جارٍ تحديث الحالة' : 'Checking status' : active ? ar ? 'مشغول' : 'Busy' : ar ? 'جاهز' : 'Ready'
+  return <button type="button" disabled={archived && !slot.thread} onClick={() => onOpen(slot)} aria-label={`${title}: ${state}`} aria-pressed={selected} style={{ left: `${position.left}%`, top: `${position.top}%`, width: stationWidth(width), '--office-accent': position.accent } as CSSProperties} className="super-office-station group absolute -translate-x-1/2 -translate-y-1/2 rounded-2xl text-start outline-none focus-visible:ring-2 focus-visible:ring-relay focus-visible:ring-offset-4 focus-visible:ring-offset-paper disabled:opacity-50" data-active={active} data-selected={selected} data-connection={connection}>
+    <div className="super-office-label relative z-10 mx-1 flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-3 shadow-sm transition-colors group-hover:border-relay/60">
       <span className="super-office-marker flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">{slot.id === 'manager' ? <Orbit className="h-3.5 w-3.5" /> : slot.thread ? <span className="text-xs font-semibold">{slot.id.slice(7)}</span> : <Plus className="h-3.5 w-3.5" />}</span>
-      <span className="min-w-0 flex-1"><strong dir="auto" className="block truncate text-xs font-semibold">{title}</strong><span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-soft"><span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-ready' : 'bg-ink-soft/40'}`} />{slot.thread ? `${provider === 'opencode' ? 'OpenCode' : 'Codex'} / ` : ''}{state}</span></span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-ink-soft transition-colors group-hover:text-relay-ink" />
+      <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><strong dir="auto" className="truncate text-xs font-semibold">{title}</strong>{slot.thread ? <span dir="ltr" className="text-[9px] text-ink-soft">{provider === 'opencode' ? 'OpenCode' : 'Codex'}</span> : null}</span><span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-soft"><span className="super-office-state-dot h-1.5 w-1.5 shrink-0 rounded-full bg-ink-soft/40" />{state}</span></span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-ink-soft transition-colors group-hover:text-relay-ink" />
     </div>
-    {slot.id === 'manager' ? <BrainCore active={active} /> : <OfficeRoom occupied={Boolean(slot.thread)} active={active} />}
-    <span dir="auto" className="mx-5 block truncate text-center text-[10px] text-ink-soft" title={slot.thread?.directory}>{slot.thread?.title || (ar ? 'مكتب غير مرتبط' : 'Unassigned desk')}</span>
+    {slot.id === 'manager' ? <BrainCore active={active} /> : <OfficeRoom occupied={Boolean(slot.thread)} active={active} facing={position.left > 50 ? 'left' : 'right'} />}
+    <span dir="auto" className="mx-5 block h-5 truncate text-center font-mono text-[10px] leading-5 text-ink-soft" title={slot.thread?.directory}>{slot.thread?.directory?.split(/[\\/]/).filter(Boolean).pop() || (ar ? 'غير مرتبط' : 'Unassigned')}</span>
   </button>
 }
 
-export function SuperAgentOffice({ teamId, slots, enabled, archived, onOpen }: { teamId: string; slots: SuperAgentSlot[]; enabled: boolean; archived: boolean; onOpen: (slot: SuperAgentSlot) => void }) {
+export function SuperAgentOffice({ teamId, slots, enabled, archived, selectedSlotId, onOpen }: { teamId: string; slots: SuperAgentSlot[]; enabled: boolean; archived: boolean; selectedSlotId?: SuperSlotId | null; onOpen: (slot: SuperAgentSlot) => void }) {
   const ar = useLocale() === 'ar'
+  const activity = useProviderActivity()
+  const tasks = usePolling(enabled ? () => api.superTasks(teamId) : null, data => data?.some(task => ['queued', 'dispatching', 'running'].includes(task.status)) ? 1500 : 3500, { resetKey: teamId })
+  const returning = useRef(new Map<string, string>())
+  const hadSnapshot = useRef(false)
+  const [replies, setReplies] = useState(new Set<string>())
+  useEffect(() => { returning.current.clear(); hadSnapshot.current = false; setReplies(new Set()) }, [teamId])
+  useEffect(() => {
+    if (!enabled || !tasks.data) return
+    const received = tasks.data.filter(task => task.status === 'completed' && hadSnapshot.current && (!returning.current.has(task.id) || ['queued', 'dispatching', 'running'].includes(returning.current.get(task.id) || ''))).map(task => task.id)
+    returning.current = new Map(tasks.data.map(task => [task.id, task.status]))
+    hadSnapshot.current = true
+    if (!received.length) return
+    setReplies(new Set(received))
+  }, [tasks.data, enabled])
+  useEffect(() => {
+    if (!replies.size) return
+    const timeout = window.setTimeout(() => setReplies(new Set()), 2400)
+    return () => window.clearTimeout(timeout)
+  }, [replies])
   const viewport = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(100)
   const [size, setSize] = useState({ width: 850, height: 650 })
@@ -135,6 +149,9 @@ export function SuperAgentOffice({ teamId, slots, enabled, archived, onOpen }: {
   }, [])
   const positions = officePositions(slots)
   const sceneHeight = Math.max(650, size.height, Math.ceil((slots.length - 1) / 2) * 330 + 40)
+  const manager = slots.find(slot => slot.id === 'manager')
+  const connections = new Map(slots.filter(slot => slot.id !== 'manager').map(slot => [slot.id, officeConnection(slot, tasks.data || [], manager?.thread?.id, enabled && activity.providers.codex && activity.providers[slot.thread?.provider || 'codex'], Boolean(tasks.error) || !tasks.data)]))
+  const links = slots.filter(slot => slot.id !== 'manager').map(slot => ({ slot, ...connections.get(slot.id)!, geometry: officeConnector(positions.get(slot.id)!, size.width, sceneHeight) }))
   useLayoutEffect(() => {
     const element = viewport.current
     if (!element) return
@@ -150,16 +167,32 @@ export function SuperAgentOffice({ teamId, slots, enabled, archived, onOpen }: {
     <div ref={viewport} dir="ltr" className="super-office thin-scroll min-h-0 flex-1 overflow-auto">
     <div style={{ width: size.width * zoom / 100, height: sceneHeight * zoom / 100 }} className="relative mx-auto overflow-hidden">
     <div dir="ltr" style={{ width: size.width, height: sceneHeight, transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }} className="absolute left-0 top-0">
-      <svg viewBox={`0 0 1000 ${sceneHeight}`} preserveAspectRatio="none" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full text-line-strong">{slots.filter(slot => slot.id !== 'manager').map(slot => {
-        const position = positions.get(slot.id)!
-        return <path key={slot.id} d={`M500 ${sceneHeight / 2 + 40} Q${position.left < 50 ? 350 : 650} ${sceneHeight / 2 + 40} ${position.left * 10} ${position.top / 100 * sceneHeight + 50}`} fill="none" stroke="currentColor" opacity=".35" strokeDasharray="4 6" />
-      })}</svg>
-      {slots.map(slot => <Station teamId={teamId} key={slot.id} slot={slot} enabled={enabled} archived={archived} position={positions.get(slot.id)!} onOpen={onOpen} />)}
-      <p dir="auto" className="absolute bottom-3 left-1/2 -translate-x-1/2 text-center text-[11px] text-ink-soft">{ar ? 'اضغط على أي مكتب لفتح المحادثة' : 'Choose a desk to open its conversation'}</p>
+      <svg viewBox={`0 0 ${size.width} ${sceneHeight}`} aria-hidden="true" className="super-office-links pointer-events-none absolute inset-0 h-full w-full">
+        {links.map(({ slot, state, task, geometry }) => <g key={slot.id} className="super-office-link" data-desk={slot.id} data-state={state} data-selected={selectedSlotId === slot.id}>
+          <path d={geometry.path} className="super-link-bed" fill="none" stroke="currentColor" strokeWidth="7" opacity=".07" />
+          <path d={geometry.path} className="super-link-track" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          {(state === 'dispatching' || state === 'running') && enabled && !archived ? <path d={geometry.path} pathLength="100" className="super-link-outbound" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeDasharray="1 24" /> : null}
+          {state === 'completed' && task && replies.has(task.id) && enabled && !archived ? <path d={geometry.path} pathLength="100" className="super-link-return" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeDasharray="2 98" /> : null}
+          <circle cx={geometry.start.x} cy={geometry.start.y} r="3" fill="currentColor" />
+          <circle cx={geometry.end.x} cy={geometry.end.y} r="4" fill="var(--color-paper)" stroke="currentColor" strokeWidth="1.5" />
+        </g>)}
+      </svg>
+      {links.filter(link => ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted'].includes(link.state) || selectedSlotId === link.slot.id).map(({ slot, state, geometry }) => <span key={slot.id} data-state={state} dir={ar ? 'rtl' : 'ltr'} className="super-office-link-label pointer-events-none absolute z-10 inline-flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-card px-2.5 py-1 text-[10px] shadow-sm" style={{ left: geometry.label.x, top: geometry.label.y }}>
+        {state === 'completed' ? <Check className="h-3 w-3" /> : state === 'failed' || state === 'interrupted' ? <CircleAlert className="h-3 w-3" /> : state === 'running' ? <Radio className="h-3 w-3" /> : state === 'queued' || state === 'dispatching' ? <Send className="h-3 w-3" /> : <Link2 className="h-3 w-3" />}
+        {state === 'ready' && selectedSlotId === slot.id ? ar ? 'عرض المحادثة' : 'Viewing chat' : connectionLabel(state, ar)}
+      </span>)}
+      {slots.map(slot => <Station teamId={teamId} key={slot.id} slot={slot} enabled={enabled} archived={archived} position={positions.get(slot.id)!} width={size.width} selected={selectedSlotId === slot.id} connection={slot.id === 'manager' ? 'ready' : connections.get(slot.id)!.state} onOpen={onOpen} />)}
     </div>
     </div>
     </div>
+    <div dir={ar ? 'rtl' : 'ltr'} className="pointer-events-none absolute left-4 top-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-card px-3 py-2 text-[10px] text-ink-soft" aria-label={ar ? 'حالات خطوط المهام' : 'Task connection states'}>
+      <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-review" />{ar ? 'بانتظار الإرسال' : 'Queued'}</span>
+      <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-relay" />{ar ? 'قيد التنفيذ' : 'Working'}</span>
+      <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-ready" />{ar ? 'وصل الرد' : 'Reply received'}</span>
+    </div>
+    {tasks.error ? <p role="status" className="absolute bottom-4 end-4 rounded-lg border border-line bg-card px-3 py-2 text-[10px] text-review-ink">{ar ? 'تعذّر تحديث خطوط المهام' : 'Task connections could not be updated'}</p> : null}
     <div dir="ltr" role="group" aria-label={ar ? 'تكبير وتصغير المكاتب' : 'Office zoom'} className="absolute bottom-4 left-4 z-20 flex items-center gap-0.5 rounded-xl border border-line bg-card p-1 shadow-sm">
+      <button type="button" className={zoomButton} onClick={() => { const element = viewport.current; if (element) setZoom(Math.max(40, Math.min(100, Math.floor(Math.min(element.clientWidth / size.width, element.clientHeight / sceneHeight) * 100)))) }} aria-label={ar ? 'عرض كل المكاتب' : 'Fit all desks'} title={ar ? 'عرض كل المكاتب' : 'Fit all desks'}><Scan className="h-3.5 w-3.5" /></button>
       <button type="button" className={zoomButton} disabled={zoom <= 40} onClick={() => changeZoom(-10)} aria-label={ar ? 'تصغير' : 'Zoom out'} title={ar ? 'تصغير' : 'Zoom out'}><Minus className="h-3.5 w-3.5" /></button>
       <button type="button" className={`${zoomButton} min-w-14 tabular-nums`} onClick={() => setZoom(100)} aria-label={ar ? 'إعادة التكبير إلى 100%' : 'Reset zoom to 100%'} title={ar ? 'الحجم الطبيعي' : 'Reset zoom'}><span aria-live="polite">{zoom}%</span></button>
       <button type="button" className={zoomButton} disabled={zoom >= 200} onClick={() => changeZoom(10)} aria-label={ar ? 'تكبير' : 'Zoom in'} title={ar ? 'تكبير' : 'Zoom in'}><Plus className="h-3.5 w-3.5" /></button>
