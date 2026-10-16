@@ -7,7 +7,7 @@ import { SuperAgentCoordinator } from '../server/super-agent-coordinator.mjs'
 import { CoreBrainMcp } from '../server/core-brain-mcp.mjs'
 import { createServer } from 'node:http'
 import vm from 'node:vm'
-import { superAgentInstructions } from '../server/super-agent.mjs'
+import { superAgentInstructions, superProvider } from '../server/super-agent.mjs'
 
 const root = await mkdtemp(path.join(tmpdir(), 'openzero-core-brain-'))
 try {
@@ -45,7 +45,7 @@ try {
     team: async () => structuredClone(team), enabled: async () => {}, memory,
     turn: id => id === 'manager' ? managerTurn : { active: false },
     recall: (team, slot, query) => memory.retrieve(project, query),
-    send: async (grant, target) => { sends.push(target.slot.id); peak = Math.max(peak, ++active); await new Promise(resolve => setTimeout(resolve, 15)); active--; return { turn: { id: `turn-${target.slot.id}`, status: 'completed' } } },
+    send: async (grant, target) => { assert.equal(coordinator.jobs.find(job => job.slotId === target.slot.id)?.status, 'dispatching'); sends.push(target.slot.id); peak = Math.max(peak, ++active); await new Promise(resolve => setTimeout(resolve, 15)); active--; return { turn: { id: `turn-${target.slot.id}`, status: 'completed' } } },
     reply: async (thread, turnId) => `${turnId}: ${ { 'thread-1': 14, 'thread-2': 42, 'thread-3': 312 }[thread] }`,
   }
   coordinator = new SuperAgentCoordinator(path.join(root, 'jobs'), deps)
@@ -74,11 +74,13 @@ try {
   await assert.rejects(coordinator.tool({ ...params, threadId: 'thread-1', turnId: 'worker-turn' }), /Only the current manager/)
   const saved = JSON.parse(await readFile(path.join(root, 'jobs', 'super-agent-tasks.json'), 'utf8'))
   assert.ok(saved.jobs.every(job => job.status === 'completed'))
-  saved.jobs[0].status = 'running'
+  saved.jobs[0].status = 'dispatching'
+  saved.jobs[1].status = 'running'
+  saved.jobs[2].status = 'queued'
   await writeFile(path.join(root, 'jobs', 'super-agent-tasks.json'), JSON.stringify(saved))
   const restored = new SuperAgentCoordinator(path.join(root, 'jobs'), deps)
   await restored.ready
-  assert.equal(restored.jobs[0].status, 'interrupted')
+  assert.ok(restored.jobs.every(job => job.status === 'interrupted'))
   assert.equal(sends.length, 3, 'restart never automatically replays an uncertain dispatch')
   console.log('Passed: real coordinator sends only to desks 1/2/3, returns scoped results, leaves desk 4 untouched, caps concurrency at two, rejects wrong turns/workers/archive/invalid batches, persists jobs and avoids replay after restart. All agents, replies and transports were synthetic.')
 
@@ -112,7 +114,7 @@ try {
   let resumes = 0
   const fixture = { saved: { id: 'new-thread', directory: project, superAgentRole: 'manager', superAgentProtocol: 2 } }
   const context = vm.createContext({
-    requireRelayCodexThread: async () => fixture, threadInstructionSelection: () => ({ text: instructions }), superAgentInstructions,
+    requireRelayCodexThread: async () => fixture, threadInstructionSelection: () => ({ text: instructions }), superAgentInstructions, superProvider,
     superAgentKnowledge: async () => [], codexBridge: { activeThreads: new Set(['new-thread']), threadInstructions: new Map([['new-thread', instructions]]), resumeThread: async (id, params) => { resumes++; assert.ok(params.config['mcp_servers.openzero_core_brain']); assert.equal('dynamicTools' in params, false); assert.equal('sandbox' in params, false); return {} } },
     coreBrainMcp: { config: () => managerConfig }, server: { address: () => ({ port: 1 }) }, watchRoot: project,
   })

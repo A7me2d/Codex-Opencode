@@ -17,7 +17,7 @@ export class SuperAgentCoordinator {
     this.ready = this.restore(); void this.ready.catch(() => {})
   }
   async restore() {
-    try { const saved = JSON.parse(await readFile(this.file, 'utf8')); this.jobs = saved.jobs.map(job => ['queued', 'running'].includes(job.status) ? { ...job, status: 'interrupted', error: 'Application restarted. Not resent automatically.' } : job) }
+    try { const saved = JSON.parse(await readFile(this.file, 'utf8')); this.jobs = saved.jobs.map(job => ['queued', 'dispatching', 'running'].includes(job.status) ? { ...job, status: 'interrupted', error: 'Application restarted. Not resent automatically.' } : job) }
     catch (error) { if (error.code !== 'ENOENT') throw error }
   }
   async record(job, patch) {
@@ -25,7 +25,7 @@ export class SuperAgentCoordinator {
       await this.ready
       const jobs = structuredClone(this.jobs)
       const current = jobs.find(item => item.id === job.id)
-      if (current) Object.assign(current, patch); else jobs.push({ ...job, ...patch })
+      if (current) Object.assign(current, patch, { updatedAt: new Date().toISOString() }); else jobs.push({ ...job, ...patch, updatedAt: new Date().toISOString() })
       const retained = jobs.slice(-300)
       await mkdir(path.dirname(this.file), { recursive: true })
       const temporary = `${this.file}.tmp`
@@ -73,7 +73,7 @@ export class SuperAgentCoordinator {
   }
   async run(grant, target) {
     const id = createHash('sha256').update(JSON.stringify([grant.teamId, grant.threadId, grant.messageId, target.slot.id])).digest('hex')
-    const job = { id, requestId: grant.messageId, teamId: grant.teamId, managerThreadId: grant.threadId, slotId: target.slot.id, threadId: target.slot.thread.id, text: target.text, status: 'queued', createdAt: new Date().toISOString() }
+    const job = { id, requestId: grant.messageId, teamId: grant.teamId, managerThreadId: grant.threadId, slotId: target.slot.id, threadId: target.slot.thread.id, provider: target.slot.thread.provider || 'codex', text: target.text, status: 'queued', createdAt: new Date().toISOString() }
     let acquired = false, reserved = false
     try {
       await this.record(job, {})
@@ -84,9 +84,10 @@ export class SuperAgentCoordinator {
       if (this.reserved.has(job.threadId) || this.deps.turn(job.threadId).active) throw new Error('Worker is already busy. Task was not sent.')
       this.reserved.add(job.threadId); reserved = true
       await this.deps.enabled()
+      await this.record(job, { status: 'dispatching' })
       const response = await this.deps.send(grant, target, job.id)
       const turn = response?.turn
-      if (!turn?.id) throw new Error('Codex did not confirm a worker turn. Inspect its conversation before retrying.')
+      if (!turn?.id) throw new Error('The provider did not confirm a worker turn. Inspect its conversation before retrying.')
       await this.record(job, { status: 'running', turnId: turn.id })
       const deadline = Date.now() + 10 * 60_000
       while (this.deps.turn(job.threadId).active && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 500))

@@ -11,7 +11,7 @@ export type SuperSlotId = 'manager' | `worker-${number}`
 export interface SuperAgentSlot { id: SuperSlotId; label: string; thread: CodexThread | null }
 export interface SuperAgentTeam { id: string; title: string; archived: boolean; updatedAt: number; slots: SuperAgentSlot[] }
 export interface BrainEntry { id: string; scope: 'project' | 'team'; kind: string; text: string; status: 'proposed' | 'approved' | 'rejected'; createdAt: string; source: { origin: string; threadId: string; slotId: string }; evidence: { file: string; sha256: string }[] }
-export interface SuperTask { id: string; slotId: string; status: string; text: string; reply?: string; error?: string }
+export interface SuperTask { id: string; slotId: string; threadId?: string; managerThreadId?: string; createdAt?: string; updatedAt?: string; status: string; text: string; reply?: string; error?: string }
 export type ProviderId = 'codex' | 'opencode' | 'cline'
 export interface ProviderActivitySettings { providers: Record<ProviderId, boolean> }
 
@@ -111,6 +111,8 @@ export type SourceControlStatus = { repository: false; root: string; error: stri
 export interface GitDiffPreview { path: string; staged: boolean; text: string; truncated: boolean; deleted: boolean }
 
 export interface CodexThread {
+  /** Super Agent desks default to Codex for existing saved conversations. */
+  provider?: 'codex' | 'opencode'
   archived?: boolean
   running?: boolean
   workflow?: WorkflowSetup

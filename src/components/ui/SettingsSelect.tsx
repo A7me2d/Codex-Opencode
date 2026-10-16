@@ -6,8 +6,8 @@ import { cx } from '../../lib/cx'
 export interface SettingsOption { value: string; label: string }
 
 /** Themed choice menu outside scrolling panels, in the dialog top layer when needed. */
-export function SettingsSelect({ id, label, value, options, disabled = false, className, onChange }: {
-  id?: string; label: string; value: string; options: SettingsOption[]; disabled?: boolean; className?: string; onChange: (value: string) => void
+export function SettingsSelect({ id, label, value, options, disabled = false, className, onChange, searchPlaceholder }: {
+  id?: string; label: string; value: string; options: SettingsOption[]; disabled?: boolean; className?: string; onChange: (value: string) => void; searchPlaceholder?: string
 }) {
   const menuId = useId()
   const trigger = useRef<HTMLButtonElement>(null)
@@ -15,13 +15,16 @@ export function SettingsSelect({ id, label, value, options, disabled = false, cl
   const items = useRef<(HTMLButtonElement | null)[]>([])
   const search = useRef({ text: '', at: 0 })
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const searchInput = useRef<HTMLInputElement>(null)
+  const visibleOptions = searchPlaceholder && query.trim() ? options.filter(option => `${option.label} ${option.value}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) : options
   const [position, setPosition] = useState({ left: 0, top: 0, width: 0, height: 240 })
   const expanded = open && !disabled
   const target = trigger.current?.closest('dialog') ?? document.body
   const inDialog = target.tagName === 'DIALOG'
   const menuDirection = trigger.current?.closest('[dir]')?.getAttribute('dir') || undefined
   const current = options.find(option => option.value === value)
-  const close = () => { setOpen(false); trigger.current?.focus() }
+  const close = () => { setOpen(false); setQuery(''); trigger.current?.focus() }
 
   useLayoutEffect(() => {
     if (!expanded || !target || !trigger.current) return
@@ -31,7 +34,7 @@ export function SettingsSelect({ id, label, value, options, disabled = false, cl
       const below = Math.min(bounds.bottom, window.innerHeight) - anchor.bottom - 12
       const above = anchor.top - Math.max(bounds.top, 0) - 12
       const upward = below < 160 && above > below
-      const height = Math.min(options.length * 40 + 12, 260, Math.max(72, upward ? above : below))
+      const height = Math.min(visibleOptions.length * 40 + 12 + (searchPlaceholder ? 48 : 0), 300, Math.max(72, upward ? above : below))
       const width = Math.min(anchor.width, bounds.width - 24)
       setPosition({ width, height,
         left: Math.max(12, Math.min(anchor.left - bounds.left, bounds.width - width - 12)),
@@ -43,21 +46,21 @@ export function SettingsSelect({ id, label, value, options, disabled = false, cl
     window.addEventListener('resize', place)
     target.addEventListener('scroll', scroll, true)
     return () => { window.removeEventListener('resize', place); target.removeEventListener('scroll', scroll, true) }
-  }, [expanded, target, inDialog, options.length])
+  }, [expanded, target, inDialog, visibleOptions.length, searchPlaceholder])
 
   useEffect(() => {
     if (!expanded) return
     search.current = { text: '', at: 0 }
     const index = Math.max(0, options.findIndex(option => option.value === value))
-    items.current[index]?.focus({ preventScroll: true })
-    items.current[index]?.scrollIntoView({ block: 'nearest' })
+    if (searchPlaceholder) searchInput.current?.focus({ preventScroll: true })
+    else { items.current[index]?.focus({ preventScroll: true }); items.current[index]?.scrollIntoView({ block: 'nearest' }) }
     const outside = (event: Event) => {
       const node = event.target as Node
-      if (!trigger.current?.contains(node) && !menu.current?.contains(node)) setOpen(false)
+      if (!trigger.current?.contains(node) && !menu.current?.contains(node)) { setOpen(false); setQuery('') }
     }
     document.addEventListener('pointerdown', outside)
     document.addEventListener('focusin', outside)
-    const dismiss = () => setOpen(false)
+    const dismiss = () => { setOpen(false); setQuery('') }
     target?.addEventListener('close', dismiss)
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('focusin', outside); target?.removeEventListener('close', dismiss) }
   }, [expanded, value, target])
@@ -74,17 +77,18 @@ export function SettingsSelect({ id, label, value, options, disabled = false, cl
       style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.height }}
       className={cx('settings-select-menu thin-scroll z-50 overflow-y-auto rounded-xl border border-line bg-card p-1.5 text-ink shadow-[0_12px_32px_rgba(20,28,40,0.2)]', inDialog ? 'absolute' : 'fixed')}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() } }}>
-      {options.map((option, index) => <button key={option.value} ref={node => { items.current[index] = node }} type="button" role="menuitemradio" aria-checked={option.value === value} tabIndex={-1}
+      {searchPlaceholder ? <div className="sticky -top-1.5 z-10 -mx-1.5 mb-1 border-b border-line bg-card p-2"><input ref={searchInput} value={query} onChange={event => setQuery(event.target.value)} aria-label={searchPlaceholder} placeholder={searchPlaceholder} onKeyDown={event => { if (event.key === 'ArrowDown' && visibleOptions.length) { event.preventDefault(); items.current[0]?.focus() } }} className="w-full rounded-lg border border-line bg-paper px-2.5 py-2 text-xs text-ink outline-none focus:border-relay" /></div> : null}
+      {visibleOptions.map((option, index) => <button key={option.value} ref={node => { items.current[index] = node }} type="button" role="menuitemradio" aria-checked={option.value === value} tabIndex={-1}
         onClick={() => { onChange(option.value); close() }} onKeyDown={event => {
           let next = index
-          if (event.key === 'ArrowDown') next = (index + 1) % options.length
-          else if (event.key === 'ArrowUp') next = (index - 1 + options.length) % options.length
+          if (event.key === 'ArrowDown') next = (index + 1) % visibleOptions.length
+          else if (event.key === 'ArrowUp') next = (index - 1 + visibleOptions.length) % visibleOptions.length
           else if (event.key === 'Home') next = 0
-          else if (event.key === 'End') next = options.length - 1
+          else if (event.key === 'End') next = visibleOptions.length - 1
           else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key !== ' ') {
             const text = (Date.now() - search.current.at < 700 ? search.current.text : '') + event.key.toLocaleLowerCase()
             search.current = { text, at: Date.now() }
-            const found = options.findIndex(option => option.label.toLocaleLowerCase().startsWith(text))
+            const found = visibleOptions.findIndex(option => option.label.toLocaleLowerCase().startsWith(text))
             if (found >= 0) next = found
           } else return
           event.preventDefault(); items.current[next]?.focus()
