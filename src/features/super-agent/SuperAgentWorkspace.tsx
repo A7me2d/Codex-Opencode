@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Archive, ArrowLeft, ArrowRightLeft, Check, Crown, FolderOpen, Maximize2, Minimize2, Paperclip, Pencil, Plus, Send, Square, Unlink, Users, X, Trash2, LayoutGrid, Map as MapIcon } from 'lucide-react'
+import { Archive, ArrowLeft, ArrowRightLeft, Check, Crown, FolderOpen, Maximize2, Minimize2, Paperclip, Pencil, Plus, Send, Square, Unlink, Users, X, Trash2, Brain, LayoutGrid, Map as MapIcon } from 'lucide-react'
 import { api } from '../../lib/api'
 import { direction, useLocale } from '../../lib/i18n'
 import { cx } from '../../lib/cx'
@@ -13,6 +13,7 @@ import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { CodexSettingsPicker } from '../codex/CodexSettingsPicker'
 import { SettingsSelect } from '../../components/ui/SettingsSelect'
 import { SuperAgentOffice } from './SuperAgentOffice'
+import { CoreBrainPanel } from './CoreBrainPanel'
 import { ChangedFiles } from '../opencode/ChangedFiles'
 import type { CodexModelInfo, CodexSettings, SuperAgentSlot, SuperAgentTeam, SuperSlotId } from '../../lib/types'
 
@@ -107,6 +108,7 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
   const ar = useLocale() === 'ar', activity = useProviderActivity()
   const [teams, setTeams] = useState<SuperAgentTeam[]>([])
   const [selected, setSelected] = useState(() => { try { return localStorage.getItem(preferenceKeys.superTeam) || '' } catch { return '' } })
+  const [brainOpen, setBrainOpen] = useState(false)
   const [presentation, setPresentation] = useState<'office' | 'chats'>('office')
   const [archived, setArchived] = useState(false), [focused, setFocused] = useState<SuperSlotId | null>(null)
   const [picker, setPicker] = useState<SuperSlotId | null>(null), [rename, setRename] = useState(false), [name, setName] = useState('')
@@ -151,10 +153,11 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
       <button type="button" className={cx(button, archived && 'bg-relay-tint text-relay-ink')} aria-pressed={archived} onClick={() => setArchived(value => !value)}>{ar ? 'الأرشيف' : 'Archived'}</button>
       <div className="ms-auto flex items-center rounded-lg border border-line bg-paper p-0.5" role="group" aria-label={ar ? 'طريقة العرض' : 'Workspace view'}>{(['office', 'chats'] as const).map(value => <button type="button" key={value} aria-pressed={presentation === value} onClick={() => { setPresentation(value); setFocused(null) }} className={cx('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', presentation === value ? 'bg-card text-relay-ink shadow-sm' : 'text-ink-soft')}>{value === 'office' ? <MapIcon className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}{value === 'office' ? ar ? 'المكاتب' : 'Office' : ar ? 'الشاتات' : 'Chats'}</button>)}</div>
       {team ? <button type="button" className={`${button} bg-relay-tint text-relay-ink`} disabled={busy || team.archived} onClick={() => void perform(() => api.addSuperSlot(team.id))}><Plus className="h-3.5 w-3.5" />{ar ? 'إضافة مكتب' : 'Add desk'}</button> : null}
+      <button type="button" className={button} disabled={!team} onClick={() => setBrainOpen(true)}><Brain className="h-3.5 w-3.5" />Core-Brain</button>
     </header>
     {!activity.providers.codex ? <p role="status" className="border-b border-line px-4 py-2 text-xs text-review-ink">{ar ? 'Codex موقوف. فعّله من الاتصال والتحديثات.' : 'Codex is disabled. Enable it in Connections & updates.'}</p> : null}
     {error || catalog.error ? <p role="alert" className="px-4 py-2 text-xs text-review-ink">{error || catalog.error}</p> : null}
-    {!team ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center"><Users className="h-9 w-9 text-ink-soft" /><h1 className="text-lg font-semibold">{loading ? ar ? 'جارٍ تحميل الفرق…' : 'Loading teams…' : ar ? 'مساحة واحدة لفريقك' : 'One workspace for your team'}</h1><p className="max-w-md text-sm leading-7 text-ink-soft">{ar ? 'أنشئ فريقًا، ثم اختر محادثة المدير ومحادثات المهام. كل إرسال يتم باختيارك.' : 'Create a team, then choose the manager and task conversations. Every message is sent by you.'}</p><button type="button" disabled={busy || loading} className={`${button} bg-relay-tint text-relay-ink`} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-4 w-4" />{ar ? 'إنشاء فريق' : 'Create team'}</button></div> : <div className="relative flex min-h-0 flex-1 overflow-hidden">
+    {!team ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center"><Users className="h-9 w-9 text-ink-soft" /><h1 className="text-lg font-semibold">{loading ? ar ? 'جارٍ تحميل الفرق…' : 'Loading teams…' : ar ? 'مساحة واحدة لفريقك' : 'One workspace for your team'}</h1><p className="max-w-md text-sm leading-7 text-ink-soft">{ar ? 'أنشئ فريقًا، ثم اختر محادثة المدير ومحادثات المهام. المدير يرسل للمكاتب التي تحددها ويجمع ردودها تلقائيًا.' : 'Create a team, then choose the manager and task conversations. The manager sends to the desks you request and gathers their actual replies.'}</p><button type="button" disabled={busy || loading} className={`${button} bg-relay-tint text-relay-ink`} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-4 w-4" />{ar ? 'إنشاء فريق' : 'Create team'}</button></div> : <div className="relative flex min-h-0 flex-1 overflow-hidden">
       {officeVisible ? <SuperAgentOffice slots={visibleSlots} archived={team.archived} enabled={visible && activity.providers.codex} onOpen={slot => slot.thread ? setFocused(slot.id) : setPicker(slot.id)} /> : null}
       <div ref={chatPanel} dir="ltr" role={officePopup ? 'complementary' : undefined} aria-label={officePopup ? ar ? 'محادثة المكتب' : 'Desk conversation' : undefined} onKeyDown={event => { if (officePopup && event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); setFocused(null) } }} style={{ ...(officeVisible && !focused ? { display: 'none' } : {}), '--worker-rows': Math.max(1, Math.ceil((visibleSlots.length - 1) / 2)) } as CSSProperties} className={cx('super-agent-grid thin-scroll min-h-0 flex-1 gap-2 overflow-y-auto p-2', (focused || visibleSlots.length === 1) && 'super-agent-focused', officePopup && 'super-agent-popup')}>
       {visibleSlots.map((slot, index) => {
@@ -165,6 +168,7 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
         </section>
       })}
     </div></div>}
+    {brainOpen && team ? <Dialog title="Core-Brain" onClose={() => setBrainOpen(false)}><CoreBrainPanel key={team.id} team={team} /></Dialog> : null}
     {picker && team ? <SlotPicker key={`${team.id}:${picker}`} team={team} slot={team.slots.find(slot => slot.id === picker)!} onChange={changed} onClose={() => setPicker(null)} /> : null}
     {rename && team ? <Dialog title={ar ? 'اسم الفريق' : 'Team name'} onClose={() => setRename(false)}><form onSubmit={event => { event.preventDefault(); void perform(() => api.updateSuperTeam(team.id, { title: name })); setRename(false) }} className="flex gap-2"><input autoFocus aria-label={ar ? 'اسم الفريق' : 'Team name'} value={name} maxLength={120} onChange={event => setName(event.target.value)} className={`${field} flex-1`} /><button type="submit" disabled={!name.trim()} className={button}><Check className="h-4 w-4" /></button></form></Dialog> : null}
     {transfer && team ? <Dialog title={ar ? 'نقل إلى مسودة محادثة' : 'Transfer to conversation draft'} onClose={() => setTransfer(null)}><div className="space-y-3"><SettingsSelect label={ar ? 'المحادثة المستقبلة' : 'Destination conversation'} value={transfer.target} onChange={value => setTransfer({ ...transfer, target: value as SuperSlotId })} options={[{ value: '', label: ar ? 'اختر الوجهة' : 'Choose destination' }, ...visibleSlots.filter(slot => slot.thread && slot.id !== transfer.source.id).map(slot => ({ value: slot.id, label: `${slotName(slot, ar)} · ${slot.thread?.title}` }))]} /><textarea aria-label={ar ? 'النص المنقول' : 'Transferred text'} rows={8} value={transfer.text} onChange={event => setTransfer({ ...transfer, text: event.target.value })} className={`${field} w-full resize-y`} /><p className="text-[11px] text-ink-soft">{ar ? 'يُضاف للمسودة فقط. راجعه واضغط إرسال من الشات المستقبِل.' : 'Added to the draft only. Review it and send from the destination chat.'}</p><button type="button" className={button} disabled={!transfer.target || !transfer.text.trim() || team.archived} onClick={() => {

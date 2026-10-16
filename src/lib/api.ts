@@ -63,6 +63,12 @@ function unwrap<T>(body: { data?: T }): T {
 export type ModelSelector = string
 
 export const api = {
+  coreBrainConfig: () => requestJson<{ data: { directory: string | null } }>('/api/core-brain/config').then(unwrap),
+  configureCoreBrain: (directory: string) => post<{ data: { directory: string } }>('/api/core-brain/config', { directory }).then(unwrap),
+  brainEntries: (team: string, slot: import('./types').SuperSlotId) => requestJson<{ data: import('./types').BrainEntry[] }>(`/api/super-agent/teams/${team}/brain?slot=${slot}`).then(unwrap),
+  proposeBrainEntry: (team: string, slot: import('./types').SuperSlotId, kind: string, text: string, scope: 'project' | 'team' = 'project') => post(`/api/super-agent/teams/${team}/brain?slot=${slot}`, { kind, text, scope }),
+  reviewBrainEntry: (team: string, slot: import('./types').SuperSlotId, id: string, status: 'approved' | 'rejected') => post(`/api/super-agent/teams/${team}/brain/${id}?slot=${slot}`, { status }),
+  superTasks: (team: string) => requestJson<{ data: import('./types').SuperTask[] }>(`/api/super-agent/teams/${team}/tasks`).then(unwrap),
   superTeams: () => requestJson<{ data: import('./types').SuperAgentTeam[] }>('/api/super-agent/teams').then(unwrap),
   createSuperTeam: (title: string) => post<{ data: import('./types').SuperAgentTeam }>('/api/super-agent/teams', { title }).then(unwrap),
   updateSuperTeam: (id: string, input: { title?: string; archived?: boolean }) => requestJson<{ data: import('./types').SuperAgentTeam }>(`/api/super-agent/teams/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }).then(unwrap),
