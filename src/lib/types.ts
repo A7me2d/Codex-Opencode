@@ -111,6 +111,8 @@ export type SourceControlStatus = { repository: false; root: string; error: stri
 export interface GitDiffPreview { path: string; staged: boolean; text: string; truncated: boolean; deleted: boolean }
 
 export interface CodexThread {
+  /** Super Agent desks default to Codex for existing saved conversations. */
+  provider?: 'codex' | 'opencode'
   archived?: boolean
   running?: boolean
   workflow?: WorkflowSetup

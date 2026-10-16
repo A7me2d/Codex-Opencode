@@ -7,7 +7,7 @@ import { SuperAgentCoordinator } from '../server/super-agent-coordinator.mjs'
 import { CoreBrainMcp } from '../server/core-brain-mcp.mjs'
 import { createServer } from 'node:http'
 import vm from 'node:vm'
-import { superAgentInstructions } from '../server/super-agent.mjs'
+import { superAgentInstructions, superProvider } from '../server/super-agent.mjs'
 
 const root = await mkdtemp(path.join(tmpdir(), 'openzero-core-brain-'))
 try {
@@ -112,7 +112,7 @@ try {
   let resumes = 0
   const fixture = { saved: { id: 'new-thread', directory: project, superAgentRole: 'manager', superAgentProtocol: 2 } }
   const context = vm.createContext({
-    requireRelayCodexThread: async () => fixture, threadInstructionSelection: () => ({ text: instructions }), superAgentInstructions,
+    requireRelayCodexThread: async () => fixture, threadInstructionSelection: () => ({ text: instructions }), superAgentInstructions, superProvider,
     superAgentKnowledge: async () => [], codexBridge: { activeThreads: new Set(['new-thread']), threadInstructions: new Map([['new-thread', instructions]]), resumeThread: async (id, params) => { resumes++; assert.ok(params.config['mcp_servers.openzero_core_brain']); assert.equal('dynamicTools' in params, false); assert.equal('sandbox' in params, false); return {} } },
     coreBrainMcp: { config: () => managerConfig }, server: { address: () => ({ port: 1 }) }, watchRoot: project,
   })

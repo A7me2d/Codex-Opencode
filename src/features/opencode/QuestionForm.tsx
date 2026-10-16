@@ -12,6 +12,7 @@ export interface QuestionFormProps {
   /** Called after every attempt, so the rail re-reads the pending questions. */
   onAnswered: () => void
   onNotify: (title: string, detail?: string) => void
+  sendAnswer?: (formId: string, answer: Record<string, string>) => Promise<unknown>
 }
 
 /**
@@ -20,7 +21,7 @@ export interface QuestionFormProps {
  * A question blocks the run, so the card stays pinned at the top of the rail
  * until it is answered — it must never scroll out of sight.
  */
-export function QuestionForm({ form, sessionId, onAnswered, onNotify }: QuestionFormProps) {
+export function QuestionForm({ form, sessionId, onAnswered, onNotify, sendAnswer }: QuestionFormProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +43,7 @@ export function QuestionForm({ form, sessionId, onAnswered, onNotify }: Question
     setSending(true)
     setError(null)
     try {
-      await api.replyToForm(sessionId, form.id, answer)
+      await (sendAnswer ? sendAnswer(form.id, answer) : api.replyToForm(sessionId, form.id, answer))
       setValues({})
       onNotify(tr("تم إرسال إجابتك إلى OpenCode"), tr("متابعة التنفيذ الآن"))
     } catch (failure) {

@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { ArrowUpRight, Minus, Orbit, Plus } from 'lucide-react'
+import { useProviderActivity } from '../../hooks/useProviderActivity'
 import { api } from '../../lib/api'
 import { usePolling } from '../../hooks/usePolling'
 import { useLocale } from '../../lib/i18n'
@@ -94,23 +95,24 @@ function officePositions(slots: SuperAgentSlot[]) {
   return positions
 }
 
-function Station({ slot, enabled, archived, position, onOpen }: { slot: SuperAgentSlot; enabled: boolean; archived: boolean; position: OfficePosition; onOpen: (slot: SuperAgentSlot) => void }) {
+function Station({ teamId, slot, enabled: visible, archived, position, onOpen }: { teamId: string; slot: SuperAgentSlot; enabled: boolean; archived: boolean; position: OfficePosition; onOpen: (slot: SuperAgentSlot) => void }) {
   const ar = useLocale() === 'ar'
-  const status = usePolling(enabled && slot.thread ? () => api.turnState(slot.thread!.id) : null, 5000, { resetKey: slot.thread?.id })
+  const activity = useProviderActivity(), provider = slot.thread?.provider || 'codex', enabled = visible && activity.providers[provider]
+  const status = usePolling(enabled && slot.thread ? () => provider === 'opencode' ? api.superOpenCodeStatus(teamId, slot.id) : api.turnState(slot.thread!.id) : null, 5000, { resetKey: slot.thread?.id })
   const active = enabled && !status.error && Boolean(status.data?.active)
   const title = slot.label || (slot.id === 'manager' ? ar ? 'العقل' : 'Brain' : `${ar ? 'مهمة' : 'Task'} ${slot.id.slice(7)}`)
-  const state = !slot.thread ? ar ? 'اختيار محادثة' : 'Assign conversation' : !enabled ? ar ? 'Codex موقوف' : 'Codex paused' : status.error ? ar ? 'تعذّر تحديث الحالة' : 'Status unavailable' : !status.data ? ar ? 'جارٍ الاتصال' : 'Connecting' : active ? ar ? 'يعمل الآن' : 'Working' : ar ? 'جاهز' : 'Ready'
+  const state = !slot.thread ? ar ? 'اختيار محادثة' : 'Assign conversation' : !enabled ? ar ? 'المزود موقوف' : 'Provider paused' : status.error ? ar ? 'تعذّر تحديث الحالة' : 'Status unavailable' : !status.data ? ar ? 'جارٍ الاتصال' : 'Connecting' : active ? ar ? 'يعمل الآن' : 'Working' : ar ? 'جاهز' : 'Ready'
   return <button type="button" disabled={archived && !slot.thread} onClick={() => onOpen(slot)} aria-label={`${title}: ${state}`} style={{ left: `${position.left}%`, top: `${position.top}%`, '--office-accent': position.accent } as CSSProperties} className="super-office-station group absolute w-[24%] max-w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-2xl text-start outline-none focus-visible:ring-2 focus-visible:ring-relay focus-visible:ring-offset-4 focus-visible:ring-offset-paper disabled:opacity-50" data-active={active}>
     <div className="super-office-label relative z-10 mx-1 flex items-center gap-2 rounded-xl border border-line bg-card px-3 py-2 shadow-sm transition-colors group-hover:border-relay/60">
       <span className="super-office-marker flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">{slot.id === 'manager' ? <Orbit className="h-3.5 w-3.5" /> : slot.thread ? <span className="text-xs font-semibold">{slot.id.slice(7)}</span> : <Plus className="h-3.5 w-3.5" />}</span>
-      <span className="min-w-0 flex-1"><strong dir="auto" className="block truncate text-xs font-semibold">{title}</strong><span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-soft"><span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-ready' : 'bg-ink-soft/40'}`} />{state}</span></span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-ink-soft transition-colors group-hover:text-relay-ink" />
+      <span className="min-w-0 flex-1"><strong dir="auto" className="block truncate text-xs font-semibold">{title}</strong><span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-soft"><span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-ready' : 'bg-ink-soft/40'}`} />{slot.thread ? `${provider === 'opencode' ? 'OpenCode' : 'Codex'} / ` : ''}{state}</span></span><ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-ink-soft transition-colors group-hover:text-relay-ink" />
     </div>
     {slot.id === 'manager' ? <BrainCore active={active} /> : <OfficeRoom occupied={Boolean(slot.thread)} active={active} />}
     <span dir="auto" className="mx-5 block truncate text-center text-[10px] text-ink-soft" title={slot.thread?.directory}>{slot.thread?.title || (ar ? 'مكتب غير مرتبط' : 'Unassigned desk')}</span>
   </button>
 }
 
-export function SuperAgentOffice({ slots, enabled, archived, onOpen }: { slots: SuperAgentSlot[]; enabled: boolean; archived: boolean; onOpen: (slot: SuperAgentSlot) => void }) {
+export function SuperAgentOffice({ teamId, slots, enabled, archived, onOpen }: { teamId: string; slots: SuperAgentSlot[]; enabled: boolean; archived: boolean; onOpen: (slot: SuperAgentSlot) => void }) {
   const ar = useLocale() === 'ar'
   const viewport = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(100)
@@ -152,7 +154,7 @@ export function SuperAgentOffice({ slots, enabled, archived, onOpen }: { slots: 
         const position = positions.get(slot.id)!
         return <path key={slot.id} d={`M500 ${sceneHeight / 2 + 40} Q${position.left < 50 ? 350 : 650} ${sceneHeight / 2 + 40} ${position.left * 10} ${position.top / 100 * sceneHeight + 50}`} fill="none" stroke="currentColor" opacity=".35" strokeDasharray="4 6" />
       })}</svg>
-      {slots.map(slot => <Station key={slot.id} slot={slot} enabled={enabled} archived={archived} position={positions.get(slot.id)!} onOpen={onOpen} />)}
+      {slots.map(slot => <Station teamId={teamId} key={slot.id} slot={slot} enabled={enabled} archived={archived} position={positions.get(slot.id)!} onOpen={onOpen} />)}
       <p dir="auto" className="absolute bottom-3 left-1/2 -translate-x-1/2 text-center text-[11px] text-ink-soft">{ar ? 'اضغط على أي مكتب لفتح المحادثة' : 'Choose a desk to open its conversation'}</p>
     </div>
     </div>
