@@ -13,7 +13,7 @@ import type { ChatMessage, CodexItem } from './types'
 export function readCodexChat(items: CodexItem[] | null): ChatMessage[] {
   return asArray<CodexItem>(items).flatMap<ChatMessage>((item) => {
     if (item.type === 'userMessage') {
-      const text = readText(item.content)
+      const text = readText(item.content).replace(/\n\n\[Open Zero runtime context v1\]\n[\s\S]*\n\[\/Open Zero runtime context\]$/, '')
       return text ? [{ id: item.id, role: 'user', text }] : []
     }
     if (item.type === 'agentMessage') {

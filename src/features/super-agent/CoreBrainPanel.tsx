@@ -1,0 +1,42 @@
+import { useEffect, useState } from 'react'
+import { Check, FolderOpen, RefreshCw, X } from 'lucide-react'
+import { api } from '../../lib/api'
+import { useLocale } from '../../lib/i18n'
+import { usePolling } from '../../hooks/usePolling'
+import { SettingsSelect } from '../../components/ui/SettingsSelect'
+import type { SuperAgentTeam, SuperSlotId } from '../../lib/types'
+
+const control = 'inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:opacity-40'
+const field = 'w-full min-w-0 rounded-lg border border-line bg-paper px-3 py-2 text-xs text-ink outline-none focus:border-relay'
+export function CoreBrainPanel({ team }: { team: SuperAgentTeam }) {
+  const ar = useLocale() === 'ar'
+  const config = usePolling(api.coreBrainConfig, 0)
+  const [directory, setDirectory] = useState(''), [slot, setSlot] = useState<SuperSlotId>('manager')
+  const [visibleCount, setVisibleCount] = useState(40)
+  useEffect(() => setVisibleCount(40), [slot])
+  const [scope, setScope] = useState<'project' | 'team'>('project')
+  const [kind, setKind] = useState('decision'), [text, setText] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  useEffect(() => { if (config.data?.directory) setDirectory(config.data.directory) }, [config.data?.directory])
+  const bound = team.slots.filter(slot => slot.thread)
+  const selected = bound.find(item => item.id === slot)
+  const entries = usePolling(config.data?.directory && selected ? () => api.brainEntries(team.id, slot) : null, 0, { resetKey: `${team.id}:${slot}:${config.data?.directory}` })
+  const tasks = usePolling(() => api.superTasks(team.id), 5000)
+  async function perform(action: () => Promise<unknown>) {
+    if (busy) return
+    setBusy(true); setError('')
+    try { await action(); await entries.refresh() } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) } finally { setBusy(false) }
+  }
+  const status = (value: string) => ar ? ({ queued: 'في الانتظار', running: 'يعمل', completed: 'اكتملت', failed: 'فشلت', interrupted: 'توقفت بعد إعادة التشغيل', proposed: 'تحتاج مراجعة', approved: 'معتمدة', rejected: 'مرفوضة' } as Record<string, string>)[value] || value : value
+  return <div className="space-y-5">
+    <section className="space-y-2"><label className="block text-xs font-semibold" htmlFor="core-brain-directory">{ar ? 'مجلد Core-Brain المحلي' : 'Local Core-Brain folder'}</label><div className="flex gap-2"><input id="core-brain-directory" dir="ltr" className={`${field} flex-1`} value={directory} onChange={event => setDirectory(event.target.value)} /><button type="button" className={control} disabled={busy} aria-label={ar ? 'اختيار مجلد الذاكرة' : 'Choose memory folder'} onClick={() => void perform(async () => { const result = await api.superProjectFolder(directory); if (result) setDirectory(result.directory) })}><FolderOpen className="h-4 w-4" /></button><button type="button" className={control} disabled={busy || !directory.trim()} onClick={() => void perform(async () => { await api.configureCoreBrain(directory); await config.refresh() })}>{ar ? 'ربط' : 'Connect'}</button></div><p className="text-[11px] leading-5 text-ink-soft">{ar ? 'الحفظ محلي بصيغة JSONL. الرفع إلى GitHub يتم بأمرك فقط. المحادثات وسجل المهام منفصلان عن ملفات المعرفة.' : 'Knowledge is stored locally as JSONL. GitHub uploads require your action. Conversations and task logs stay separate.'}</p></section>
+    {error || config.error || entries.error || tasks.error ? <p role="alert" className="text-xs leading-5 text-review-ink">{error || config.error || entries.error || tasks.error}</p> : null}
+    <section className="space-y-3"><div className="flex items-center justify-between gap-2"><h3 className="text-xs font-semibold">{ar ? 'معرفة المشروع' : 'Project knowledge'}</h3><button type="button" className={control} aria-label={ar ? 'تحديث الذاكرة' : 'Refresh memory'} onClick={() => void entries.refresh()}><RefreshCw className="h-3.5 w-3.5" /></button></div>
+      <SettingsSelect label={ar ? 'مشروع المكتب' : 'Desk project'} value={slot} onChange={value => setSlot(value as SuperSlotId)} options={bound.map(item => ({ value: item.id, label: `${item.label || (item.id === 'manager' ? ar ? 'العقل' : 'Brain' : item.id)} · ${item.thread?.directory}` }))} disabled={!bound.length} />
+      <p className="text-[11px] leading-5 text-ink-soft">{ar ? 'اقتراحات الـAI لا تُستخدم كمعرفة معتمدة قبل مراجعتك. المعلومات المرتبطة بملفات متغيرة لا تُسترجع تلقائيًا.' : 'AI proposals require your review. Entries whose evidence files changed are excluded from automatic recall.'}</p>
+      <div className="thin-scroll max-h-64 space-y-2 overflow-y-auto">{(entries.data || []).slice(-visibleCount).reverse().map(entry => <article key={entry.id} className="rounded-lg border border-line p-3"><div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-ink-soft"><span>{entry.kind} · {entry.scope === 'team' ? ar ? 'مشتركة' : 'Team' : ar ? 'المشروع' : 'Project'} · {status(entry.status)}</span><time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleDateString(ar ? 'ar' : 'en')}</time></div><p dir="auto" className="whitespace-pre-wrap break-words text-xs leading-6">{entry.text}</p><p className="mt-1 text-[10px] text-ink-soft">{entry.source.slotId} · {entry.source.origin}</p>{entry.status !== 'rejected' ? <div className="mt-2 flex gap-2">{entry.status === 'proposed' ? <button type="button" className={`${control} text-ready-ink`} disabled={busy} onClick={() => void perform(() => api.reviewBrainEntry(team.id, slot, entry.id, 'approved'))}><Check className="h-3 w-3" />{ar ? 'اعتماد' : 'Approve'}</button> : null}<button type="button" className={control} disabled={busy} onClick={() => void perform(() => api.reviewBrainEntry(team.id, slot, entry.id, 'rejected'))}><X className="h-3 w-3" />{ar ? 'رفض' : 'Reject'}</button></div> : null}</article>)}{!entries.data?.length ? <p className="py-3 text-xs text-ink-soft">{ar ? 'لا توجد معرفة محفوظة لهذا المشروع بعد.' : 'No saved knowledge for this project yet.'}</p> : null}</div>
+      {(entries.data?.length || 0) > visibleCount ? <button type="button" className={control} onClick={() => setVisibleCount(count => count + 40)}>{ar ? 'عرض معرفة أقدم' : 'Show older knowledge'}</button> : null}
+      <form onSubmit={event => { event.preventDefault(); void perform(async () => { await api.proposeBrainEntry(team.id, slot, kind, text, slot === 'manager' ? scope : 'project'); setText('') }) }} className="space-y-2"><SettingsSelect label={ar ? 'نوع المعرفة' : 'Knowledge kind'} value={kind} onChange={setKind} options={[{ value: 'decision', label: ar ? 'قرار' : 'Decision' }, { value: 'preference', label: ar ? 'تفضيل' : 'Preference' }, { value: 'architecture', label: ar ? 'معمارية' : 'Architecture' }, { value: 'lesson', label: ar ? 'درس مستفاد' : 'Lesson' }]} />{slot === 'manager' ? <SettingsSelect label={ar ? 'نطاق المعرفة' : 'Knowledge scope'} value={scope} onChange={value => setScope(value as 'project' | 'team')} options={[{ value: 'project', label: ar ? 'مشروع المدير فقط' : 'Manager project only' }, { value: 'team', label: ar ? 'مشتركة مع مكاتب الفريق' : 'Shared with team desks' }]} /> : null}<textarea rows={3} maxLength={4000} value={text} onChange={event => setText(event.target.value)} aria-label={ar ? 'معلومة جديدة' : 'New knowledge'} placeholder={ar ? 'قرار أو قاعدة للمشروع، بدون أسرار أو محادثات كاملة…' : 'A project decision or rule, without secrets or full transcripts…'} className={`${field} resize-y`} /><button type="submit" className={control} disabled={busy || !text.trim() || !selected || !config.data?.directory}>{ar ? 'إضافة للمراجعة' : 'Add for review'}</button></form>
+    </section>
+    <section className="space-y-2 border-t border-line pt-4"><h3 className="text-xs font-semibold">{ar ? 'آخر مهام المدير' : 'Recent manager tasks'}</h3><p className="text-[11px] text-ink-soft">{ar ? 'عاملان متوازيان كحد أقصى. كل إرسال لمكتب يمر بفحص الرصيد المعتاد.' : 'At most two workers run concurrently. Each desk dispatch uses the usual balance check.'}</p>{(tasks.data || []).slice(0, 6).map(task => <div key={task.id} className="rounded-lg border border-line p-2 text-[11px]"><strong>{task.slotId} · {status(task.status)}</strong><p dir="auto" className="mt-1 line-clamp-2 break-words text-ink-soft">{task.error || task.reply || task.text}</p></div>)}</section>
+  </div>
+}
