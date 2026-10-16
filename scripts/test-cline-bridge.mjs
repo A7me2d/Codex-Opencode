@@ -127,3 +127,135 @@ try {
   await bridge.stop()
   if (path.dirname(path.resolve(root)) === path.resolve(tmpdir()) && path.basename(root).startsWith('openzero-cline-test-')) await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 }
+
+// Terminal records are verified against the production bridge with a fake ACP peer.
+// A fake ACP child whose prompt response is driven by the test, so cleanup can be
+// suspended exactly while the bridge is saving the finished turn.
+const terminalHarness = () => {
+  const peers = []
+  const launch = (executable, args, config) => {
+    const child = new EventEmitter(); child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.kill = () => child.emit('exit', 0)
+    const peer = { child, prompt: null, remoteId: `remote-terminal-${peers.length}` }
+    peers.push(peer)
+    peer.send = message => child.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`)
+    let buffer = ''
+    child.stdin.on('data', data => {
+      buffer += data.toString()
+      let newline
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const message = JSON.parse(buffer.slice(0, newline)); buffer = buffer.slice(newline + 1)
+        if (!message.method) continue
+        if (message.method === 'session/prompt') { peer.prompt = message; continue }
+        let result = {}
+        if (message.method === 'initialize') result = { protocolVersion: 1, agentCapabilities: { loadSession: true } }
+        if (message.method === 'session/new') result = { sessionId: peer.remoteId, configOptions: [{ id: 'mode', type: 'select', currentValue: 'act', options: [{ value: 'act', name: 'Act' }, { value: 'plan', name: 'Plan' }] }] }
+        if (message.method === 'session/set_config_option') result = { configOptions: [{ id: 'mode', type: 'select', currentValue: message.params.value, options: [{ value: 'act', name: 'Act' }, { value: 'plan', name: 'Plan' }] }] }
+        queueMicrotask(() => peer.send({ id: message.id, result }))
+      }
+    })
+    return child
+  }
+  return { launch, peers }
+}
+{
+  const PatchedBridge = ClineBridge
+  const root = await mkdtemp(path.join(tmpdir(), 'openzero-cline-terminal-'))
+  const { launch, peers } = terminalHarness()
+  const options = () => new PatchedBridge(root, { launch, resolveExecutable: () => 'synthetic-cline.exe', credentials: () => ({ key: 'synthetic-key', model: 'model-a' }) })
+  const within = (promise, ms = 5000) => Promise.race([promise, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('timed out waiting for the bridge')), ms); timer.unref?.() })])
+  let suspended, failed, releaseSave
+  try {
+    // End turn 1: the terminal record names this exact task, stays out of snapshots
+    // and out of local persistence, and does not survive a restore.
+    const bridge = options()
+    const first = await bridge.create(root, 'cline')
+    await bridge.prompt(first.id, 'First task', 'terminal-001', async () => {})
+    const live = await bridge.get(first.id)
+    assert.equal(live.active, true)
+    const run = live.run
+    peers[0].send({ id: peers[0].prompt.id, result: { stopReason: 'end_turn' } })
+    await within(run)
+    assert.equal(live.active, false)
+    assert.equal(live.run, null)
+    assert.deepEqual({ ...live.lastTurn }, { messageId: 'terminal-001', responseId: live.responseId, stopReason: 'end_turn', error: null })
+    assert.equal('lastTurn' in bridge.snapshot(live), false, 'terminal records stay out of snapshots')
+    assert.equal(JSON.stringify(bridge.snapshot(live)).includes('synthetic-key'), false)
+    await bridge.save()
+    const saved = JSON.parse(await readFile(bridge.file, 'utf8'))
+    assert.equal(saved.sessions.some(session => 'lastTurn' in session), false, 'terminal records are never persisted')
+
+    // Main-chat parity under the patch: settings, tool approval and rename still work.
+    await bridge.configure(first.id, 'mode', 'plan')
+    assert.equal((await bridge.get(first.id)).configOptions.find(option => option.id === 'mode').currentValue, 'plan')
+    await bridge.prompt(first.id, 'Second task', 'terminal-005', async () => {})
+    const secondRun = (await bridge.get(first.id)).run
+    peers[0].send({ id: 900, method: 'session/request_permission', params: { sessionId: first.remoteId, toolCall: { title: 'Edit a file' }, options: [{ optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' }] } })
+    assert.equal((await bridge.get(first.id)).permissions.length, 1)
+    assert.equal((await bridge.get(first.id)).active, true)
+    await bridge.permission(first.id, '900', 'allow_once')
+    assert.equal((await bridge.get(first.id)).permissions.length, 0)
+    peers[0].send({ id: peers[0].prompt.id, result: { stopReason: 'end_turn' } })
+    await within(secondRun)
+    assert.equal((await bridge.get(first.id)).lastTurn.messageId, 'terminal-005')
+    await bridge.metadata(first.id, { title: 'Renamed' })
+    assert.equal((await bridge.get(first.id)).title, 'Renamed')
+    assert.equal('lastTurn' in bridge.snapshot(await bridge.get(first.id)), false)
+    await bridge.stop()
+    const restored = options()
+    await restored.ready
+    assert.equal((await restored.get(first.id)).lastTurn, null, 'a restart never resumes an old task')
+    await restored.stop()
+
+    // While the finished turn is still saving, the desk stays busy: a second prompt,
+    // a config change and a reconnect are all refused, and the run settles once.
+    suspended = options()
+    const second = await suspended.create(root, 'cline')
+    await suspended.prompt(second.id, 'Held task', 'terminal-002', async () => {})
+    const held = await suspended.get(second.id)
+    const heldRun = held.run
+    let saveStarted
+    const started = new Promise(resolve => { saveStarted = resolve })
+    const gate = new Promise(resolve => { releaseSave = resolve })
+    const realSave = PatchedBridge.prototype.save
+    suspended.save = () => { saveStarted(); return gate.then(() => realSave.call(suspended)) }
+    peers.at(-1).send({ id: peers.at(-1).prompt.id, result: { stopReason: 'end_turn' } })
+    await within(started)
+    assert.equal(held.active, true, 'the desk stays busy until the save settles')
+    assert.equal(held.run !== null, true)
+    const before = held.messages.length
+    await assert.rejects(suspended.prompt(second.id, 'Second', 'terminal-003', async () => {}), /already working/)
+    await assert.rejects(suspended.configure(second.id, 'mode', 'plan'), /Wait for Cline/)
+    await assert.rejects(suspended.reconnect(second.id), /Wait for Cline/)
+    assert.equal(held.messages.length, before, 'a refused second prompt never enters the transcript')
+    releaseSave()
+    await within(heldRun)
+    assert.equal(held.active, false)
+    assert.equal(held.run, null)
+    assert.equal(held.lastTurn.messageId, 'terminal-002')
+    assert.equal(held.lastTurn.stopReason, 'end_turn')
+    assert.equal(held.messages.filter(message => message.id === 'terminal-003').length, 0)
+    await suspended.stop()
+
+    // A failed save still ends the turn: active and run are cleared and no successful
+    // terminal record is written, so nobody reports a false success.
+    failed = options()
+    const third = await failed.create(root, 'cline')
+    await failed.prompt(third.id, 'Unsaved task', 'terminal-004', async () => {})
+    const unsaved = await failed.get(third.id)
+    const unsavedRun = unsaved.run
+    failed.save = () => Promise.reject(new Error('synthetic disk failure'))
+    peers.at(-1).send({ id: peers.at(-1).prompt.id, result: { stopReason: 'end_turn' } })
+    await within(unsavedRun)
+    assert.equal(unsaved.active, false)
+    assert.equal(unsaved.run, null)
+    assert.equal(unsaved.lastTurn, null, 'a failed save never records success')
+    assert.match(unsaved.error, /Could not save/)
+    await failed.stop()
+    console.log('Passed: terminal turn records link messageId/responseId/stopReason, stay local and secret-free, keep the desk busy through saving, and never fake success on a failed save. All ACP peers were synthetic.')
+  } finally {
+    releaseSave?.()
+    await suspended?.stop().catch(() => {})
+    await failed?.stop().catch(() => {})
+    if (path.dirname(path.resolve(root)) === path.resolve(tmpdir()) && path.basename(root).startsWith('openzero-cline-terminal-')) await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
+}

@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { Crown, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Trash2, Unlink, Users, X } from 'lucide-react'
+import { api } from '../../lib/api'
+import { usePolling } from '../../hooks/usePolling'
 import { useLocale } from '../../lib/i18n'
 import type { SuperAgentSlot } from '../../lib/types'
 
 const action = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:opacity-35'
-export function DeskHeader({ slot, disabled, focused, office, onChoose, onFocus, onUnlink, onRemove }: {
-  slot: SuperAgentSlot; disabled: boolean; focused: boolean; office: boolean
+export function DeskHeader({ slot, teamId, live, disabled, focused, office, onChoose, onFocus, onUnlink, onRemove }: {
+  slot: SuperAgentSlot; teamId?: string; live?: boolean; disabled: boolean; focused: boolean; office: boolean
   onChoose: () => void; onFocus: () => void; onUnlink: () => void; onRemove: () => void
 }) {
   const ar = useLocale() === 'ar', manager = slot.id === 'manager'
   const title = slot.label || (manager ? ar ? 'المدير' : 'Manager' : `${ar ? 'مهمة' : 'Task'} ${slot.id.slice(7)}`)
-  const provider = slot.thread?.provider === 'opencode' ? 'OpenCode' : 'Codex'
+  const providerId = slot.thread?.provider || 'codex'
+  const provider = providerId === 'opencode' ? 'OpenCode' : providerId === 'cline' ? 'Cline' : 'Codex'
+  const clineWatch = usePolling(teamId && providerId === 'cline' && live ? () => api.superClineStatus(teamId, slot.id) : null, data => data?.active ? 2500 : 7000, { resetKey: slot.thread?.id })
+  const clineState = !slot.thread || providerId !== 'cline' ? null : clineWatch.data?.waitingPermission ? ar ? 'بانتظار صلاحية' : 'Waiting permission' : clineWatch.data?.error || clineWatch.error ? ar ? 'خطأ' : 'Error' : clineWatch.data?.active ? ar ? 'يعمل…' : 'Working…' : null
   const [open, setOpen] = useState(false), root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     if (!open) return
@@ -23,7 +28,7 @@ export function DeskHeader({ slot, disabled, focused, office, onChoose, onFocus,
   return <header className="super-desk-header relative z-10 flex h-14 shrink-0 items-center gap-2 border-b border-line px-3">
     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${manager ? 'bg-relay-tint text-relay-ink' : 'bg-paper text-ink-soft'}`} aria-hidden="true">{manager ? <Crown className="h-4 w-4" /> : <Users className="h-3.5 w-3.5" />}</span>
     <div className="min-w-0 flex-1" title={slot.thread ? `${slot.thread.title}\n${slot.thread.directory}` : title}>
-      <div className="flex min-w-0 items-center gap-2"><h2 className="truncate text-xs font-semibold">{title}</h2>{slot.thread ? <span dir="ltr" className="rounded-md border border-line px-1.5 py-0.5 text-[9px] leading-3 text-ink-soft">{provider}</span> : null}</div>
+      <div className="flex min-w-0 items-center gap-2"><h2 className="truncate text-xs font-semibold">{title}</h2>{slot.thread ? <span dir="ltr" className="rounded-md border border-line px-1.5 py-0.5 text-[9px] leading-3 text-ink-soft">{provider}{providerId === 'cline' && slot.thread.clineProvider ? ` · ${slot.thread.clineProvider}` : ''}</span> : null}{clineState ? <span role="status" className="shrink-0 text-[9px] text-review-ink">{clineState}</span> : null}</div>
       {slot.thread?.directory ? <p dir="ltr" className="mt-0.5 truncate text-start font-mono text-[9px] text-ink-soft">{slot.thread.directory}</p> : null}
     </div>
     <button type="button" className={action} disabled={disabled} onClick={onChoose} aria-label={chooseLabel} title={chooseLabel}><FolderOpen className="h-3.5 w-3.5" /></button>

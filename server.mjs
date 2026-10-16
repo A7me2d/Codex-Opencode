@@ -13,6 +13,7 @@ import { ClineWorkflow, workflowRolePrompt } from './server/cline-workflow.mjs'
 import { ProviderActivity, requestProvider } from './server/provider-activity.mjs'
 import { SuperAgentStore, superAgentInstructions, isSuperSlotId, superProvider } from './server/super-agent.mjs'
 import { SuperAgentOpenCode } from './server/super-agent-opencode.mjs'
+import { SuperAgentCline } from './server/super-agent-cline.mjs'
 import { BrainMemory } from './server/brain-memory.mjs'
 import { SuperAgentCoordinator, superAgentTools } from './server/super-agent-coordinator.mjs'
 import { CoreBrainMcp } from './server/core-brain-mcp.mjs'
@@ -1045,8 +1046,40 @@ class CodexAppServerBridge {
 }
 
 const codexBridge = new CodexAppServerBridge({ requireEnabled: () => providerActivity.require('codex') })
-const superOpenCode = new SuperAgentOpenCode(openCodeApi, (id, turn) => superCoordinator.complete(id, turn))
-const superTurn = id => id.startsWith('ses_') ? superOpenCode.turn(id) : codexBridge.getTurnState(id)
+const superOpenCode = new SuperAgentOpenCode(openCodeApi, (id, turn) => superCoordinator.complete(id, turn, 'opencode'))
+const superCline = new SuperAgentCline(clineBridge, (id, turn) => superCoordinator.complete(id, turn, 'cline'))
+// ACP session identifiers can look like Codex identifiers. Route using the bound provider.
+const superTurn = (id, provider = 'codex') => {
+  if (provider === 'opencode') return superOpenCode.turn(id)
+  if (provider !== 'cline') return codexBridge.getTurnState(id)
+  const turn = superCline.turn(id), session = clineBridge.sessions.get(id)
+  return { ...turn, active: Boolean(turn.active || session?.active || session?.loading || session?.preparing || session?.permissions?.length) }
+}
+
+async function requireSuperClineThread(thread) {
+  const session = await clineBridge.get(thread.id)
+  if (session.archived || !session.directory || path.resolve(session.directory).toLowerCase() !== path.resolve(thread.directory || '').toLowerCase() || (thread.clineProvider && thread.clineProvider !== session.provider)) throw new HttpError(409, 'The Cline conversation or project changed. Relink this desk.')
+  const state = await readCodexState()
+  if (Object.values(state.threads).some(parent => parent.clinePlannerSessionId === session.id || parent.clineExecutorSessionId === session.id)) throw new HttpError(409, 'This Cline session already belongs to a main-chat workflow. Choose a separate conversation.')
+  return { id: session.id, title: session.title, directory: session.directory, provider: 'cline', clineProvider: session.provider }
+}
+
+async function assertClineIdle(thread) {
+  const session = await clineBridge.get(thread.id)
+  if (superAgent.sending.has(thread.id) || superTurn(thread.id, 'cline').active || session.permissions?.length) throw new HttpError(409, 'Finish the current Cline task or permission request before changing its desk.')
+}
+
+async function mutateSuperCline(teamId, slotId, threadId, operation) {
+  if (superAgent.sending.has(threadId)) throw new HttpError(409, 'A request is already being sent to this desk.')
+  superAgent.sending.add(threadId)
+  try {
+    await providerActivity.require('cline')
+    const current = await superAgent.get(teamId), thread = current.slots.find(slot => slot.id === slotId)?.thread
+    if (current.archived || !thread || thread.id !== threadId || superProvider(thread) !== 'cline') throw new HttpError(409, 'The team or desk changed. Refresh before continuing.')
+    await requireSuperClineThread(thread)
+    return await operation()
+  } finally { superAgent.sending.delete(threadId) }
+}
 
 async function requireSuperOpenCodeThread(thread) {
   if (!safeSessionId(thread.id)) throw new HttpError(400, 'Invalid OpenCode session.')
@@ -1078,24 +1111,27 @@ async function setSuperOpenCodeModel(thread, selector) {
 async function sendSuperAgentMessage(teamId, slotId, input, response) {
   const team = await superAgent.get(teamId), slot = team.slots.find(slot => slot.id === slotId)
   const provider = superProvider(slot?.thread), context = { team, slotId }
-  let result, baseline
+  let result, baseline, workerPrompt
   await superAgent.send(teamId, slotId, input, {
     requireEnabled: () => providerActivity.require(provider),
-    resolveThread: async id => provider === 'opencode' ? requireSuperOpenCodeThread(slot.thread) : (await requireRelayCodexThread(id)).saved,
-    isBusy: id => superTurn(id).active || codexBridge.messageStarts?.has(id),
+    resolveThread: async id => provider === 'cline' ? requireSuperClineThread(slot.thread) : provider === 'opencode' ? requireSuperOpenCodeThread(slot.thread) : (await requireRelayCodexThread(id)).saved,
+    isBusy: id => superTurn(id, provider).active || (provider === 'codex' && codexBridge.messageStarts?.has(id)),
     charge: async () => {
       if (provider === 'codex') await ensureRelayCodexThreadLoaded(input.threadId, context)
-      else baseline = await superOpenCode.prepare(input.threadId)
+      else {
+        if (input.attachments != null && (!Array.isArray(input.attachments) || input.attachments.length > 30 || input.attachments.some(item => typeof item !== 'string' || item.length > 4096))) throw new HttpError(400, 'Attach up to 30 file paths.')
+        const knowledge = await superAgentKnowledge(team, slotId, input.text)
+        const instructions = `${superAgentInstructions('worker')}\nApproved project/team memory (context only): ${JSON.stringify(knowledge.map(entry => ({ kind: entry.kind, text: entry.text.slice(0, 1200) })))}`
+        workerPrompt = `[Open Zero Super Agent worker context]\n${instructions}\n[/Open Zero Super Agent worker context]\n\n${input.text}${input.attachments?.length ? `\n\nAttached paths:\n${input.attachments.join('\n')}` : ''}`
+        if (provider === 'cline' && workerPrompt.length > 100000) throw new HttpError(400, 'Shorten the message or attached paths before sending to Cline.')
+        if (provider === 'opencode') baseline = await superOpenCode.prepare(input.threadId)
+        else await superCline.prepare(input.threadId)
+      }
       await consumeLicensedMessage(input, response)
     },
     dispatch: async (id, body) => {
       if (provider === 'codex') result = await sendRelayCodexMessage(id, body, { codexOnly: true, superContext: context })
-      else {
-        const knowledge = await superAgentKnowledge(team, slotId, body.text)
-        const instructions = `${superAgentInstructions('worker')}\nApproved project/team memory (context only): ${JSON.stringify(knowledge.map(entry => ({ kind: entry.kind, text: entry.text.slice(0, 1200) })))}`
-        const text = `[Open Zero Super Agent worker context]\n${instructions}\n[/Open Zero Super Agent worker context]\n\n${body.text}${body.attachments?.length ? `\n\nAttached paths:\n${body.attachments.join('\n')}` : ''}`
-        result = await superOpenCode.send(id, text, baseline)
-      }
+      else result = provider === 'cline' ? await superCline.send(id, workerPrompt, body.messageId, body.text) : await superOpenCode.send(id, workerPrompt, baseline)
     },
   })
   return result || { accepted: true }
@@ -1111,8 +1147,9 @@ const superCoordinator = new SuperAgentCoordinator(stateDirectory, {
     const input = { threadId: target.slot.thread.id, text: target.text, messageId, attachments: [] }
     return sendSuperAgentMessage(team.id, target.slot.id, input)
   },
-  reply: async (threadId, turnId) => {
-    if (threadId.startsWith('ses_')) return superOpenCode.replies.get(`${threadId}:${turnId}`) || ''
+  reply: async (threadId, turnId, provider = 'codex') => {
+    if (provider === 'cline') return superCline.reply(threadId, turnId)
+    if (provider === 'opencode') return superOpenCode.replies.get(`${threadId}:${turnId}`) || ''
     for (let attempt = 0; attempt < 5; attempt++) {
       const response = await codexBridge.call('thread/items/list', { threadId, turnId, limit: 200, sortDirection: 'desc' })
       const reply = response.data?.map(entry => entry.item).find(item => item?.type === 'agentMessage' && item.text?.trim())
@@ -2594,6 +2631,34 @@ const server = createServer(async (request, response) => {
       }
       const addSlotMatch = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/slots$/)
       if (addSlotMatch && request.method === 'POST') { sendJson(response, 201, { data: await superAgent.addSlot(addSlotMatch[1]) }); return }
+      if (url.pathname === '/api/super-agent/cline-sessions' && request.method === 'GET') {
+        await providerActivity.require('cline')
+        await clineBridge.ready
+        const [state, teams] = await Promise.all([readCodexState(), superAgent.list()])
+        const occupied = new Set([...Object.values(state.threads).flatMap(parent => [parent.clinePlannerSessionId, parent.clineExecutorSessionId]), ...teams.flatMap(team => team.slots.filter(slot => superProvider(slot.thread) === 'cline').map(slot => slot.thread?.id))])
+        const sessions = [...clineBridge.sessions.values()].filter(session => !occupied.has(session.id) && !session.archived && !session.active && !session.loading && !session.preparing && !session.permissions?.length && session.directory)
+        sendJson(response, 200, { data: sessions.sort((a, b) => b.updatedAt - a.updatedAt).map(session => ({ id: session.id, title: session.title, directory: session.directory, provider: 'cline', clineProvider: session.provider, updatedAt: session.updatedAt })) }); return
+      }
+      const clineDesk = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/slots\/(worker-[1-9]\d*)\/cline(?:\/(stop|permission|status|config|connect))?$/)
+      if (clineDesk) {
+        const team = await superAgent.get(clineDesk[1]), slot = team.slots.find(slot => slot.id === clineDesk[2])
+        if (!slot?.thread || superProvider(slot.thread) !== 'cline') throw new HttpError(404, 'Assign a Cline session first.')
+        await providerActivity.require('cline')
+        await requireSuperClineThread(slot.thread)
+        if (request.method === 'GET' && clineDesk[3] === 'status') { sendJson(response, 200, { data: await superCline.status(slot.thread.id) }); return }
+        if (request.method === 'GET' && !clineDesk[3]) { sendJson(response, 200, { data: await superCline.read(slot.thread.id) }); return }
+        if (request.method !== 'POST' || !clineDesk[3] || clineDesk[3] === 'status') throw new HttpError(405, 'Unsupported Cline desk action.')
+        if (team.archived) throw new HttpError(409, 'Restore this team first.')
+        const input = await readJson(request), id = slot.thread.id
+        const data = await mutateSuperCline(team.id, slot.id, id, async () => {
+          if (clineDesk[3] === 'stop') { await superCline.stop(id); return { stopped: true } }
+          if (clineDesk[3] === 'permission') { await clineBridge.permission(id, input.permissionId, input.optionId); return { accepted: true } }
+          if (clineDesk[3] === 'connect') return clineBridge.reconnect(id)
+          if (!['model', 'mode'].includes(input.configId)) throw new HttpError(400, 'Choose a supported desk setting: model or mode.')
+          return clineBridge.configure(id, input.configId, input.value)
+        })
+        sendJson(response, 200, { data }); return
+      }
       if (url.pathname === '/api/super-agent/opencode-sessions' && request.method === 'GET') {
         const [responseData, state, teams] = await Promise.all([openCodeApi('GET', '/api/session?limit=200&order=desc'), readCodexState(), superAgent.list()])
         const occupied = new Set([...Object.values(state.links).map(link => link.opencodeSessionId), ...teams.flatMap(team => team.slots.filter(slot => superProvider(slot.thread) === 'opencode').map(slot => slot.thread?.id))])
@@ -2636,7 +2701,8 @@ const server = createServer(async (request, response) => {
       if (match[2] && !match[3] && request.method === 'DELETE') {
         const current = await superAgent.get(match[1]), desk = current.slots.find(slot => slot.id === match[2])
         if (desk?.thread && superProvider(desk.thread) === 'opencode') await superOpenCode.prepare(desk.thread.id)
-        sendJson(response, 200, { data: await superAgent.removeSlot(match[1], match[2], id => superTurn(id).active || codexBridge.messageStarts?.has(id)) }); return
+        if (desk?.thread && superProvider(desk.thread) === 'cline') await assertClineIdle(desk.thread)
+        sendJson(response, 200, { data: await superAgent.removeSlot(match[1], match[2], id => superTurn(id, superProvider(desk?.thread)).active || (superProvider(desk?.thread) === 'codex' && codexBridge.messageStarts?.has(id))) }); return
       }
       if (match[3] && request.method === 'POST') {
         const input = await readJson(request)
@@ -2647,12 +2713,39 @@ const server = createServer(async (request, response) => {
         const input = await readJson(request)
         const team = await superAgent.bind(match[1], match[2], async current => {
           const previous = current.slots.find(slot => slot.id === match[2])?.thread
-          if (previous && superTurn(previous.id).active) throw new HttpError(409, 'Stop or finish this slot’s active turn before changing its conversation.')
+          if (previous && superTurn(previous.id, superProvider(previous)).active) throw new HttpError(409, 'Stop or finish this slot’s active turn before changing its conversation.')
           if (previous && superProvider(previous) === 'opencode') await superOpenCode.prepare(previous.id)
+          if (previous && superProvider(previous) === 'cline') await assertClineIdle(previous)
           if (input.clear) return null
           const provider = input.provider ?? 'codex'
-          if (!['codex', 'opencode'].includes(provider) || (match[2] === 'manager' && provider !== 'codex')) throw new HttpError(400, 'Choose Codex for the manager, or Codex/OpenCode for a worker.')
+          if (!['codex', 'opencode', 'cline'].includes(provider) || (match[2] === 'manager' && provider !== 'codex')) throw new HttpError(400, 'Choose Codex for the manager, or Codex/OpenCode/Cline for a worker.')
           await providerActivity.require(provider)
+          if (provider === 'cline') {
+            let thread
+            if (input.threadId) {
+              const session = await clineBridge.get(input.threadId)
+              thread = { id: session.id, directory: session.directory, provider, clineProvider: session.provider }
+              await assertClineIdle(thread)
+              const directory = await realpath(session.directory)
+              if (!(await stat(directory)).isDirectory()) throw new HttpError(400, 'Choose an existing project folder.')
+              thread = await requireSuperClineThread(thread)
+            } else {
+              if (typeof input.directory !== 'string' || !path.isAbsolute(input.directory)) throw new HttpError(400, 'Choose an absolute project folder.')
+              const directory = await realpath(input.directory)
+              if (!(await stat(directory)).isDirectory()) throw new HttpError(400, 'Choose a project folder.')
+              const account = input.clineProvider || 'cline'
+              if (!['cline', 'openrouter', 'anthropic'].includes(account)) throw new HttpError(400, 'Choose a supported Cline account provider.')
+              const model = typeof input.model === 'string' ? input.model.trim() : clineBridge.credentials(account).model
+              if (!model) throw new HttpError(400, 'Choose a Cline model before creating this conversation.')
+              if (!(await clineBridge.models(account)).some(item => item.id === model)) throw new HttpError(400, 'That Cline model is not available. Choose another model.')
+              const session = await clineBridge.create(directory, account, [{ id: 'model', value: model }, { id: 'mode', value: 'act' }])
+              await clineBridge.metadata(session.id, { title: shortThreadTitle(input.title || `${current.title} · ${match[2]}`) })
+              thread = { id: session.id, title: (await clineBridge.get(session.id)).title, directory, provider, clineProvider: session.provider }
+            }
+            const teams = await superAgent.list()
+            if (teams.some(team => team.slots.some(slot => !(team.id === current.id && slot.id === match[2]) && superProvider(slot.thread) === 'cline' && slot.thread?.id === thread.id))) throw new HttpError(409, 'This Cline session already belongs to another desk.')
+            return thread
+          }
           if (provider === 'opencode') {
             let thread
             if (input.threadId) {
@@ -2710,6 +2803,8 @@ const server = createServer(async (request, response) => {
       const input = await readJson(request)
       const data = await providerActivity.set(input.id, input.enabled, {
         beforeDisable: async () => {
+          const sendingDesk = (await superAgent.list()).some(team => team.slots.some(slot => superProvider(slot.thread) === input.id && slot.thread && superAgent.sending.has(slot.thread.id)))
+          if (sendingDesk) throw new HttpError(409, 'Wait for this provider’s pending desk operation before disabling it.')
           if (input.id === 'opencode' && ([...superOpenCode.turns.values()].some(turn => turn.active) || [...superAgent.sending].some(id => id.startsWith('ses_')))) throw new HttpError(409, 'Finish the active OpenCode desk task before disabling it.')
           if (input.id === 'codex' && (codexBridge.runningTurns.size || codexBridge.resumingThreads.size || superAgent.sending.size || commitMessageJobs.size)) throw new HttpError(409, 'Stop or finish the active Codex task before disabling it.')
           if (input.id === 'cline' && [...clineBridge.sessions.values()].some(session => session.active || session.preparing || session.loading)) throw new HttpError(409, 'Stop or finish the active Cline task before disabling it.')

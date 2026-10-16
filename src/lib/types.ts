@@ -19,7 +19,7 @@ export interface ClineStatus { available: boolean; providers: Array<{ id: string
 export interface ClineSessionSummary { id: string; title: string; provider: string; active: boolean; archived: boolean; updatedAt: number }
 export interface ClineOption { id: string; type: 'select' | 'boolean'; name: string; currentValue: string | boolean; options?: Array<{ value?: string; name: string; options?: Array<{ value: string; name: string }> }> }
 export interface ClineSession extends ClineSessionSummary {
-  directory: string; remoteId: string | null; loading: boolean; error: string | null
+  directory: string; remoteId: string | null; loading: boolean; preparing?: boolean; error: string | null
   messages: ChatMessage[]; tools: Array<{ id: string; title: string; status: string }>; configOptions: ClineOption[]
   permissions: Array<{ id: string; title: string; options: Array<{ id: string; name: string; kind: string }> }>
 }
@@ -112,7 +112,9 @@ export interface GitDiffPreview { path: string; staged: boolean; text: string; t
 
 export interface CodexThread {
   /** Super Agent desks default to Codex for existing saved conversations. */
-  provider?: 'codex' | 'opencode'
+  provider?: ProviderId
+  /** Underlying Cline account provider, distinct from this desk's agent. */
+  clineProvider?: string
   archived?: boolean
   running?: boolean
   workflow?: WorkflowSetup
