@@ -646,12 +646,15 @@
   .super-agent-slot[data-slot="manager"] { grid-column: 1 / -1; }
 }
 @media (min-width: 1280px) {
-  .super-agent-grid { grid-template-columns: minmax(0, 1fr) minmax(22rem, 1.15fr) minmax(0, 1fr); grid-template-rows: repeat(var(--worker-rows, 1), minmax(18rem, 1fr)); align-content: stretch; }
+  .super-agent-grid { grid-template-columns: minmax(0, 1fr) minmax(23rem, 1.12fr) minmax(0, 1fr); grid-template-rows: repeat(var(--grid-rows, 1), minmax(0, 1fr)); min-height: calc(var(--worker-rows, 1) * 20rem); align-content: stretch; }
   .super-agent-slot { min-height: 0; }
-  .super-agent-slot[data-slot="manager"] { grid-column: 2; grid-row: 1 / span var(--worker-rows, 1); }
-  .super-agent-slot:not([data-slot="manager"]) { grid-column: var(--slot-column); grid-row: var(--slot-row); }
+  .super-agent-slot[data-slot="manager"] { grid-column: 2; grid-row: 1 / span var(--grid-rows, 1); }
+  .super-agent-slot:not([data-slot="manager"]) { grid-column: var(--slot-column); grid-row: var(--slot-row) / span var(--slot-span, 1); }
+  .super-agent-grid[data-workers="1"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .super-agent-grid[data-workers="1"] .super-agent-slot[data-slot="manager"] { grid-column: 1; }
+  .super-agent-grid[data-workers="1"] .super-agent-slot:not([data-slot="manager"]) { grid-column: 2; }
 }
-.super-agent-grid.super-agent-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-content: stretch; }
+.super-agent-grid.super-agent-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; align-content: stretch; }
 .super-agent-grid.super-agent-focused .super-agent-slot { grid-column: 1; grid-row: 1; min-height: 0; }
 .super-agent-grid.super-agent-popup {
   position: absolute;
@@ -664,14 +667,17 @@
   box-shadow: -12px 0 36px color-mix(in srgb, var(--color-overlay) 18%, transparent);
 }
 .super-agent-popup .super-agent-slot { border: 0; border-radius: 0; }
+[data-theme="liquid-glass"] .super-agent-popup { background-color: oklch(0.2 0.008 255); }
 
-/* Compact transcripts apply only to the small Super Agent panes. */
-.super-agent-slot[data-compact="true"] .chat-message { gap: .4rem; }
-.super-agent-slot[data-compact="true"] .chat-message > [aria-hidden="true"] { width: 1.5rem; height: 1.5rem; border-radius: .5rem; }
-.super-agent-slot[data-compact="true"] .chat-message > div:last-child > div:first-child { margin-bottom: .2rem; gap: .35rem; min-height: 1.25rem; }
-.super-agent-slot[data-compact="true"] .chat-message > div:last-child > div:last-child { padding: .5rem .65rem; font-size: .75rem; line-height: 1.5; box-shadow: none; }
+/* Scoped workspaces share one quiet transcript and composer treatment. */
+.super-transcript { max-width: 72ch; margin-inline: auto; }
+.super-agent-slot .super-composer-box { box-shadow: 0 2px 8px color-mix(in srgb, var(--color-overlay) 5%, transparent); }
+.super-agent-slot .super-composer-box:focus-within { border-color: var(--color-relay); }
+.super-agent-slot .super-composer-box textarea { background: transparent; }
+.super-agent-slot .super-composer-box .codex-icon-settings > div > button { width: 1.75rem; height: 1.75rem; }
+[data-theme="liquid-glass"] .super-agent-slot .super-composer-box [role="menu"],
+[data-theme="liquid-glass"] .super-desk-menu { background-color: oklch(0.23 0.008 255); }
 .super-agent-slot[data-compact="true"] .super-agent-composer [role="menu"] .thin-scroll { max-height: 7.5rem; }
-.super-agent-slot[data-compact="true"] .super-agent-composer .inline-flex.h-8.w-8 { height: 1.75rem; width: 1.75rem; }
 @media (max-width: 1279px) { .super-agent-slot[data-compact="true"] { min-height: 22rem; } }
 
 .super-office { background-image: radial-gradient(circle, color-mix(in srgb, var(--color-ink-soft) 22%, transparent) .7px, transparent .8px); background-size: 24px 24px; }
