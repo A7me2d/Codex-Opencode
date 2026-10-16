@@ -646,7 +646,7 @@
   .super-agent-slot[data-slot="manager"] { grid-column: 1 / -1; }
 }
 @media (min-width: 1280px) {
-  .super-agent-grid { grid-template-columns: minmax(0, 1fr) minmax(23rem, 1.12fr) minmax(0, 1fr); grid-template-rows: repeat(var(--grid-rows, 1), minmax(0, 1fr)); min-height: calc(var(--worker-rows, 1) * 20rem); align-content: stretch; }
+  .super-agent-grid { grid-template-columns: minmax(0, 1fr) minmax(23rem, 1.12fr) minmax(0, 1fr); grid-template-rows: repeat(var(--grid-rows, 1), minmax(calc(var(--worker-rows, 1) * 20rem / var(--grid-rows, 1)), 1fr)); min-height: 0; align-content: stretch; }
   .super-agent-slot { min-height: 0; }
   .super-agent-slot[data-slot="manager"] { grid-column: 2; grid-row: 1 / span var(--grid-rows, 1); }
   .super-agent-slot:not([data-slot="manager"]) { grid-column: var(--slot-column); grid-row: var(--slot-row) / span var(--slot-span, 1); }
