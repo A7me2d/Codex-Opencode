@@ -1,0 +1,23 @@
+/* Open Zero — office-map brain core (SuperAgentOffice manager desk).
+   Extras beyond index.css: layered-light states, feed streams and orbit motion.
+   Motion runs only while the core is active and never under reduced motion. */
+
+.super-brain-core { opacity: .78; transition: opacity .3s ease-out; }
+.super-office-brain[data-active="true"] .super-brain-core { opacity: 1; }
+
+.super-brain-dish { opacity: .68; transition: opacity .3s ease-out; }
+.super-office-brain[data-active="true"] .super-brain-dish { opacity: .95; }
+
+.super-brain-stream { stroke-dasharray: 3 9; opacity: .4; }
+.super-office-brain[data-active="true"] .super-brain-stream { animation: super-brain-stream 1.5s linear infinite; }
+@keyframes super-brain-stream { from { stroke-dashoffset: 12; } to { stroke-dashoffset: 0; } }
+
+.super-brain-orbit-spin { transform-box: fill-box; transform-origin: center; }
+.super-office-brain[data-active="true"] .super-brain-orbit-spin-a { animation: super-brain-orbit 30s linear infinite; }
+.super-office-brain[data-active="true"] .super-brain-orbit-spin-b { animation: super-brain-orbit 46s linear infinite reverse; }
+@keyframes super-brain-orbit { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .super-office-brain[data-active="true"] :is(.super-brain-stream, .super-brain-orbit-spin-a, .super-brain-orbit-spin-b) { animation: none; }
+  .super-office-brain .super-brain-core, .super-office-brain .super-brain-dish { transition: none; }
+}

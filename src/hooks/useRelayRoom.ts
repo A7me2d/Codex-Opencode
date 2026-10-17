@@ -22,7 +22,11 @@ import { useProviderActivity } from './useProviderActivity'
 export function useRelayRoom(conversationEnabled = true) {
   const activity = useProviderActivity()
   const codexStatus = usePolling(activity.providers.codex ? api.codexStatus : null, Math.max(config.poll.codexStatusMs, 30_000))
-  const openCodeStatus = usePolling(conversationEnabled && activity.providers.opencode ? api.openCodeStatus : null, Math.max(config.poll.openCodeStatusMs, 30_000))
+  // Provider health is polled whenever the provider is enabled, regardless of
+  // which workspace is open — Super Agent mode must not fake an "offline"
+  // OpenCode in the Connections settings. Chat-scoped work (sessions, models,
+  // transcripts) below still waits for `conversationEnabled`.
+  const openCodeStatus = usePolling(activity.providers.opencode ? api.openCodeStatus : null, Math.max(config.poll.openCodeStatusMs, 30_000))
   const project = usePolling(api.project, config.poll.projectMs)
   const threadList = usePolling(activity.ready ? api.threads : null, Math.max(config.poll.threadsMs, 30_000))
   useEffect(() => { if (activity.ready) void threadList.refresh() }, [activity.ready, activity.providers.codex, threadList.refresh])

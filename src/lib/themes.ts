@@ -1,7 +1,8 @@
-import { tr } from './i18n'
+import { tr, getLocale, type AppLocale } from './i18n'
 import { persistPreference, preferenceKeys } from './preferences'
+import './additional-themes.css'
 
-export function getThemes() {
+export function getThemes(locale: AppLocale = getLocale()) {
   return [
     { id: 'liquid-glass', name: 'Liquid Glass Design', description: tr('زجاج داكن، حواف فضية ولمعة ناعمة مع نص واضح.') },
     { id: 'default', name: tr("الأساسي"), description: tr("نفس الاستايل الأصلي الفاتح.") },
@@ -12,6 +13,9 @@ export function getThemes() {
     { id: 'pro-hacker', name: 'Pro hacker theme', description: tr("أسود وأخضر مستوحى من التيرمنال.") },
     { id: 'huacat-pink', name: 'Huacat Pink Theme', description: tr("وردي فاتح وهادئ مع تفاصيل وردية.") },
     { id: 'cyberpunk-2077', name: 'Cyberpunk 2077', description: tr("رمادي داكن مع أصفر نيون وتركواز.") },
+    { id: 'solarized-light', name: 'Solarized Light', description: locale === 'en' ? 'Warm paper light with calm blues and greens.' : 'ورق فاتح دافئ مع أزرق وأخضر هادئين.' },
+    { id: 'nord', name: 'Nord', description: locale === 'en' ? 'Calm, north-bluish dark with muted frost accents.' : 'داكن هادئ بالأزرق البارد مع لمسات صقيعية.' },
+    { id: 'gruvbox-dark', name: 'Gruvbox Dark', description: locale === 'en' ? 'Warm retro dark with orange and olive tones.' : 'داكن دافئ ريترو ببرتقالي وأخضر زيتوني.' },
   ] as const
 }
 
@@ -26,6 +30,9 @@ export const themeSources: Partial<Record<ThemeId, string>> = {
   'pro-hacker': 'https://vscodethemes.com/e/CamilaMartinezBedoya.pro-hacker-theme/pro-hacker-theme',
   'huacat-pink': 'https://vscodethemes.com/e/huacat.pink-theme/huacat-pink-theme',
   'cyberpunk-2077': 'https://vscodethemes.com/e/JWSandeman.cyberpunk2077-theme/cyberpunk2077',
+  'solarized-light': 'https://ethanschoonover.com/solarized/',
+  nord: 'https://github.com/nordtheme/nord',
+  'gruvbox-dark': 'https://github.com/morhetz/gruvbox',
 }
 export const themeStorageKey = 'relay-room.theme'
 

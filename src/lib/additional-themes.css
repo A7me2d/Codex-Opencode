@@ -1,0 +1,87 @@
+/*
+ * Open Zero — additional UI themes, imported by src/lib/themes.ts so theme data
+ * stays out of index.css. Each block maps a documented original palette onto
+ * Open Zero's semantic tokens (surfaces, text, status accents); accent steps are
+ * tuned for text/contrast sanity in this UI. Source links + licenses live in
+ * `themeSources` inside themes.ts, shown under the theme picker.
+ * The bare [data-theme="…"] selector covers both the document root and the
+ * isolated .theme-preview swatches, matching the index.css convention.
+ */
+
+/* Solarized Light — palette: ethanschoonover.com/solarized (MIT, © Ethan Schoonover).
+ * Warm paper light: sand base with Solarized blue/green/yellow roles. */
+[data-theme="solarized-light"] {
+  color-scheme: light;
+  --color-paper: #fdf6e3;
+  --color-card: #fff9ee;
+  --color-line: #e0d5b8;
+  --color-line-strong: #93a1a1;
+  --color-ink: #073642;
+  --color-ink-soft: #586e75;
+  --color-relay: #1f74ad;
+  --color-ready: #859900;
+  --color-review: #b58900;
+  --color-relay-ink: #1a6ea1;
+  --color-ready-ink: #4e6b0f;
+  --color-review-ink: #7c5e08;
+  --color-relay-tint: #e3e9ed;
+  --color-ready-tint: #eef0d8;
+  --color-review-tint: #f4e7c6;
+  --color-on-accent: #fdf6e3;
+  --color-user-surface: #0a3a47;
+  --color-user-ink: #fdf6e3;
+  --color-selection: #d7e5ef;
+  --color-overlay: #073642;
+}
+
+/* Nord — palette: github.com/nordtheme/nord (MIT, © Sven Greb), values verified
+ * against the repo's src/nord.css. Calm, north-bluish dark; frost cyan primary. */
+[data-theme="nord"] {
+  color-scheme: dark;
+  --color-paper: #2e3440;
+  --color-card: #3b4252;
+  --color-line: #4c566a;
+  --color-line-strong: #8792a8;
+  --color-ink: #e5e9f0;
+  --color-ink-soft: #aeb9cf;
+  --color-relay: #88c0d0;
+  --color-ready: #a3be8c;
+  --color-review: #ebcb8b;
+  --color-relay-ink: #8ccbdd;
+  --color-ready-ink: #b7d1a0;
+  --color-review-ink: #efd3a2;
+  --color-relay-tint: #3a4a5c;
+  --color-ready-tint: #3e4a33;
+  --color-review-tint: #46402c;
+  --color-on-accent: #2e3440;
+  --color-user-surface: #4c566a;
+  --color-user-ink: #eceff4;
+  --color-selection: #434c5e;
+  --color-overlay: #242933;
+}
+
+/* Gruvbox Dark — palette: github.com/morhetz/gruvbox (MIT, © Pavel Pertsev),
+ * values verified against gruvbox_256palette.sh. Warm retro dark, orange primary. */
+[data-theme="gruvbox-dark"] {
+  color-scheme: dark;
+  --color-paper: #282828;
+  --color-card: #3c3836;
+  --color-line: #504945;
+  --color-line-strong: #a89984;
+  --color-ink: #ebdbb2;
+  --color-ink-soft: #bdae93;
+  --color-relay: #fe8019;
+  --color-ready: #b8bb26;
+  --color-review: #fabd2f;
+  --color-relay-ink: #ffa45c;
+  --color-ready-ink: #cfd25a;
+  --color-review-ink: #f9cd6b;
+  --color-relay-tint: #45321c;
+  --color-ready-tint: #3d3f1b;
+  --color-review-tint: #443a1c;
+  --color-on-accent: #1d2021;
+  --color-user-surface: #504945;
+  --color-user-ink: #ebdbb2;
+  --color-selection: #665c54;
+  --color-overlay: #1d2021;
+}

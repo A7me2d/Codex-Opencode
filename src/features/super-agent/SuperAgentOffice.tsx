@@ -1,11 +1,13 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import { ArrowUpRight, Check, CircleAlert, Link2, Minus, Orbit, Plus, Radio, Scan, Send } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { ArrowUpRight, Check, CircleAlert, CircleHelp, Link2, Minus, Orbit, Plus, Radio, Scan, Send } from 'lucide-react'
 import { useProviderActivity } from '../../hooks/useProviderActivity'
 import { api } from '../../lib/api'
 import { usePolling } from '../../hooks/usePolling'
 import { useLocale } from '../../lib/i18n'
 import type { SuperAgentSlot, SuperSlotId } from '../../lib/types'
 import { connectionLabel, officeConnection, officeConnector, officePositions, officeSceneSize, stationWidth, type ConnectionState, type OfficeDock, type OfficePosition } from './office-connections'
+import './super-execution.css'
+import { BrainCore } from './BrainCore'
 
 /** Small vector rooms keep the overview sharp without a WebGL runtime or image assets. */
 function OfficeRoom({ occupied, active, facing }: { occupied: boolean; active: boolean; facing: OfficeDock }) {
@@ -49,56 +51,21 @@ function OfficeRoom({ occupied, active, facing }: { occupied: boolean; active: b
   </svg>
 }
 
-function BrainCore({ active }: { active: boolean }) {
-  const id = useId().replace(/:/g, '')
-  return <svg viewBox="0 0 280 230" aria-hidden="true" className="super-office-room super-office-brain w-full overflow-visible" data-active={active}>
-    <defs>
-      <radialGradient id={`${id}-sphere`} cx="32%" cy="25%" r="75%">
-        <stop offset="0" stopColor="var(--color-card)" />
-        <stop offset=".32" stopColor="var(--color-relay-ink)" />
-        <stop offset="1" stopColor="var(--color-relay-tint)" />
-      </radialGradient>
-      <radialGradient id={`${id}-halo`}>
-        <stop stopColor="var(--color-relay)" stopOpacity=".25" />
-        <stop offset="1" stopColor="var(--color-relay)" stopOpacity="0" />
-      </radialGradient>
-    </defs>
-    <ellipse cx="140" cy="192" rx="112" ry="25" fill="var(--color-overlay)" opacity=".12" />
-    <path d="M36 177v11a104 30 0 0 0 208 0v-11" fill="var(--color-card)" stroke="var(--color-line-strong)" />
-    <ellipse cx="140" cy="177" rx="104" ry="30" fill="var(--color-paper)" stroke="var(--color-relay)" strokeWidth="1.5" />
-    <ellipse cx="140" cy="177" rx="87" ry="22" fill="var(--color-relay-tint)" stroke="var(--color-relay)" opacity=".65" />
-    <ellipse cx="140" cy="177" rx="65" ry="15" fill="none" stroke="var(--color-relay-ink)" opacity=".5" />
-    {[[36, 177], [244, 177], [140, 147], [140, 207]].map(([x, y]) => <g key={`${x}-${y}`} transform={`translate(${x} ${y})`}><circle r="7" fill="var(--color-paper)" stroke="var(--color-relay-ink)" strokeWidth="1.5" /><circle r="2.5" fill="var(--color-relay-ink)" /></g>)}
-    <circle className="super-brain-halo" cx="140" cy="103" r="91" fill={`url(#${id}-halo)`} />
-    <path d="M140 155v22m-12-22-7 21m31-21 7 21" stroke="var(--color-relay)" opacity=".5" />
-    <circle cx="140" cy="103" r="51" fill={`url(#${id}-sphere)`} stroke="var(--color-relay-ink)" strokeWidth="1.5" />
-    <g fill="none" stroke="var(--color-card)" strokeWidth=".8" opacity=".4">
-      <ellipse cx="140" cy="103" rx="22" ry="51" />
-      <ellipse cx="140" cy="103" rx="43" ry="51" transform="rotate(35 140 103)" />
-      <ellipse cx="140" cy="103" rx="51" ry="18" />
-      <path d="M96 78q44 20 88 0m-88 50q44-20 88 0" />
-    </g>
-    <g fill="none" stroke="var(--color-relay-ink)" opacity=".65">
-      <ellipse cx="140" cy="103" rx="82" ry="26" transform="rotate(-27 140 103)" />
-      <ellipse cx="140" cy="103" rx="74" ry="31" transform="rotate(41 140 103)" />
-      <path d="m37 145 27-15m151-70 24-15M76 39l22 20m110 90 24 20" strokeDasharray="3 5" />
-    </g>
-    {[[67, 136], [213, 70], [85, 54], [196, 148]].map(([cx, cy], index) => <g key={index}>
-      <circle cx={cx} cy={cy} r="6" fill="var(--color-card)" stroke="var(--color-relay)" />
-      <circle className="super-brain-node" cx={cx} cy={cy} r="2.5" fill="var(--color-relay-ink)" style={{ animationDelay: `${index * 250}ms` }} />
-    </g>)}
-    <circle cx="140" cy="103" r="5" fill="var(--color-card)" opacity=".85" />
-  </svg>
-}
-
 function Station({ teamId, slot, enabled: visible, archived, position, width, selected, connection, onOpen }: { teamId: string; slot: SuperAgentSlot; enabled: boolean; archived: boolean; position: OfficePosition; width: number; selected: boolean; connection: ConnectionState; onOpen: (slot: SuperAgentSlot) => void }) {
   const ar = useLocale() === 'ar'
   const activity = useProviderActivity(), provider = slot.thread?.provider || 'codex', enabled = visible && activity.providers[provider]
-  const status = usePolling(enabled && slot.thread ? () => provider === 'opencode' ? api.superOpenCodeStatus(teamId, slot.id) : provider === 'cline' ? api.superClineStatus(teamId, slot.id) : api.turnState(slot.thread!.id) : null, 5000, { resetKey: slot.thread?.id })
+  // Shared desk-status shape across providers: OpenCode grows `waitingInput`,
+  // Cline `waitingPermission`, Codex returns CodexTurnState — extra keys stay optional.
+  type DeskStatus = { active?: boolean; externalActive?: boolean; waitingInput?: boolean; waitingPermission?: boolean; error?: string | null }
+  const status = usePolling<DeskStatus>(enabled && slot.thread ? () => provider === 'opencode' ? api.superOpenCodeStatus(teamId, slot.id) : provider === 'cline' ? api.superClineStatus(teamId, slot.id) : api.turnState(slot.thread!.id) : null, 5000, { resetKey: slot.thread?.id })
   const active = enabled && !status.error && (Boolean(status.data?.active) || connection === 'running')
-  const waitingPermission = provider === 'cline' && enabled && !status.error && Boolean((status.data as { waitingPermission?: boolean } | null)?.waitingPermission)
+  const waitingPermission = provider === 'cline' && enabled && !status.error && Boolean(status.data?.waitingPermission)
+  // The runtime status endpoint grows `waitingInput` under the execution contract; the recorded
+  // task can already carry it. Either source means honest "waiting for answer", never failed.
+  const waitingInput = enabled && !status.error
+    && (connection === 'waiting_input' || (provider === 'opencode' && Boolean((status.data as { waitingInput?: boolean } | null)?.waitingInput)))
   const title = slot.label || (slot.id === 'manager' ? ar ? 'العقل' : 'Brain' : `${ar ? 'مهمة' : 'Task'} ${slot.id.slice(7)}`)
-  const state = !slot.thread ? ar ? 'اختيار محادثة' : 'Assign conversation' : !enabled ? connectionLabel('paused', ar) : status.error ? connectionLabel('unavailable', ar) : waitingPermission ? ar ? 'بانتظار صلاحية' : 'Waiting permission' : ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted'].includes(connection) ? connectionLabel(connection, ar) : !status.data ? ar ? 'جارٍ تحديث الحالة' : 'Checking status' : active ? ar ? 'مشغول' : 'Busy' : ar ? 'جاهز' : 'Ready'
+  const state = !slot.thread ? ar ? 'اختيار محادثة' : 'Assign conversation' : !enabled ? connectionLabel('paused', ar) : status.error ? connectionLabel('unavailable', ar) : waitingPermission ? ar ? 'بانتظار صلاحية' : 'Waiting permission' : waitingInput ? connectionLabel('waiting_input', ar) : ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted'].includes(connection) ? connectionLabel(connection, ar) : !status.data ? ar ? 'جارٍ تحديث الحالة' : 'Checking status' : active ? ar ? 'مشغول' : 'Busy' : ar ? 'جاهز' : 'Ready'
   return <button type="button" disabled={archived && !slot.thread} onClick={() => onOpen(slot)} aria-label={`${title}: ${state}`} aria-pressed={selected} data-office-station={slot.id} style={{ left: `${position.left}%`, top: `${position.top}%`, width: stationWidth(width), '--office-accent': position.accent } as CSSProperties} className="super-office-station group absolute -translate-x-1/2 -translate-y-1/2 rounded-2xl text-start outline-none focus-visible:ring-2 focus-visible:ring-relay focus-visible:ring-offset-4 focus-visible:ring-offset-paper disabled:opacity-50" data-active={active} data-selected={selected} data-connection={connection}>
     <div className="super-office-label relative z-10 mx-1 flex h-12 items-center gap-2 rounded-xl border border-line bg-card px-3 shadow-sm transition-colors group-hover:border-relay/60">
       <span className="super-office-marker flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">{slot.id === 'manager' ? <Orbit className="h-3.5 w-3.5" /> : slot.thread ? <span className="text-xs font-semibold">{slot.id.slice(7)}</span> : <Plus className="h-3.5 w-3.5" />}</span>
@@ -112,7 +79,7 @@ function Station({ teamId, slot, enabled: visible, archived, position, width, se
 export function SuperAgentOffice({ teamId, slots, enabled, archived, selectedSlotId, onOpen }: { teamId: string; slots: SuperAgentSlot[]; enabled: boolean; archived: boolean; selectedSlotId?: SuperSlotId | null; onOpen: (slot: SuperAgentSlot) => void }) {
   const ar = useLocale() === 'ar'
   const activity = useProviderActivity()
-  const tasks = usePolling(enabled ? () => api.superTasks(teamId) : null, data => data?.some(task => ['queued', 'dispatching', 'running'].includes(task.status)) ? 1500 : 3500, { resetKey: teamId })
+  const tasks = usePolling(enabled ? () => api.superTasks(teamId) : null, data => data?.some(task => ['queued', 'dispatching', 'running', 'waiting_input'].includes(task.status)) ? 1500 : 3500, { resetKey: teamId })
   const returning = useRef(new Map<string, string>())
   const hadSnapshot = useRef(false)
   const [replies, setReplies] = useState(new Set<string>())
@@ -179,8 +146,8 @@ export function SuperAgentOffice({ teamId, slots, enabled, archived, selectedSlo
           <circle cx={geometry.end.x} cy={geometry.end.y} r="4" fill="var(--color-paper)" stroke="currentColor" strokeWidth="1.5" />
         </g>)}
       </svg>
-      {links.filter(link => ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted'].includes(link.state) || selectedSlotId === link.slot.id).map(({ slot, state, geometry }) => <span key={slot.id} data-state={state} dir={ar ? 'rtl' : 'ltr'} className="super-office-link-label pointer-events-none absolute z-10 inline-flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-card px-2.5 py-1 text-[10px] shadow-sm" style={{ left: geometry.label.x, top: geometry.label.y }}>
-        {state === 'completed' ? <Check className="h-3 w-3" /> : state === 'failed' || state === 'interrupted' ? <CircleAlert className="h-3 w-3" /> : state === 'running' ? <Radio className="h-3 w-3" /> : state === 'queued' || state === 'dispatching' ? <Send className="h-3 w-3" /> : <Link2 className="h-3 w-3" />}
+      {links.filter(link => ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted', 'waiting_input'].includes(link.state) || selectedSlotId === link.slot.id).map(({ slot, state, geometry }) => <span key={slot.id} data-state={state} dir={ar ? 'rtl' : 'ltr'} className="super-office-link-label pointer-events-none absolute z-10 inline-flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-card px-2.5 py-1 text-[10px] shadow-sm" style={{ left: geometry.label.x, top: geometry.label.y }}>
+        {state === 'completed' ? <Check className="h-3 w-3" /> : state === 'failed' || state === 'interrupted' ? <CircleAlert className="h-3 w-3" /> : state === 'running' ? <Radio className="h-3 w-3" /> : state === 'waiting_input' ? <CircleHelp className="h-3 w-3" /> : state === 'queued' || state === 'dispatching' ? <Send className="h-3 w-3" /> : <Link2 className="h-3 w-3" />}
         {state === 'ready' && selectedSlotId === slot.id ? ar ? 'عرض المحادثة' : 'Viewing chat' : connectionLabel(state, ar)}
       </span>)}
       {slots.map(slot => <Station teamId={teamId} key={slot.id} slot={slot} enabled={enabled} archived={archived} position={positions.get(slot.id)!} width={sceneWidth} selected={selectedSlotId === slot.id} connection={slot.id === 'manager' ? 'ready' : connections.get(slot.id)!.state} onOpen={onOpen} />)}
@@ -190,6 +157,7 @@ export function SuperAgentOffice({ teamId, slots, enabled, archived, selectedSlo
     <div dir={ar ? 'rtl' : 'ltr'} data-office-avoid className="pointer-events-none absolute left-4 top-4 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-card px-3 py-2 text-[10px] text-ink-soft" aria-label={ar ? 'حالات خطوط المهام' : 'Task connection states'}>
       <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-review" />{ar ? 'بانتظار الإرسال' : 'Queued'}</span>
       <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-relay" />{ar ? 'قيد التنفيذ' : 'Working'}</span>
+      <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-user-surface" />{ar ? 'بانتظار إجابة' : 'Waiting for answer'}</span>
       <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-ready" />{ar ? 'وصل الرد' : 'Reply received'}</span>
     </div>
     {tasks.error ? <p role="status" data-office-avoid className="absolute bottom-4 end-4 rounded-lg border border-line bg-card px-3 py-2 text-[10px] text-review-ink">{ar ? 'تعذّر تحديث خطوط المهام' : 'Task connections could not be updated'}</p> : null}

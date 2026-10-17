@@ -52,6 +52,9 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve, millise
  *  - the latest snapshot of every message first seen after queue time is kept, so a
  *    streaming assistant id is re-read (`''` -> partial -> final, plus parent/error) and
  *    an errored message can never become the successful reply, even if text arrives late;
+ *  - a question the desk raises in its conversation is a wait, not a failure: the turn stays
+ *    active as `waiting_input`, its wait is not charged against the work timeout, and it
+ *    resumes automatically once the operator answers through the desk (never by resending);
  *  - while the native session is still working nothing is declared failed; an `idle` that
  *    closes our window with a non-`succeeded` outcome ends the turn as an honest failure;
  *    when the relation cannot be confirmed the turn ends as a tracking failure and the
@@ -71,7 +74,7 @@ export class SuperAgentOpenCode {
       void promise.catch(() => { this.activeCache = null })
     }
     const response = await this.activeCache.promise
-    return { active: Boolean(response?.data?.[id]) || this.turn(id).active, externalActive: Boolean(response?.data?.[id]), error: this.turn(id).error || null }
+    return { active: Boolean(response?.data?.[id]) || this.turn(id).active, externalActive: Boolean(response?.data?.[id]), error: this.turn(id).error || null, status: this.turn(id).status || null, waitingInput: Boolean(this.turn(id).waitingInput) }
   }
   async read(id, fresh = false) {
     const cached = this.cache.get(id)
@@ -106,7 +109,10 @@ export class SuperAgentOpenCode {
   }
   async monitor(id, turn, baseline, expectedText) {
     const expected = normalizeRequestText(expectedText)
-    const deadline = Date.now() + this.timeout
+    // Work budget, not wall clock: time spent waiting for an operator answer is added to
+    // `pausedAsking` and never counts against the ten-minute limit (see the forms branch).
+    const startedAt = Date.now()
+    let pausedAsking = 0, askingSince = null
     // Ids seen at queue time: they are the conversation this task was added to, never this task.
     const seen = new Set()
     // Newest instant present before the queue, used as extra "after the queue" evidence when
@@ -220,7 +226,7 @@ export class SuperAgentOpenCode {
       return false
     }
 
-    while (turn.active && Date.now() < deadline) {
+    while (turn.active) {
       await delay(this.interval)
       if (!turn.active) return
       const current = await this.read(id, true)
@@ -238,7 +244,16 @@ export class SuperAgentOpenCode {
         if (observed.has(messageId)) { observed.set(messageId, message); if (erroredOf(message)) erroredIds.add(messageId) }
         if (pending.has(messageId)) pending.set(messageId, textOf(message))
       }
-      if (current.forms.length) throw new Error('OpenCode needs an answer in its conversation before it can finish.')
+      // A question the desk asks in its own conversation is a wait, not a failure. The turn
+      // stays active as `waiting_input`, the operator's answer time is excluded from the work
+      // budget below, and the turn resumes once the answer arrives. Nothing is resent and no
+      // test prompt is ever sent to answer for the operator.
+      if (current.forms.length) {
+        if (askingSince === null) { askingSince = Date.now(); turn.waitingInput = true; turn.status = 'waiting_input' }
+        continue
+      }
+      if (askingSince !== null) { pausedAsking += Date.now() - askingSince; askingSince = null; turn.waitingInput = false; turn.status = 'running' }
+      if (Date.now() - startedAt - pausedAsking > this.timeout) break
 
       const candidates = new Set()
       for (const [userId, text] of pending) if (normalizeRequestText(text) === expected) candidates.add(userId)
@@ -304,7 +319,7 @@ export class SuperAgentOpenCode {
       // waiting (the queue may still deliver it) until the timeout reports it honestly.
       if (requestId && idleWithoutReply >= this.idleGracePolls) throw new Error('OpenCode ended this turn without a reply linked to this task. The request/reply relation was not confirmed and the task was not resent.')
     }
-    if (turn.active) this.finish(id, turn, 'failed', 'OpenCode is still running after ten minutes. It was not interrupted; inspect its conversation.')
+    if (turn.active) this.finish(id, turn, 'failed', 'OpenCode is still running after ten minutes of work. It was not interrupted; inspect its conversation.')
   }
   finish(id, turn, status, error) {
     if (this.turns.get(id) !== turn || !turn.active) return

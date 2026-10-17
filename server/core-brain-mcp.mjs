@@ -26,7 +26,7 @@ export class CoreBrainMcp {
     }
     if (message.method === 'ping') { result({}); return }
     if (message.method === 'tools/list') {
-      result({ tools: superAgentTools[0].tools.filter(tool => binding.role === 'manager' || tool.name !== 'dispatch_tasks').map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) }); return
+      result({ tools: superAgentTools[0].tools.filter(tool => binding.role === 'manager' || !['dispatch_tasks', 'get_dispatch_reports'].includes(tool.name)).map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) }); return
     }
     if (message.method === 'tools/call') {
       try {
