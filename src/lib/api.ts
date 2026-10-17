@@ -69,6 +69,7 @@ export const api = {
   proposeBrainEntry: (team: string, slot: import('./types').SuperSlotId, kind: string, text: string, scope: 'project' | 'team' = 'project') => post(`/api/super-agent/teams/${team}/brain?slot=${slot}`, { kind, text, scope }),
   reviewBrainEntry: (team: string, slot: import('./types').SuperSlotId, id: string, status: 'approved' | 'rejected') => post(`/api/super-agent/teams/${team}/brain/${id}?slot=${slot}`, { status }),
   superTasks: (team: string) => requestJson<{ data: import('./types').SuperTask[] }>(`/api/super-agent/teams/${team}/tasks`).then(unwrap),
+  superDeskStatus: (team: string) => requestJson<{ data: import('../features/super-agent/DeskStatusPanel').DeskStatusSummary }>(`/api/super-agent/teams/${encodeURIComponent(team)}/desk-status`).then(unwrap),
   superTeams: () => requestJson<{ data: import('./types').SuperAgentTeam[] }>('/api/super-agent/teams').then(unwrap),
   createSuperTeam: (title: string) => post<{ data: import('./types').SuperAgentTeam }>('/api/super-agent/teams', { title }).then(unwrap),
   updateSuperTeam: (id: string, input: { title?: string; archived?: boolean; execution?: import('./types').SuperExecutionSettings }) => requestJson<{ data: import('./types').SuperAgentTeam }>(`/api/super-agent/teams/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }).then(unwrap),
@@ -187,7 +188,7 @@ export const api = {
     post<{ data: { sessionId: string; directory: string } }>(`/api/opencode/sessions/${sessionId}/open-folder`),
 
   // Models: what the local OpenCode install can run
-  models: () => requestJson<{ data: ModelInfo[] }>('/api/models').then(unwrap),
+  models: () => requestJson<{ data: ModelInfo[] }>('/api/models?visibility=shown').then(unwrap),
 
   // Which model one conversation runs OpenCode on
   threadModel: (threadId: string) =>

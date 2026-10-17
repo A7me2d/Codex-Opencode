@@ -1,0 +1,41 @@
+/*
+ * Desk attention stack — Super Agent only.
+ *
+ * Physically left-anchored inside the workspace (left even in RTL), never a
+ * modal, never over the chat composer or the office zoom tools. Colors come
+ * straight from the theme tokens, so every theme follows without side
+ * effects. No blur, no loops: a 150 ms color transition only.
+ */
+
+.desk-attention-stack { contain: content; }
+
+.desk-attention-item {
+  --desk-accent: var(--color-user-surface);
+  --desk-ink: var(--color-ink);
+  --desk-soft: color-mix(in srgb, var(--color-user-surface) 16%, var(--color-card));
+  background: var(--color-card);
+  border: 1px solid color-mix(in srgb, var(--desk-accent) 32%, var(--color-line));
+  box-shadow: 0 1px 5px color-mix(in srgb, var(--color-overlay) 6%, transparent);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.desk-attention-item:hover {
+  border-color: color-mix(in srgb, var(--desk-accent) 55%, var(--color-line));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-overlay) 10%, transparent);
+}
+
+.desk-attention-item[data-kind='failed'],
+.desk-attention-item[data-kind='tracking_unknown'] {
+  --desk-accent: var(--color-review);
+  --desk-ink: var(--color-review-ink);
+  --desk-soft: var(--color-review-tint);
+}
+
+.desk-attention-badge {
+  background: var(--desk-soft);
+  color: var(--desk-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk-attention-item { transition: none; }
+}

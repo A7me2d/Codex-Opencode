@@ -1,0 +1,386 @@
+/*
+ * MochiPanel styles (Desk 7). Theme-aware through Open Zero semantic tokens
+ * only, so all themes (including the three additional ones) work without
+ * color-specific overrides. Logical properties keep RTL and English correct.
+ */
+
+.mochi-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--color-ink);
+  font-size: 13px;
+}
+
+.mochi-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mochi-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mochi-panel__title h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.mochi-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  padding: 12px;
+  background-color: var(--color-card);
+}
+
+.mochi-panel__section h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  text-transform: none;
+}
+
+/* Runtime state chip */
+.mochi-state-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background-color: transparent;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-ink-soft);
+}
+
+.mochi-state-chip.is-working {
+  border-color: color-mix(in srgb, var(--color-relay) 45%, transparent);
+  background-color: var(--color-relay-tint);
+  color: var(--color-relay-ink);
+}
+
+.mochi-state-chip.is-waiting {
+  border-color: color-mix(in srgb, var(--color-review) 45%, transparent);
+  background-color: var(--color-review-tint);
+  color: var(--color-review-ink);
+}
+
+.mochi-state-chip.is-blocked {
+  border-color: color-mix(in srgb, var(--color-review) 60%, transparent);
+  background-color: var(--color-review-tint);
+  color: var(--color-review-ink);
+}
+
+.mochi-state-chip.is-disabled,
+.mochi-state-chip.is-idle {
+  border-color: var(--color-line);
+  color: var(--color-ink-soft);
+}
+
+/* Fields */
+.mochi-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mochi-field label,
+.mochi-check span {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mochi-field-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mochi-field-row__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mochi-select {
+  width: 100%;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.mochi-select:disabled {
+  opacity: 0.6;
+}
+
+.mochi-switch {
+  width: 40px;
+  height: 22px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background-color: var(--color-paper);
+  color: transparent;
+  font-size: 0;
+}
+
+.mochi-switch.is-on {
+  border-color: color-mix(in srgb, var(--color-ready) 55%, transparent);
+  background-color: var(--color-ready-tint);
+}
+
+.mochi-switch::before {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 1px;
+  border-radius: 999px;
+  background-color: var(--color-ink-soft);
+  transition: transform 160ms ease-out;
+}
+
+.mochi-switch.is-on::before {
+  transform: translateX(16px);
+  background-color: var(--color-ready);
+}
+
+/* The toggle knob must also flip for RTL documents. */
+[dir="rtl"] .mochi-switch.is-on::before {
+  transform: translateX(-16px);
+}
+
+.mochi-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+}
+
+.mochi-check input {
+  accent-color: var(--color-relay);
+}
+
+.mochi-check--disabled input {
+  opacity: 0.5;
+}
+
+.mochi-flags {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px dashed var(--color-line);
+  border-radius: 10px;
+}
+
+.mochi-flags legend {
+  padding-inline: 4px;
+  font-size: 11px;
+  color: var(--color-ink-soft);
+}
+
+.mochi-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-ink-soft);
+}
+
+.mochi-hint--indent {
+  padding-inline-start: 24px;
+}
+
+/* Buttons */
+.mochi-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.mochi-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-relay) 40%, var(--color-line));
+}
+
+.mochi-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mochi-btn--approve:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-ready) 45%, transparent);
+  background-color: var(--color-ready-tint);
+  color: var(--color-ready-ink);
+}
+
+.mochi-btn--reject:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-review) 45%, transparent);
+  background-color: var(--color-review-tint);
+  color: var(--color-review-ink);
+}
+
+/* Banners */
+.mochi-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.mochi-banner--error {
+  border-color: color-mix(in srgb, var(--color-review) 55%, transparent);
+  background-color: var(--color-review-tint);
+  color: var(--color-review-ink);
+}
+
+.mochi-banner--notice {
+  border-color: color-mix(in srgb, var(--color-ready) 40%, transparent);
+  background-color: var(--color-ready-tint);
+  color: var(--color-ready-ink);
+}
+
+.mochi-banner__detail {
+  font-size: 11px;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+/* Proposals list */
+.mochi-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  max-height: 20rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.mochi-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background-color: var(--color-card);
+}
+
+.mochi-proposal--decided {
+  opacity: 0.72;
+}
+
+.mochi-proposal__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mochi-chip {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-relay) 35%, transparent);
+  border-radius: 999px;
+  background-color: var(--color-relay-tint);
+  color: var(--color-relay-ink);
+  font-size: 11px;
+}
+
+.mochi-chip--muted {
+  border-color: var(--color-line);
+  background-color: transparent;
+  color: var(--color-ink-soft);
+}
+
+.mochi-identity {
+  min-width: 0;
+  font-size: 11px;
+  color: var(--color-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.mochi-status {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: var(--color-ink-soft);
+}
+
+.mochi-reason {
+  margin: 0;
+  font-size: 12px;
+  line-height: 19px;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+.mochi-answer {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background-color: var(--color-paper);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.mochi-proposal__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mochi-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--color-line);
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--color-ink-soft);
+}
+
+/* Focus must stay visible; the project outline remains the accent color. */
+.mochi-panel :is(button, select, input):focus-visible {
+  outline: 2px solid var(--color-relay);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mochi-panel *,
+  .mochi-panel *::before {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}

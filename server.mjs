@@ -16,6 +16,9 @@ import { SuperAgentOpenCode } from './server/super-agent-opencode.mjs'
 import { SuperAgentCline } from './server/super-agent-cline.mjs'
 import { BrainMemory } from './server/brain-memory.mjs'
 import { SuperAgentCoordinator, superAgentTools } from './server/super-agent-coordinator.mjs'
+import { SuperDeskStatus } from './server/super-agent-status.mjs'
+import { createMochiIntegration } from './server/mochi/integration.mjs'
+import { visibleOpenCodeModels } from './server/opencode-model-visibility.mjs'
 import { CoreBrainMcp } from './server/core-brain-mcp.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
@@ -1161,6 +1164,34 @@ const superCoordinator = new SuperAgentCoordinator(stateDirectory, {
 })
 codexBridge.onSuperTurnCompleted = (threadId, turn) => superCoordinator.complete(threadId, turn)
 const coreBrainMcp = new CoreBrainMcp(superCoordinator, id => codexBridge.getTurnState(id))
+// Desk status list: one cached snapshot per team; adapters and bindings only, no extra CLI calls.
+const superDeskStatus = new SuperDeskStatus({
+  getTeam: id => superAgent.get(id),
+  jobs: () => superCoordinator.jobs,
+  activity: providerActivity,
+  openCodeStatus: id => superOpenCode.status(id),
+  clineStatus: id => superCline.status(id),
+  codexTurn: id => codexBridge.getTurnState(id),
+})
+// Mochi assistant: wiring + routes/lifecycle only; behavior modules come from
+// server/mochi/* and missing desks are reported as pending integration, never
+// guessed around.
+const mochi = await createMochiIntegration({
+  stateDirectory,
+  superAgent,
+  providerActivity,
+  openCodeApi: (...arguments_) => openCodeApi(...arguments_),
+  superOpenCode,
+  superCline,
+  clineBridge,
+  superCoordinator,
+  guards: { requireSuperOpenCodeThread, requireSuperClineThread },
+  turn: (id, provider) => superTurn(id, provider),
+  license: { consume: consumeLicensedMessage, check: async () => (await readLicenseStatus()).active === true },
+  sendMessage: sendSuperAgentMessage,
+  listOpenCodeModels: async () => visibleOpenCodeModels(await listOpenCodeModels()),
+  modelSelectorToPayload,
+})
 
 async function superAgentKnowledge(team, slotId, query = '') {
   const slot = team.slots.find(slot => slot.id === slotId)
@@ -2629,6 +2660,21 @@ const server = createServer(async (request, response) => {
         await superAgent.get(taskMatch[1]); await superCoordinator.ready
         sendJson(response, 200, { data: superCoordinator.jobs.filter(job => job.teamId === taskMatch[1]).slice(-50).reverse() }); return
       }
+      const deskStatusMatch = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/desk-status$/)
+      if (deskStatusMatch && request.method === 'GET') {
+        sendJson(response, 200, { data: await superDeskStatus.snapshot(deskStatusMatch[1]) }); return
+      }
+      const mochiMatch = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/mochi\/?([a-z-]+)?(?:\/([A-Za-z0-9%:_-]+)\/resolve)?$/)
+      if (mochiMatch && request.method === 'GET' && !mochiMatch[2]) {
+        sendJson(response, 200, { data: await mochi.snapshot(mochiMatch[1]) }); return
+      }
+      if (mochiMatch && mochiMatch[2] === 'config' && request.method === 'POST') {
+        sendJson(response, 200, { data: await mochi.configure(mochiMatch[1], await readJson(request)) }); return
+      }
+      if (mochiMatch && mochiMatch[2] === 'proposals' && request.method === 'POST') {
+        const input = await readJson(request)
+        sendJson(response, 200, { data: await mochi.resolve(mochiMatch[1], decodeURIComponent(mochiMatch[3]), input.decision) }); return
+      }
       const addSlotMatch = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/slots$/)
       if (addSlotMatch && request.method === 'POST') { sendJson(response, 201, { data: await superAgent.addSlot(addSlotMatch[1]) }); return }
       if (url.pathname === '/api/super-agent/cline-sessions' && request.method === 'GET') {
@@ -3304,7 +3350,8 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/models') {
-      sendJson(response, 200, { data: await listOpenCodeModels() })
+      const models = await listOpenCodeModels()
+      sendJson(response, 200, { data: url.searchParams.get('visibility') === 'shown' ? await visibleOpenCodeModels(models) : models })
       return
     }
 
@@ -3540,6 +3587,7 @@ server.on('upgrade', (request, socket, head) => {
 
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
   tailwindCompletions.stop()
+  mochi.stop()
   void Promise.allSettled([clineBridge.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
 })
 
@@ -3549,6 +3597,9 @@ server.listen(port, '127.0.0.1', () => {
   process.parentPort?.postMessage({ type: 'ready', port: listeningPort })
   console.log(`Open Zero is listening at http://127.0.0.1:${listeningPort}`)
   console.log(`Project scope: ${watchRoot}`)
+  // Mochi lifecycle: starts only when the runtime module exists; disabled teams
+  // are never collected or planned. A shutdown stops it cleanly (below).
+  mochi.start()
 })
 
 process.parentPort?.on('message', event => {
@@ -3561,6 +3612,7 @@ process.parentPort?.on('message', event => {
   if (event.data?.type === 'shutdown' && server.listening) {
     server.close()
     tailwindCompletions.stop()
+    mochi.stop()
     void Promise.allSettled([clineBridge.stop(), Promise.resolve().then(() => codexBridge.stop())]).finally(() => process.exit(0))
   }
 })

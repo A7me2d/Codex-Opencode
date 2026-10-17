@@ -14,9 +14,12 @@ import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { CodexSettingsPicker } from '../codex/CodexSettingsPicker'
 import { SettingsSelect } from '../../components/ui/SettingsSelect'
 import { BrainComposer } from './BrainComposer'
+import { MochiLauncher } from '../mochi/MochiLauncher'
 import { SuperAgentOffice } from './SuperAgentOffice'
 import { officePopupEqual, officePopupPlacement, type OfficePopupPlacement } from './office-popup'
 import { CoreBrainPanel } from './CoreBrainPanel'
+import { DeskAttentionNotifications } from './DeskAttentionNotifications'
+import { DeskStatusPanel } from './DeskStatusPanel'
 import { ExecutionSettingsDialog } from './ExecutionSettingsDialog'
 import { OpenCodeSlot } from './OpenCodeSlot'
 import { ClineSlot } from './ClineSlot'
@@ -233,7 +236,7 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
   useEffect(() => {
     if (visible && officePopup && focused) chatPanel.current?.querySelector<HTMLTextAreaElement>(`[data-slot="${focused}"] textarea`)?.focus({ preventScroll: true })
   }, [visible, officePopup, focused])
-  return <main id="workspace-super" role="tabpanel" aria-labelledby="workspace-mode-super" dir={direction()} style={!visible ? { display: 'none' } : undefined} className="flex min-h-0 flex-1 flex-col overflow-hidden bg-paper">
+  return <main id="workspace-super" role="tabpanel" aria-labelledby="workspace-mode-super" dir={direction()} style={!visible ? { display: 'none' } : undefined} className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-paper">
     <header className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-card px-3 py-2">
       <div className="min-w-32 max-w-56 flex-1"><SettingsSelect label={ar ? 'الفريق' : 'Team'} value={team?.id || ''} onChange={setSelected} disabled={busy || !choices.length} options={choices.length ? choices.map(item => ({ value: item.id, label: item.title })) : [{ value: '', label: ar ? 'اختر فريقًا' : 'Choose a team' }]} className="!mt-0 !min-h-8 !rounded-lg !py-1.5" /></div>
       <button type="button" className={`${button} !px-2`} title={ar ? 'فريق جديد' : 'New team'} aria-label={ar ? 'فريق جديد' : 'New team'} disabled={busy} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-3.5 w-3.5" /></button>
@@ -264,7 +267,12 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
           {slot.thread ? slot.thread.provider === 'opencode' ? <OpenCodeSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.opencode} models={openCodeModels.data || []} modelsError={openCodeModels.error} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : slot.thread.provider === 'cline' ? <ClineSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.cline} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : <ConversationSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.codex} models={catalog.data || []} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 py-8 text-center"><p className="text-xs text-ink-soft">{slot.id === 'manager' ? ar ? 'اختر محادثة المدير' : 'Choose the manager conversation' : ar ? 'اربط محادثة بهذه المهمة' : 'Assign a conversation to this task'}</p><button type="button" className={button} disabled={team.archived} onClick={() => setPicker(slot.id)}><Plus className="h-3.5 w-3.5" />{ar ? 'فتح محادثة' : 'Open conversation'}</button></div>}
         </section>
       })}
-    </div></div>}
+    </div>
+    <div data-office-avoid className="super-desk-sidebar thin-scroll absolute bottom-16 left-3 top-16 z-20 flex w-[min(16rem,38vw)] flex-col gap-2 overflow-y-auto">
+      <DeskStatusPanel team={team || null} visible={visible} onOpenDesk={slotId => { if (team.slots.some(slot => slot.id === slotId && slot.thread)) setFocused(slotId as SuperSlotId) }} />
+      <DeskAttentionNotifications visible={visible} team={team} onOpen={slotId => setFocused(slotId)} embedded />
+    </div>
+    </div>}
     {brainOpen && team ? <Dialog title="Core-Brain" onClose={() => setBrainOpen(false)}><CoreBrainPanel key={team.id} team={team} /></Dialog> : null}
     {executionOpen && team ? <ExecutionSettingsDialog key={`execution:${team.id}`} team={team} onChange={changed} onClose={() => setExecutionOpen(false)} /> : null}
     {picker && team ? <SlotPicker key={`${team.id}:${picker}`} team={team} slot={team.slots.find(slot => slot.id === picker)!} onChange={changed} onClose={() => setPicker(null)} /> : null}
@@ -274,5 +282,6 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
       if (!target?.thread) return
       setIncoming({ id: Date.now(), teamId: team.id, slotId: target.id, threadId: target.thread.id, text: `[${slotName(transfer.source, ar)} · ${transfer.source.thread?.directory || ''}]\n${transfer.text}` }); setFocused(target.id); setTransfer(null)
     }}><ArrowLeft className="h-3.5 w-3.5" />{ar ? 'إضافة للمسودة' : 'Add to draft'}</button></div></Dialog> : null}
+    {team && !team.archived ? <MochiLauncher key={team.id} teamId={team.id} visible={visible} onOpenDesk={slotId => { if (team.slots.some(slot => slot.id === slotId && slot.thread)) setFocused(slotId as SuperSlotId) }} /> : null}
   </main>
 }

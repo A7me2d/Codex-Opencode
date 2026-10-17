@@ -47,13 +47,12 @@ export interface HandoffRailProps {
   onRefreshSessions: () => void
   /** Folders and models offered when starting a session without Codex. */
   workRoot?: string
-  modelIds: string[]
 }
 
 function idleActivity() { return { active: false, kind: 'idle' as const, label: tr("لا توجد عملية OpenCode نشطة") } }
 
 /** Right column: what Codex delegated to OpenCode, and what OpenCode said back. */
-export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange, changingModel, modelError, sessions, onRefreshSessions, workRoot, modelIds }: HandoffRailProps) {
+export function HandoffRail({ thread, handoff, loading, events, onReview, reviewing, onRefresh, onNotify, models, model, onModelChange, changingModel, modelError, sessions, onRefreshSessions, workRoot }: HandoffRailProps) {
   const messages = useMemo(() => readOpenCodeChat(handoff?.messages), [handoff?.messages])
   const forms = useMemo(() => readForms(handoff?.forms), [handoff?.forms])
   const activity = handoff?.activity ?? idleActivity()
@@ -99,7 +98,7 @@ export function HandoffRail({ thread, handoff, loading, events, onReview, review
           <OpenCodeChat
             sessions={sessions}
             model={model}
-            models={modelIds}
+            models={models}
             workRoot={workRoot}
             onNotify={onNotify}
             onRefreshSessions={onRefreshSessions}

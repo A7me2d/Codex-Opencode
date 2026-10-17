@@ -9,7 +9,7 @@ import { usePolling } from '../../hooks/usePolling'
 import { useChatHistory } from '../../hooks/useChatHistory'
 import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { SuperMessage } from './SuperMessage'
-import { SettingsSelect } from '../../components/ui/SettingsSelect'
+import { OpenCodeModelPicker } from '../../components/ui/OpenCodeModelPicker'
 import { QuestionForm } from '../opencode/QuestionForm'
 import type { ModelInfo, SuperAgentSlot, SuperAgentTeam } from '../../lib/types'
 
@@ -53,8 +53,6 @@ export function OpenCodeSlot({ team, slot, enabled, compact, incoming, onTransfe
     finally { setSavingModel(false) }
   }
   const usableModels = models.filter(model => model.tools)
-  const modelOptions = usableModels.map(model => ({ value: model.id, label: `${model.name} · ${model.providerID}` }))
-  if (!modelOptions.some(option => option.value === currentModel)) modelOptions.unshift({ value: currentModel, label: currentModel || (ar ? 'جارٍ تحميل الموديل…' : 'Loading model…') })
   return <>
     <div ref={scroll.ref} onScroll={scroll.handleScroll} onWheel={scroll.handleWheel} className={`thin-scroll min-h-0 flex-1 overflow-y-auto ${compact ? 'px-3.5 py-4' : 'px-5 py-5'}`}>
       <EarlierMessages count={scroll.hiddenCount} onLoad={scroll.loadOlder} />
@@ -78,7 +76,7 @@ export function OpenCodeSlot({ team, slot, enabled, compact, incoming, onTransfe
     <form onSubmit={event => { event.preventDefault(); void send() }} className="super-agent-composer shrink-0 px-3 pb-3 pt-2">
       <div className="flex items-end gap-2"><div className="super-composer-box relative min-w-0 flex-1 rounded-2xl border border-line bg-paper/60 p-2 focus-within:border-relay/60">
         <textarea aria-label={`${ar ? 'رسالة إلى' : 'Message'} ${slot.label || `${ar ? 'مهمة' : 'Task'} ${slot.id.slice(7)}`}`} value={draft} onChange={event => update(event.target.value)} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} placeholder={ar ? 'اكتب رسالتك…' : 'Write a message…'} className="block min-h-10 max-h-32 w-full resize-none bg-transparent px-1 text-xs leading-5 outline-none" />
-        <div className="mt-1 flex min-w-0 items-center gap-2"><div className="min-w-0 max-w-64 flex-1"><SettingsSelect label={ar ? 'موديل OpenCode' : 'OpenCode model'} searchPlaceholder={ar ? 'ابحث عن موديل…' : 'Search models…'} value={currentModel} options={modelOptions} onChange={model => void changeModel(model)} disabled={!enabled || active || sending || savingModel || team.archived || !!forms.length || !selection.data || !usableModels.length} className="!mt-0 !min-h-7 !rounded-lg !border-0 !bg-transparent !px-1 !py-1 !text-[10px]" /></div>{savingModel || active || !enabled || forms.length ? <span role="status" className={cx('shrink-0 text-[10px]', forms.length ? 'text-review-ink' : 'text-ink-soft')}>{savingModel ? ar ? 'جارٍ الحفظ…' : 'Saving…' : active ? ar ? 'يعمل…' : 'Working…' : forms.length ? ar ? 'بانتظار إجابتك' : 'Waiting for your answer' : ar ? 'موقوف' : 'Paused'}</span> : null}</div>
+        <div className="mt-1 flex min-w-0 items-center gap-2"><div className="min-w-0 max-w-64 flex-1"><OpenCodeModelPicker id={`desk-model-${slot.id}`} label="OpenCode model" placeholder="OpenCode" value={currentModel} models={usableModels} onChange={model => void changeModel(model)} disabled={!enabled || active || sending || savingModel || team.archived || !!forms.length || !selection.data || !usableModels.length} className="!min-h-7 !border-0 !bg-transparent !px-1 !py-1 !text-[10px]" /></div>{savingModel || active || !enabled || forms.length ? <span role="status" className={cx('shrink-0 text-[10px]', forms.length ? 'text-review-ink' : 'text-ink-soft')}>{savingModel ? ar ? 'جارٍ الحفظ…' : 'Saving…' : active ? ar ? 'يعمل…' : 'Working…' : forms.length ? ar ? 'بانتظار إجابتك' : 'Waiting for your answer' : ar ? 'موقوف' : 'Paused'}</span> : null}</div>
       </div><button type={active ? 'button' : 'submit'} disabled={sending || savingModel || !enabled || team.archived || (!active && (!draft.trim() || !!forms.length))} onClick={active ? () => void stop() : undefined} aria-label={active ? ar ? 'إيقاف هذه المحادثة' : 'Stop this conversation' : ar ? 'إرسال' : 'Send'} className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-relay-tint text-relay-ink disabled:opacity-40">{active ? <Square className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}</button></div>
       {error || state.error || state.data?.error || selection.error || modelsError ? <p role="alert" className="mt-2 break-words text-[11px] text-review-ink">{error || state.error || state.data?.error || selection.error || modelsError}</p> : null}
     </form>

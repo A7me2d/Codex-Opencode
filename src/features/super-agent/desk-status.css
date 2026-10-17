@@ -1,0 +1,20 @@
+/* Open Zero — compact desk status list beside the desk notifications.
+   Colors are theme tokens only; motion runs on the waiting dot and stops
+   entirely under prefers-reduced-motion. */
+
+.desk-status-panel { display: flex; flex-direction: column; gap: .25rem; width: 100%; max-width: 13rem; }
+.super-desk-sidebar .desk-status-panel { max-width: none; flex-shrink: 0; }
+.desk-status-list { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.desk-status-row { min-height: 1.75rem; }
+.desk-status-row[data-status="waiting"] { background: color-mix(in srgb, var(--color-review) 7%, transparent); }
+.desk-status-row[data-status="working"] { background: color-mix(in srgb, var(--color-ready) 6%, transparent); }
+.desk-status-dot { flex: none; width: 7px; height: 7px; border-radius: 9999px; background: var(--color-ink-soft); opacity: .35; }
+.desk-status-row[data-status="working"] .desk-status-dot { background: var(--color-ready); opacity: 1; }
+.desk-status-row[data-status="waiting"] .desk-status-dot { background: var(--color-review); opacity: 1; animation: desk-status-pulse 2.2s ease-in-out infinite; }
+.desk-status-row[data-status="paused"] .desk-status-dot { background: var(--color-line-strong); opacity: .75; }
+.desk-status-row[data-status="unassigned"] .desk-status-dot { background: transparent; border: 1px dashed var(--color-line-strong); opacity: .7; }
+.desk-status-row[data-status="unknown"] .desk-status-dot { background: var(--color-review-ink); opacity: .55; }
+@keyframes desk-status-pulse { 50% { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) {
+  .desk-status-dot { animation: none !important; }
+}
