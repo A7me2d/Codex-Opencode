@@ -725,6 +725,251 @@ export async function runTrackingChecks(Adapter = SuperAgentOpenCode) {
     assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, TOTAL, 'no resend under eviction pressure')
   })
 
+  /* ---------- real provider shape (flat lifecycle, no parent ids) ---------- */
+
+  // The observed install answers /message with flat messages and no `info` at all:
+  //   user      { id:'msg_...', type:'user', text, time:{ created } }
+  //   assistant { id:'msg_...', type:'assistant', content:[{type:'text',text}], finish:'stop',
+  //               time:{ created, streamed, completed } }
+  //   idle      { id:'msg_...', type:'idle', outcome:'succeeded', time:{ created } }
+  // Ids and timestamps below are real-shaped (msg_<hex>, epoch ms) but content is synthetic.
+  const U1 = 1792232004439, A1 = 1792232018802, A1C = 1792232033268, I1 = 1792232033271
+  const U2 = 1792232100000, A2 = 1792232105000, A2C = 1792232115000, I2 = 1792232115100
+  const OLD_U = 1792231000000, OLD_A = 1792231005000, OLD_I = 1792231010000
+  const realUser = (id, text, created) => ({ id, type: 'user', text, time: { created } })
+  const realAssistant = (id, text, created, completed = created + 600) => ({ id, type: 'assistant', content: text ? [{ type: 'text', text }] : [], finish: 'stop', time: { created, streamed: completed, completed } })
+  const realIdle = (id, outcome, created) => ({ id, type: 'idle', outcome, time: { created } })
+  const REAL_BASE = { messages: [realIdle('msg_oidle', 'succeeded', OLD_I), realAssistant('msg_oasst', 'old answer', OLD_A, OLD_A + 600), realUser('msg_ouser', 'an old request', OLD_U)] }
+
+  scenario('real shape (no parentID), newest-first: our user + assistant + succeeded idle completes', async () => {
+    const { api, queues, calls } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-newest'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const done = [realIdle('msg_i1', 'succeeded', I1), realAssistant('msg_a1', 'real reply', A1, A1C), ours]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: done, active: false },
+      { messages: done, active: false },
+    ])
+    await adapter.send(session, EXPECTED, REAL_BASE)
+    await awaitTurn(adapter, session)
+    const turn = results.find(r => r.sessionId === session)
+    assert.equal(turn.status, 'completed', turn.error)
+    assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'real reply')
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+  })
+
+  scenario('real shape, oldest-first order completes the same turn', async () => {
+    const { api, queues } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-oldest'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const done = [ours, realAssistant('msg_a1', 'order-free reply', A1, A1C), realIdle('msg_i1', 'succeeded', I1)]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: done, active: false },
+      { messages: done, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    await awaitTurn(adapter, session)
+    const turn = results.find(r => r.sessionId === session)
+    assert.equal(turn.status, 'completed', turn.error)
+    assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'order-free reply')
+  })
+
+  scenario('real shape: our request leaves the 50-message window, the reply and idle arrive later', async () => {
+    const { api, queues, calls } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-slide'
+    const baseline = { messages: Array.from({ length: 48 }, (_, i) => realAssistant(`msg_old${i + 1}`, `old ${i + 1}`, OLD_A - (i + 1) * 10)) }
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const done = [realAssistant('msg_a1', 'late shape reply', A1, A1C), realIdle('msg_i1', 'succeeded', I1)]
+    queues.set(session, [
+      { messages: [...baseline.messages, ours], active: false },
+      { messages: baseline.messages, active: false },          // our request slid out of the visible window
+      { messages: baseline.messages, active: false },
+      { messages: [...baseline.messages, ...done], active: false },
+      { messages: [...baseline.messages, ...done], active: false },
+    ])
+    await adapter.send(session, EXPECTED, baseline)
+    await awaitTurn(adapter, session)
+    const turn = results.find(r => r.sessionId === session)
+    assert.equal(turn.status, 'completed', turn.error)
+    assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'late shape reply')
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+  })
+
+  scenario('real shape: a later turn in the same poll is never attributed and is not treated as mixing', async () => {
+    const { api, queues, calls } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-nextturn'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const later = [realIdle('msg_i2', 'succeeded', I2), realAssistant('msg_a2', 'next turn reply', A2, A2C), realUser('msg_u2', 'a genuinely different later request', U2)]
+    const done = [...later, realIdle('msg_i1', 'succeeded', I1), realAssistant('msg_a1', 'our reply', A1, A1C), ours]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: done, active: false },
+      { messages: done, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    await awaitTurn(adapter, session)
+    const turn = results.find(r => r.sessionId === session)
+    assert.equal(turn.status, 'completed', turn.error)
+    assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'our reply', 'the next turn must never be attributed to our task')
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+  })
+
+  scenario('real shape: a parentless assistant with no closing idle is never accepted on adjacency', async () => {
+    const { api, queues, calls } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-noidle'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const half = [realAssistant('msg_a1', 'text without a closed turn', A1, A1C), ours]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: half, active: false },
+      { messages: half, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    const turn = await awaitTurn(adapter, session)
+    assert.notEqual(turn.status, 'completed', 'a reply is not ours until the turn is proven closed')
+    assert.equal(adapter.replies.size, 0)
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+  })
+
+  scenario('real shape: an idle that closes our turn as failed is an honest failure, no resend, no interrupt', async () => {
+    const { api, queues, calls, interrupts } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-failed'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const failed = [realIdle('msg_i1', 'failed', I1), realAssistant('msg_a1', 'leftover text', A1, A1C), ours]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: failed, active: false },
+      { messages: failed, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    const turn = await awaitTurn(adapter, session)
+    assert.notEqual(turn.status, 'completed')
+    assert.equal(adapter.replies.size, 0)
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+    assert.equal(interrupts.length, 0)
+  })
+
+  scenario('real shape: an interrupted idle never records success and never auto-interrupts', async () => {
+    const { api, queues, calls, interrupts } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-interrupted'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const stopped = [realIdle('msg_i1', 'interrupted', I1), realAssistant('msg_a1', 'partial text', A1, A1C), ours]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: stopped, active: false },
+      { messages: stopped, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    const turn = await awaitTurn(adapter, session)
+    assert.notEqual(turn.status, 'completed')
+    assert.equal(adapter.replies.size, 0)
+    assert.equal(interrupts.length, 0)
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+  })
+
+  scenario('real shape: system and tool messages between ours and the reply are ignored for text', async () => {
+    const { api, queues } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-tool'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const done = [
+      realIdle('msg_i1', 'succeeded', I1),
+      realAssistant('msg_a1', 'the answer', A1, A1C),
+      { id: 'msg_tool1', type: 'tool', time: { created: A1 - 50 } },
+      { id: 'msg_sys1', type: 'system', time: { created: U1 + 10 } },
+      ours,
+    ]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: done, active: false },
+      { messages: done, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    await awaitTurn(adapter, session)
+    const turn = results.find(r => r.sessionId === session)
+    assert.equal(turn.status, 'completed', turn.error)
+    assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'the answer')
+  })
+
+  scenario('real shape: streaming the same assistant id settles on the final text after the idle closes', async () => {
+    const { api, queues } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-stream'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: [realAssistant('msg_a1', 'part', A1, A1C), ours], active: false },
+      { messages: [realAssistant('msg_a1', 'part final', A1, A1C), ours], active: false },
+      { messages: [realIdle('msg_i1', 'succeeded', I1), realAssistant('msg_a1', 'part final', A1, A1C), ours], active: false },
+      { messages: [realIdle('msg_i1', 'succeeded', I1), realAssistant('msg_a1', 'part final', A1, A1C), ours], active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    await awaitTurn(adapter, session)
+    const turn = results.find(r => r.sessionId === session)
+    assert.equal(turn.status, 'completed', turn.error)
+    assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'part final', 'never the partial text')
+  })
+
+  scenario('real shape: two identical-text requests are never merged and fail honestly without resend', async () => {
+    const { api, queues, calls } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-twins'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const twin = realUser('msg_u2', EXPECTED, U1 + 1)
+    const done = [realIdle('msg_i1', 'succeeded', I1), realAssistant('msg_a1', 'one of two', A1, A1C), twin, ours]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: [twin, ours], active: false },
+      { messages: done, active: false },
+      { messages: done, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    const turn = await awaitTurn(adapter, session)
+    assert.notEqual(turn.status, 'completed', 'two identical requests must never be merged')
+    assert.equal(adapter.replies.size, 0)
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+  })
+
+  scenario('real shape: a pending inbox item blocks completion until it clears', async () => {
+    const { api, queues, calls } = makeSessions()
+    const results = []
+    const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
+    const session = 'rs-inbox'
+    const ours = realUser('msg_u1', EXPECTED, U1)
+    const done = [realIdle('msg_i1', 'succeeded', I1), realAssistant('msg_a1', 'after inbox cleared', A1, A1C), ours]
+    queues.set(session, [
+      { messages: [ours], active: false },
+      { messages: done, inbox: [{ id: 'waiting' }], active: false },
+      { messages: done, active: false },
+      { messages: done, active: false },
+    ])
+    await adapter.send(session, EXPECTED, { messages: [] })
+    await awaitTurn(adapter, session)
+    const turn = results.find(r => r.sessionId === session)
+    assert.equal(turn.status, 'completed', turn.error)
+    assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'after inbox cleared')
+    assert.equal(calls.filter(c => c.endpoint?.endsWith('/prompt')).length, 1)
+  })
+
   /* ---------- run ---------- */
 
   for (const { name, fn } of runs) {
