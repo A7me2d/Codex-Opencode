@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Archive, ArrowLeft, ArrowRightLeft, Check, FolderOpen, Paperclip, Pencil, Plus, Send, Square, Users, X, Brain, LayoutGrid, Map as MapIcon } from 'lucide-react'
+import { Archive, ArrowLeft, ArrowRightLeft, Check, FolderOpen, Paperclip, Pencil, Plus, Send, SlidersHorizontal, Square, Users, X, Brain, LayoutGrid, Map as MapIcon } from 'lucide-react'
 import { api } from '../../lib/api'
 import { direction, useLocale } from '../../lib/i18n'
 import { cx } from '../../lib/cx'
@@ -13,9 +13,11 @@ import { DeskHeader } from './DeskHeader'
 import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { CodexSettingsPicker } from '../codex/CodexSettingsPicker'
 import { SettingsSelect } from '../../components/ui/SettingsSelect'
+import { BrainComposer } from './BrainComposer'
 import { SuperAgentOffice } from './SuperAgentOffice'
 import { officePopupEqual, officePopupPlacement, type OfficePopupPlacement } from './office-popup'
 import { CoreBrainPanel } from './CoreBrainPanel'
+import { ExecutionSettingsDialog } from './ExecutionSettingsDialog'
 import { OpenCodeSlot } from './OpenCodeSlot'
 import { ClineSlot } from './ClineSlot'
 import { ChangedFiles } from '../opencode/ChangedFiles'
@@ -116,13 +118,13 @@ function ConversationSlot({ team, slot, enabled, models, identity, incoming, com
       <ol className="super-transcript space-y-5">{scroll.visibleMessages.map(message => <SuperMessage key={message.id} message={message} provider="codex" identity={identity} onTransfer={text => onTransfer(slot, text)} />)}</ol>
       {!!view.fileChanges.length ? <div className="mt-4"><ChangedFiles source="codex" sessionId={slot.thread!.id} active={turn.active} files={view.fileChanges} /></div> : null}
     </div>{!scroll.atLatest && view.messages.length ? <button type="button" className="self-center rounded-full border border-line bg-card px-3 py-1 text-[10px] text-ink-soft" onClick={() => scroll.scrollToLatest(true)}>{ar ? 'آخر رسالة' : 'Latest message'}</button> : null}</div>
-    <form onSubmit={event => { event.preventDefault(); sendNow() }} className={cx('super-agent-composer shrink-0 bg-transparent', compact ? 'px-3 pb-3 pt-2' : 'px-4 pb-4 pt-2')}>
+    {slot.id === 'manager' ? <BrainComposer compact={compact} busy={busy} enabled={enabled} archived={team.archived} messageLabel={`${ar ? 'رسالة إلى' : 'Message'} ${slotName(slot, ar)}`} composer={composer} turn={turn} codexSelection={controller.codexSelection} sendNow={sendNow} /> : <form onSubmit={event => { event.preventDefault(); sendNow() }} className={cx('super-agent-composer shrink-0 bg-transparent', compact ? 'px-3 pb-3 pt-2' : 'px-4 pb-4 pt-2')}>
       {composer.attachments.length ? <div className="mb-2 flex flex-wrap gap-1">{composer.attachments.map(file => <button key={file} type="button" title={file} onClick={() => composer.onRemoveAttachment(file)} className="inline-flex max-w-full items-center gap-1 rounded-md border border-line px-2 py-1 text-[10px]"><code dir="ltr" className="truncate">{file.split(/[\\/]/).pop()}</code><X className="h-3 w-3 shrink-0" /></button>)}</div> : null}
       <div className="flex items-end gap-2"><div className="super-composer-box relative min-w-0 flex-1 rounded-2xl border border-line bg-paper/60 p-2 focus-within:border-relay/60"><textarea aria-label={`${ar ? 'رسالة إلى' : 'Message'} ${slotName(slot, ar)}`} value={composer.draft} onChange={event => composer.onDraftChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); sendNow() } }} rows={2} placeholder={ar ? 'اكتب رسالتك…' : 'Write a message…'} className={cx('block w-full resize-none bg-transparent px-1 text-xs leading-5 outline-none', 'min-h-10 max-h-32')} />
         <div className="mt-1 flex items-center"><button type="button" disabled={busy || !enabled || team.archived} onClick={composer.onAttach} aria-label={ar ? 'إرفاق مسار ملف' : 'Attach file path'} className="rounded-full p-2 text-ink-soft hover:bg-paper disabled:opacity-40"><Paperclip className="h-3.5 w-3.5" /></button><CodexSettingsPicker selection={controller.codexSelection} disabled={busy || !enabled || team.archived} />{busy ? <span role="status" className="ms-auto text-[10px] text-relay-ink">{ar ? 'يعمل…' : 'Working…'}</span> : null}</div>
       </div>{turn.active ? <button type="button" disabled={turn.stopping || !enabled} onClick={composer.onStop} aria-label={ar ? 'إيقاف هذه المحادثة' : 'Stop this conversation'} className={`${button} mb-1 h-9 w-9 shrink-0 rounded-full text-review-ink`}><Square className="h-3.5 w-3.5" /></button> : <button type="submit" disabled={busy || !enabled || team.archived || !composer.draft.trim() && !composer.attachments.length} aria-label={ar ? 'إرسال' : 'Send'} className={`${button} mb-1 h-9 w-9 shrink-0 rounded-full bg-relay-tint text-relay-ink`}><Send className="h-3.5 w-3.5" /></button>}</div>
       {composer.error || controller.codexSelection.error ? <p role="alert" className="mt-2 break-words text-[11px] leading-5 text-review-ink">{composer.error || controller.codexSelection.error}</p> : null}
-    </form>
+    </form>}
   </>
 }
 
@@ -131,6 +133,7 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
   const [teams, setTeams] = useState<SuperAgentTeam[]>([])
   const [selected, setSelected] = useState(() => { try { return localStorage.getItem(preferenceKeys.superTeam) || '' } catch { return '' } })
   const [brainOpen, setBrainOpen] = useState(false)
+  const [executionOpen, setExecutionOpen] = useState(false)
   const [presentation, setPresentation] = useState<'office' | 'chats'>('office')
   const [archived, setArchived] = useState(false), [focused, setFocused] = useState<SuperSlotId | null>(null)
   const [picker, setPicker] = useState<SuperSlotId | null>(null), [rename, setRename] = useState(false), [name, setName] = useState('')
@@ -239,6 +242,7 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
       <button type="button" className={cx(button, 'ms-1 !border-transparent', archived && 'bg-relay-tint text-relay-ink')} aria-pressed={archived} onClick={() => setArchived(value => !value)}>{ar ? 'الأرشيف' : 'Archived'}</button>
       <div className="ms-auto flex items-center rounded-lg border border-line bg-paper p-0.5" role="group" aria-label={ar ? 'طريقة العرض' : 'Workspace view'}>{(['office', 'chats'] as const).map(value => <button type="button" key={value} aria-pressed={presentation === value} onClick={() => { setPresentation(value); setFocused(null) }} className={cx('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40', presentation === value ? 'bg-card text-relay-ink shadow-sm' : 'text-ink-soft')}>{value === 'office' ? <MapIcon className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}{value === 'office' ? ar ? 'المكاتب' : 'Office' : ar ? 'الشاتات' : 'Chats'}</button>)}</div>
       {team ? <button type="button" className={`${button} bg-relay-tint text-relay-ink`} disabled={busy || team.archived} onClick={() => void perform(() => api.addSuperSlot(team.id))}><Plus className="h-3.5 w-3.5" />{ar ? 'إضافة مكتب' : 'Add desk'}</button> : null}
+      {team ? <button type="button" className={`${button} !px-2`} disabled={busy} aria-label={ar ? 'توزيع تنفيذ المهام' : 'Task execution dispatch'} title={ar ? 'توزيع تنفيذ المهام' : 'Task execution dispatch'} onClick={() => setExecutionOpen(true)}><SlidersHorizontal className="h-3.5 w-3.5" /></button> : null}
       <button type="button" className={button} disabled={!team} onClick={() => setBrainOpen(true)}><Brain className="h-3.5 w-3.5" />Core-Brain</button>
     </header>
     {!activity.providers.codex ? <p role="status" className="border-b border-line px-4 py-2 text-xs text-review-ink">{ar ? 'Codex موقوف. فعّله من الاتصال والتحديثات.' : 'Codex is disabled. Enable it in Connections & updates.'}</p> : null}
@@ -262,6 +266,7 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
       })}
     </div></div>}
     {brainOpen && team ? <Dialog title="Core-Brain" onClose={() => setBrainOpen(false)}><CoreBrainPanel key={team.id} team={team} /></Dialog> : null}
+    {executionOpen && team ? <ExecutionSettingsDialog key={`execution:${team.id}`} team={team} onChange={changed} onClose={() => setExecutionOpen(false)} /> : null}
     {picker && team ? <SlotPicker key={`${team.id}:${picker}`} team={team} slot={team.slots.find(slot => slot.id === picker)!} onChange={changed} onClose={() => setPicker(null)} /> : null}
     {rename && team ? <Dialog title={ar ? 'اسم الفريق' : 'Team name'} onClose={() => setRename(false)}><form onSubmit={event => { event.preventDefault(); void perform(() => api.updateSuperTeam(team.id, { title: name })); setRename(false) }} className="flex gap-2"><input autoFocus aria-label={ar ? 'اسم الفريق' : 'Team name'} value={name} maxLength={120} onChange={event => setName(event.target.value)} className={`${field} flex-1`} /><button type="submit" disabled={!name.trim()} className={button}><Check className="h-4 w-4" /></button></form></Dialog> : null}
     {transfer && team ? <Dialog title={ar ? 'نقل إلى مسودة محادثة' : 'Transfer to conversation draft'} onClose={() => setTransfer(null)}><div className="space-y-3"><SettingsSelect label={ar ? 'المحادثة المستقبلة' : 'Destination conversation'} value={transfer.target} onChange={value => setTransfer({ ...transfer, target: value as SuperSlotId })} options={[{ value: '', label: ar ? 'اختر الوجهة' : 'Choose destination' }, ...visibleSlots.filter(slot => slot.thread && slot.id !== transfer.source.id).map(slot => ({ value: slot.id, label: `${slotName(slot, ar)} · ${slot.thread?.title}` }))]} /><textarea aria-label={ar ? 'النص المنقول' : 'Transferred text'} rows={8} value={transfer.text} onChange={event => setTransfer({ ...transfer, text: event.target.value })} className={`${field} w-full resize-y`} /><p className="text-[11px] text-ink-soft">{ar ? 'يُضاف للمسودة فقط. راجعه واضغط إرسال من الشات المستقبِل.' : 'Added to the draft only. Review it and send from the destination chat.'}</p><button type="button" className={button} disabled={!transfer.target || !transfer.text.trim() || team.archived} onClick={() => {

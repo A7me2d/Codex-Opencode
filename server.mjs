@@ -11,7 +11,7 @@ import { TailwindCompletions } from './server/tailwind-completions.mjs'
 import { ClineBridge } from './server/cline-bridge.mjs'
 import { ClineWorkflow, workflowRolePrompt } from './server/cline-workflow.mjs'
 import { ProviderActivity, requestProvider } from './server/provider-activity.mjs'
-import { SuperAgentStore, superAgentInstructions, isSuperSlotId, superProvider } from './server/super-agent.mjs'
+import { SuperAgentStore, superAgentInstructions, isSuperSlotId, superProvider, defaultTeamExecution } from './server/super-agent.mjs'
 import { SuperAgentOpenCode } from './server/super-agent-opencode.mjs'
 import { SuperAgentCline } from './server/super-agent-cline.mjs'
 import { BrainMemory } from './server/brain-memory.mjs'
@@ -2606,7 +2606,7 @@ const server = createServer(async (request, response) => {
       if (!trustedExtensionRequest(request)) throw new HttpError(403, 'Open Super Agent from Open Zero.')
       if (url.pathname === '/api/super-agent/teams') {
         if (request.method === 'GET') { sendJson(response, 200, { data: await superAgent.list() }); return }
-        if (request.method === 'POST') { sendJson(response, 201, { data: await superAgent.create((await readJson(request)).title) }); return }
+        if (request.method === 'POST') { const input = await readJson(request); sendJson(response, 201, { data: await superAgent.create(input.title, input.execution ?? defaultTeamExecution) }); return }
       }
       if (url.pathname === '/api/super-agent/project-folder' && request.method === 'POST') {
         const input = await readJson(request)
@@ -2680,7 +2680,8 @@ const server = createServer(async (request, response) => {
         if (request.method !== 'GET') await requireSuperOpenCodeThread(slot.thread)
         if (request.method === 'GET' && !openCodeDesk[3]) {
           const snapshot = await superOpenCode.read(slot.thread.id)
-          sendJson(response, 200, { data: { ...snapshot, active: snapshot.active || Boolean(snapshot.inbox.length) || superOpenCode.turn(slot.thread.id).active, error: superOpenCode.turn(slot.thread.id).error || null } }); return
+          const state = superOpenCode.turn(slot.thread.id)
+          sendJson(response, 200, { data: { ...snapshot, active: snapshot.active || Boolean(snapshot.inbox.length) || state.active, error: state.error || null, status: state.status || null, waitingInput: Boolean(state.waitingInput) } }); return
         }
         if (team.archived) throw new HttpError(409, 'Restore this team first.')
         if (request.method === 'POST' && openCodeDesk[3] === 'stop') { await superOpenCode.stop(slot.thread.id); sendJson(response, 200, { data: { stopped: true } }); return }

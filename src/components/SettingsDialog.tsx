@@ -53,6 +53,10 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
   const [clineModels, setClineModels] = useState<{ id: string; name: string; free: boolean }[]>([])
   const [clineError, setClineError] = useState('')
   const clineStatus = usePolling(open && activity.providers.cline ? api.clineStatus : null, 0)
+  // One-shot probe while the dialog is open so the OpenCode row can tell
+  // "confirmed offline" apart from "not yet checked / request failed"
+  // (`openCodeOnline` alone collapses both into a red "Offline").
+  const openCodeStatus = usePolling(open && activity.providers.opencode ? api.openCodeStatus : null, 0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -168,6 +172,9 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
     { id: 'system' as const, icon: Wifi, label: locale === 'ar' ? 'الاتصال والتحديثات' : 'Connections & updates', description: locale === 'ar' ? 'حالة المساعدين وإصدار التطبيق' : 'Agent connections and application updates' },
   ]
   const currentSection = sections.find(section => section.id === tab)!
+  // Fresh probe first, then the always-on status polling as evidence; no data
+  // from both means "unknown", never a confirmed offline.
+  const openCodeAvailable = openCodeStatus.data ? openCodeStatus.data.online : openCodeOnline ? true as const : undefined
   const row = 'flex flex-wrap items-center justify-between gap-3 py-4'
   const action = 'inline-flex min-h-9 shrink-0 items-center gap-2 rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40'
   return <>
@@ -214,13 +221,18 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
           <div className="divide-y divide-line overflow-hidden rounded-xl border border-line">
             {(['codex', 'opencode', 'cline'] as const).map(id => {
               const enabled = activity.providers[id]
-              const available = id === 'codex' ? codexConnected : id === 'opencode' ? openCodeOnline : clineStatus.data?.available
+              const available = id === 'codex' ? codexConnected : id === 'opencode' ? openCodeAvailable : clineStatus.data?.available
               const name = id === 'codex' ? 'Codex' : id === 'opencode' ? 'OpenCode' : 'Cline'
               const Icon = id === 'opencode' ? TerminalSquare : id === 'cline' ? Brain : Bot
-              const loading = !activity.ready || (enabled && id === 'cline' && clineStatus.status === 'loading')
+              const loading = !activity.ready
+                || (enabled && id === 'cline' && clineStatus.status === 'loading')
+                || (enabled && id === 'opencode' && openCodeStatus.status === 'loading')
+              // Only OpenCode gets a real "unknown" state: Codex stays boolean
+              // and Cline keeps its `available` rendering untouched.
+              const unknown = enabled && id === 'opencode' && available === undefined
               return <div key={id} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-paper/40">
                 <span aria-hidden="true" className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-paper text-ink-soft', enabled && 'text-relay-ink')}><Icon className="h-4 w-4" /></span>
-                <div className="min-w-0 flex-1"><p className="text-sm font-semibold"><bdi>{name}</bdi></p><span className={cx('mt-1 inline-flex items-center gap-1.5 text-[11px]', !enabled || loading ? 'text-ink-soft' : available ? 'text-ready-ink' : 'text-review-ink')}><span aria-hidden="true" className={cx('h-1.5 w-1.5 rounded-full', loading ? 'bg-ink-soft/40' : !enabled ? 'bg-ink-soft/30' : available ? 'bg-ready' : 'bg-review')} />{loading ? (locale === 'ar' ? 'جارٍ الفحص…' : 'Checking…') : !enabled ? (locale === 'ar' ? 'موقوف' : 'Disabled') : available ? (locale === 'ar' ? 'متاح' : 'Available') : id === 'cline' ? (locale === 'ar' ? 'غير متاح' : 'Unavailable') : (locale === 'ar' ? 'غير متصل' : 'Offline')}</span></div>
+                <div className="min-w-0 flex-1"><p className="text-sm font-semibold"><bdi>{name}</bdi></p><span className={cx('mt-1 inline-flex items-center gap-1.5 text-[11px]', !enabled || loading || unknown ? 'text-ink-soft' : available ? 'text-ready-ink' : 'text-review-ink')}><span aria-hidden="true" className={cx('h-1.5 w-1.5 rounded-full', loading || unknown ? 'bg-ink-soft/40' : !enabled ? 'bg-ink-soft/30' : available ? 'bg-ready' : 'bg-review')} />{loading ? (locale === 'ar' ? 'جارٍ الفحص…' : 'Checking…') : !enabled ? (locale === 'ar' ? 'موقوف' : 'Disabled') : unknown ? (locale === 'ar' ? 'غير معروف' : 'Unknown') : available ? (locale === 'ar' ? 'متاح' : 'Available') : id === 'cline' ? (locale === 'ar' ? 'غير متاح' : 'Unavailable') : (locale === 'ar' ? 'غير متصل' : 'Offline')}</span></div>
                 <button type="button" role="switch" aria-checked={enabled} aria-busy={changingProvider === id} title={`${locale === 'ar' ? enabled ? 'إيقاف' : 'تشغيل' : enabled ? 'Disable' : 'Enable'} ${name}`} aria-label={`${locale === 'ar' ? enabled ? 'إيقاف' : 'تشغيل' : enabled ? 'Disable' : 'Enable'} ${name}`} disabled={!activity.ready || Boolean(changingProvider)} onClick={() => void toggleProvider(id)} className="inline-flex h-10 w-12 shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:cursor-wait disabled:opacity-40">
                   <span aria-hidden="true" className={cx('relative inline-flex h-5 w-9 items-center rounded-full transition-colors', enabled ? 'bg-relay' : 'bg-ink-soft/25')}>{changingProvider === id ? <RefreshCw className="mx-auto h-3 w-3 animate-spin text-on-accent" /> : <span className={cx('absolute left-0.5 h-4 w-4 rounded-full bg-card shadow-sm transition-transform', enabled && 'translate-x-4')} />}</span>
                 </button>

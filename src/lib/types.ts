@@ -9,7 +9,9 @@
 export type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type SuperSlotId = 'manager' | `worker-${number}`
 export interface SuperAgentSlot { id: SuperSlotId; label: string; thread: CodexThread | null }
-export interface SuperAgentTeam { id: string; title: string; archived: boolean; updatedAt: number; slots: SuperAgentSlot[] }
+/** How the manager's batches run: at most this many desks at once, and whether sends wait for replies. */
+export interface SuperExecutionSettings { maxParallel: number; dispatchMode: 'wait' | 'background' }
+export interface SuperAgentTeam { id: string; title: string; archived: boolean; updatedAt: number; slots: SuperAgentSlot[]; execution?: SuperExecutionSettings }
 export interface BrainEntry { id: string; scope: 'project' | 'team'; kind: string; text: string; status: 'proposed' | 'approved' | 'rejected'; createdAt: string; source: { origin: string; threadId: string; slotId: string }; evidence: { file: string; sha256: string }[] }
 export interface SuperTask { id: string; slotId: string; threadId?: string; managerThreadId?: string; createdAt?: string; updatedAt?: string; status: string; text: string; reply?: string; error?: string }
 export type ProviderId = 'codex' | 'opencode' | 'cline'

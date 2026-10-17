@@ -1,4 +1,4 @@
-import { tr } from '../lib/i18n'
+import { tr, useLocale } from '../lib/i18n'
 import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
 import { getThemes, themeSources, readStoredTheme, saveTheme, themeStorageKey, type ThemeId } from '../lib/themes'
@@ -7,7 +7,8 @@ import { cx } from '../lib/cx'
 import { SettingsSelect } from './ui/SettingsSelect'
 
 export function ThemePanel() {
-  const themes = getThemes()
+  const locale = useLocale()
+  const themes = getThemes(locale)
   const [selected, setSelected] = useState<ThemeId>(readStoredTheme)
   const [notice, setNotice] = useState<string | null>(null)
   useEffect(() => {

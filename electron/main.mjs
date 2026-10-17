@@ -138,6 +138,9 @@ const titlebarColors = {
   'pro-hacker': ['#101a13', '#c5f7d0'],
   'huacat-pink': ['#fff4fa', '#392334'],
   'cyberpunk-2077': ['#202020', '#f4f1e8'],
+  'solarized-light': ['#fdf6e3', '#073642'],
+  nord: ['#2e3440', '#e5e9f0'],
+  'gruvbox-dark': ['#282828', '#ebdbb2'],
 }
 
 ipcMain.handle('window:minimize', event => BrowserWindow.fromWebContents(event.sender)?.minimize())

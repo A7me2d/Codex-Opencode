@@ -1,0 +1,37 @@
+/*
+ * Super Agent execution additions.
+ *
+ * `waiting_input` — the desk is mid-task but Open Code raised a question an
+ * operator must answer. Deliberately distinct from failed (amber / dashed
+ * 8-5) and running (relay / animated): a paused dash rhythm in the desk's
+ * user-surface color, plus its CircleHelp badge in SuperAgentOffice.
+ */
+
+.super-office-link[data-state="waiting_input"] {
+  color: var(--color-user-surface);
+}
+
+.super-office-link[data-state="waiting_input"] .super-link-track {
+  stroke-dasharray: 10 8;
+}
+
+.super-office-link-label[data-state="waiting_input"] {
+  color: var(--color-user-surface);
+  border-color: color-mix(in srgb, var(--color-user-surface) 34%, var(--color-line));
+}
+
+.super-office-station[data-connection="waiting_input"] .super-office-state-dot {
+  background: var(--color-user-surface);
+}
+
+.super-office-link[data-state="tracking_unknown"],
+.super-office-link-label[data-state="tracking_unknown"] {
+  color: var(--color-review-ink);
+}
+.super-office-link[data-state="tracking_unknown"] .super-link-track {
+  stroke-dasharray: 2 8;
+  opacity: .65;
+}
+.super-office-station[data-connection="tracking_unknown"] .super-office-state-dot {
+  background: var(--color-review);
+}

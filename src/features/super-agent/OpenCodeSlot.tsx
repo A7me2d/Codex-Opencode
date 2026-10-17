@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Send, Square } from 'lucide-react'
 import { api } from '../../lib/api'
+import { cx } from '../../lib/cx'
 import { readOpenCodeChat } from '../../lib/chat'
 import { readForms } from '../../lib/forms'
 import { useLocale } from '../../lib/i18n'
@@ -60,12 +61,24 @@ export function OpenCodeSlot({ team, slot, enabled, compact, incoming, onTransfe
       <ol className="super-transcript space-y-5">{scroll.visibleMessages.map(message => <SuperMessage key={message.id} message={message} provider="opencode" identity={identity} onTransfer={text => onTransfer(slot, text)} />)}</ol>
       {!messages.length ? <p className="py-6 text-center text-xs text-ink-soft">{state.status === 'loading' ? ar ? 'جارٍ تحميل الرسائل…' : 'Loading messages…' : ar ? 'اكتب مهمة لهذا المكتب أو أرسلها من المدير.' : 'Write a task here or send it from the manager.'}</p> : null}
     </div>
-    {!!forms.length && enabled && !team.archived ? <div className="thin-scroll max-h-56 shrink-0 overflow-y-auto p-2">{forms.map(form => <QuestionForm key={form.id} form={form} sessionId={slot.thread!.id} onAnswered={() => void state.refresh()} onNotify={() => {}} sendAnswer={(formId, answer) => api.answerSuperOpenCode(team.id, slot.id, formId, answer)} />)}</div> : null}
+    {!!forms.length && enabled && !team.archived ? <div className="thin-scroll max-h-56 shrink-0 overflow-y-auto p-2">
+      <div className="mb-1 flex items-center justify-between gap-2 px-1">
+        <span className="text-[10px] font-semibold text-review-ink">{ar ? 'OpenCode يسأل قبل أن يكمل:' : 'OpenCode asked a question:'}</span>
+        {/* Works only with the existing mechanisms: fills this desk's own draft. Nothing
+            is sent automatically and no manager/inference request is ever triggered. */}
+        <button type="button" className="rounded-md border border-line px-2 py-0.5 text-[10px] text-ink-soft hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40 disabled:opacity-40" disabled={sending || active}
+          title={ar ? 'نسخ نص السؤال إلى مسودة هذا الشات لكتابة إجابة حرة لاحقًا. لن يُرسل شيئًا تلقائيًا.' : 'Copy the question text into this chat draft to write a free answer later. Nothing is sent automatically.'}
+          onClick={() => update([drafts.get(key), forms.map(form => form.title).join('\n')].filter(Boolean).join('\n\n'))}>
+          {ar ? 'انسخ السؤال للمسودة' : 'Copy question to draft'}
+        </button>
+      </div>
+      {forms.map(form => <QuestionForm key={form.id} form={form} sessionId={slot.thread!.id} onAnswered={() => void state.refresh()} onNotify={() => {}} sendAnswer={(formId, answer) => api.answerSuperOpenCode(team.id, slot.id, formId, answer)} />)}
+    </div> : null}
     {!scroll.atLatest && messages.length ? <button type="button" className="self-center rounded-full border border-line px-3 py-1 text-[10px] text-ink-soft" onClick={() => scroll.scrollToLatest(true)}>{ar ? 'آخر رسالة' : 'Latest message'}</button> : null}
     <form onSubmit={event => { event.preventDefault(); void send() }} className="super-agent-composer shrink-0 px-3 pb-3 pt-2">
       <div className="flex items-end gap-2"><div className="super-composer-box relative min-w-0 flex-1 rounded-2xl border border-line bg-paper/60 p-2 focus-within:border-relay/60">
         <textarea aria-label={`${ar ? 'رسالة إلى' : 'Message'} ${slot.label || `${ar ? 'مهمة' : 'Task'} ${slot.id.slice(7)}`}`} value={draft} onChange={event => update(event.target.value)} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} placeholder={ar ? 'اكتب رسالتك…' : 'Write a message…'} className="block min-h-10 max-h-32 w-full resize-none bg-transparent px-1 text-xs leading-5 outline-none" />
-        <div className="mt-1 flex min-w-0 items-center gap-2"><div className="min-w-0 max-w-64 flex-1"><SettingsSelect label={ar ? 'موديل OpenCode' : 'OpenCode model'} searchPlaceholder={ar ? 'ابحث عن موديل…' : 'Search models…'} value={currentModel} options={modelOptions} onChange={model => void changeModel(model)} disabled={!enabled || active || sending || savingModel || team.archived || !!forms.length || !selection.data || !usableModels.length} className="!mt-0 !min-h-7 !rounded-lg !border-0 !bg-transparent !px-1 !py-1 !text-[10px]" /></div>{savingModel || active || !enabled ? <span role="status" className="shrink-0 text-[10px] text-ink-soft">{savingModel ? ar ? 'جارٍ الحفظ…' : 'Saving…' : active ? ar ? 'يعمل…' : 'Working…' : ar ? 'موقوف' : 'Paused'}</span> : null}</div>
+        <div className="mt-1 flex min-w-0 items-center gap-2"><div className="min-w-0 max-w-64 flex-1"><SettingsSelect label={ar ? 'موديل OpenCode' : 'OpenCode model'} searchPlaceholder={ar ? 'ابحث عن موديل…' : 'Search models…'} value={currentModel} options={modelOptions} onChange={model => void changeModel(model)} disabled={!enabled || active || sending || savingModel || team.archived || !!forms.length || !selection.data || !usableModels.length} className="!mt-0 !min-h-7 !rounded-lg !border-0 !bg-transparent !px-1 !py-1 !text-[10px]" /></div>{savingModel || active || !enabled || forms.length ? <span role="status" className={cx('shrink-0 text-[10px]', forms.length ? 'text-review-ink' : 'text-ink-soft')}>{savingModel ? ar ? 'جارٍ الحفظ…' : 'Saving…' : active ? ar ? 'يعمل…' : 'Working…' : forms.length ? ar ? 'بانتظار إجابتك' : 'Waiting for your answer' : ar ? 'موقوف' : 'Paused'}</span> : null}</div>
       </div><button type={active ? 'button' : 'submit'} disabled={sending || savingModel || !enabled || team.archived || (!active && (!draft.trim() || !!forms.length))} onClick={active ? () => void stop() : undefined} aria-label={active ? ar ? 'إيقاف هذه المحادثة' : 'Stop this conversation' : ar ? 'إرسال' : 'Send'} className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-relay-tint text-relay-ink disabled:opacity-40">{active ? <Square className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}</button></div>
       {error || state.error || state.data?.error || selection.error || modelsError ? <p role="alert" className="mt-2 break-words text-[11px] text-review-ink">{error || state.error || state.data?.error || selection.error || modelsError}</p> : null}
     </form>

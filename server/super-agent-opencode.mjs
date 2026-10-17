@@ -52,6 +52,9 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve, millise
  *  - the latest snapshot of every message first seen after queue time is kept, so a
  *    streaming assistant id is re-read (`''` -> partial -> final, plus parent/error) and
  *    an errored message can never become the successful reply, even if text arrives late;
+ *  - a question the desk raises in its conversation is a wait, not a failure: the turn stays
+ *    active as `waiting_input`, its wait is not charged against the work timeout, and it
+ *    resumes automatically once the operator answers through the desk (never by resending);
  *  - while the native session is still working nothing is declared failed; an `idle` that
  *    closes our window with a non-`succeeded` outcome ends the turn as an honest failure;
  *    when the relation cannot be confirmed the turn ends as a tracking failure and the
@@ -61,6 +64,12 @@ export class SuperAgentOpenCode {
   constructor(api, complete, { interval = 2500, timeout = 600_000, idleGracePolls = 6 } = {}) {
     this.api = api; this.complete = complete; this.interval = interval; this.timeout = timeout
     this.idleGracePolls = idleGracePolls
+    // `timeout` is the follow/correlation window only, refreshed by evidence of real work.
+    // Ageing past it is never a session failure: the turn ends as `tracking_unknown`, the live
+    // session is left running and nothing is resent. A confirmed `active` desk and a form
+    // waiting for an answer both refresh the window, so a long task and a long question never
+    // expire into a failure.
+    this.trackingTimeout = timeout
     this.turns = new Map(); this.replies = new Map(); this.cache = new Map()
   }
   turn(id) { return this.turns.get(id) || { active: false } }
@@ -71,7 +80,7 @@ export class SuperAgentOpenCode {
       void promise.catch(() => { this.activeCache = null })
     }
     const response = await this.activeCache.promise
-    return { active: Boolean(response?.data?.[id]) || this.turn(id).active, externalActive: Boolean(response?.data?.[id]), error: this.turn(id).error || null }
+    return { active: Boolean(response?.data?.[id]) || this.turn(id).active, externalActive: Boolean(response?.data?.[id]), error: this.turn(id).error || null, status: this.turn(id).status || null, waitingInput: Boolean(this.turn(id).waitingInput) }
   }
   async read(id, fresh = false) {
     const cached = this.cache.get(id)
@@ -106,7 +115,12 @@ export class SuperAgentOpenCode {
   }
   async monitor(id, turn, baseline, expectedText) {
     const expected = normalizeRequestText(expectedText)
-    const deadline = Date.now() + this.timeout
+    // Follow window, not task age: `lastEvidenceAt` is refreshed by every poll that shows real
+    // progress — a confirmed active/queued desk, a form waiting for an answer, or a linked
+    // reply still registering. A ten-minute-old task that keeps working is therefore still
+    // followed, and the window only expires when the follow itself is lost (idle silence or a
+    // read failure), which is reported as `tracking_unknown` and never as a failure.
+    let lastEvidenceAt = Date.now()
     // Ids seen at queue time: they are the conversation this task was added to, never this task.
     const seen = new Set()
     // Newest instant present before the queue, used as extra "after the queue" evidence when
@@ -220,17 +234,27 @@ export class SuperAgentOpenCode {
       return false
     }
 
-    while (turn.active && Date.now() < deadline) {
+    while (turn.active) {
       await delay(this.interval)
       if (!turn.active) return
-      const current = await this.read(id, true)
+      // A read that fails is a lost follow, never a session failure and never a success: keep
+      // polling while the provider keeps working, and end honestly as `tracking_unknown` once
+      // the follow window is spent. Nothing is interrupted and nothing is resent.
+      let current
+      try { current = await this.read(id, true) } catch {
+        if (Date.now() - lastEvidenceAt > this.trackingTimeout) {
+          this.finish(id, turn, 'tracking_unknown', 'Open Zero could not reach this OpenCode session inside the follow window. The live session was left running and the task was not resent; inspect its conversation to pick up the answer.')
+          return
+        }
+        continue
+      }
       const freshUsers = []
       // First sight of a post-baseline id.
       for (const message of current.messages) {
         const messageId = idOf(message); if (!messageId || seen.has(messageId)) continue
         seen.add(messageId)
         if (observed.size < 4000) observed.set(messageId, message)
-        if (roleOf(message) === 'user') { pending.set(messageId, textOf(message)); freshUsers.push(messageId) }
+        if (roleOf(message) === 'user') { if (pending.size < 4000) pending.set(messageId, textOf(message)); freshUsers.push(messageId) }
       }
       // Same id again: text, parent and error can all change while a message registers.
       for (const message of current.messages) {
@@ -238,7 +262,16 @@ export class SuperAgentOpenCode {
         if (observed.has(messageId)) { observed.set(messageId, message); if (erroredOf(message)) erroredIds.add(messageId) }
         if (pending.has(messageId)) pending.set(messageId, textOf(message))
       }
-      if (current.forms.length) throw new Error('OpenCode needs an answer in its conversation before it can finish.')
+      if (current.forms.length) {
+        // A question the desk asks in its own conversation is a wait, not a failure. The turn
+        // stays active as `waiting_input`, the wait refreshes the follow window, and the answer
+        // (whenever it comes) resumes this same task. Nothing is resent and no answer is ever
+        // written for the operator.
+        if (turn.status !== 'waiting_input') { turn.waitingInput = true; turn.status = 'waiting_input' }
+        lastEvidenceAt = Date.now()
+        continue
+      }
+      if (turn.waitingInput) { turn.waitingInput = false; turn.status = 'running' }
 
       const candidates = new Set()
       for (const [userId, text] of pending) if (normalizeRequestText(text) === expected) candidates.add(userId)
@@ -268,7 +301,10 @@ export class SuperAgentOpenCode {
 
       rebuild()
 
-      if (current.active || current.inbox.length) { settled = ''; idleStreak = 0; idleWithoutReply = 0; chainWait = 0; ambiguousStreak = 0; continue }
+      // A confirmed `active`/queued desk is the strongest anti-failure evidence: it refreshes the
+      // follow window, so work that runs far past ten minutes stays `running` and the completion
+      // that follows it is still accepted for this task.
+      if (current.active || current.inbox.length) { settled = ''; idleStreak = 0; idleWithoutReply = 0; chainWait = 0; ambiguousStreak = 0; lastEvidenceAt = Date.now(); continue }
       idleStreak += 1
       if (requestId) ambiguousStreak = 0
       else if (candidates.size > 1) ambiguousStreak += 1
@@ -276,6 +312,7 @@ export class SuperAgentOpenCode {
 
       const reply = replyText()
       if (reply) {
+        lastEvidenceAt = Date.now()
         idleWithoutReply = 0
         if (settled !== reply) { settled = reply; chainWait = 0; continue }
         if (hasUnresolvedChain() && chainWait < this.idleGracePolls) { chainWait += 1; continue }
@@ -301,10 +338,22 @@ export class SuperAgentOpenCode {
       // Several identical requests and no identity evidence: never merged, never resent.
       if (!requestId && ambiguousStreak >= this.idleGracePolls) throw new Error('Several identical requests are present in this OpenCode session and this task cannot be told apart without identity evidence. The task was not resent and the session was not interrupted.')
       // Only a pinned request can prove the relation is lost; an unconfirmed turn keeps
-      // waiting (the queue may still deliver it) until the timeout reports it honestly.
+      // waiting (the queue may still deliver it) until the follow window reports it honestly.
       if (requestId && idleWithoutReply >= this.idleGracePolls) throw new Error('OpenCode ended this turn without a reply linked to this task. The request/reply relation was not confirmed and the task was not resent.')
+      // Follow window spent on a silent, idle session: this is a lost follow-up (an unconfirmed
+      // queue entry that never ran, or a desk that went quiet), never a session failure and never
+      // a success. Age alone is never a failure reason: only real silence reaches here, because
+      // every poll that showed progress refreshed `lastEvidenceAt`.
+      if (Date.now() - lastEvidenceAt > this.trackingTimeout) {
+        this.finish(id, turn, 'tracking_unknown', 'Open Zero could not confirm this turn inside the follow window. The live session was left running and the task was not resent; inspect its conversation to pick up the answer.')
+        return
+      }
     }
-    if (turn.active) this.finish(id, turn, 'failed', 'OpenCode is still running after ten minutes. It was not interrupted; inspect its conversation.')
+    if (turn.active) {
+      // Safety net only (the loop leaves when the turn settles): the turn ended without a
+      // confirmed completion, so it is reported as a lost follow and never as a failure.
+      this.finish(id, turn, 'tracking_unknown', 'Open Zero lost the follow of this turn before it confirmed a completion. The live session was left running and the task was not resent; inspect its conversation to pick up the answer.')
+    }
   }
   finish(id, turn, status, error) {
     if (this.turns.get(id) !== turn || !turn.active) return
