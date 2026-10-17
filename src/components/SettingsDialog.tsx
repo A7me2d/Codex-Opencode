@@ -8,6 +8,7 @@ import { cx } from '../lib/cx'
 import type { CodexModelInfo, ModelInfo, WorkflowSetup } from '../lib/types'
 import { ThemePanel } from './ThemePanel'
 import { SettingsSelect } from './ui/SettingsSelect'
+import { OpenCodeModelPicker } from './ui/OpenCodeModelPicker'
 import { useProviderActivity } from '../hooks/useProviderActivity'
 import type { ProviderId } from '../lib/types'
 
@@ -270,9 +271,9 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
                     </label>
                   })}</div>
                   <div className="mt-3"><label htmlFor={`settings-model-${role}`} className="text-[11px] font-medium text-ink-soft">{locale === 'ar' ? 'الموديل' : 'Model'}</label>
-                    <SettingsSelect id={`settings-model-${role}`} label={`${locale === 'ar' ? 'الموديل' : 'Model'} · ${role === 'planner' ? (locale === 'ar' ? 'المفكّر' : 'Planner') : (locale === 'ar' ? 'المنفّذ' : 'Executor')}`} value={setup[`${role}Model`]} disabled={saving || !saved.data}
+                    {setup[role] === 'opencode' ? <OpenCodeModelPicker id={`settings-model-${role}`} label={locale === 'ar' ? 'موديل OpenCode' : 'OpenCode model'} placeholder={locale === 'ar' ? 'الافتراضي' : 'Default'} allowDefault models={openCodeModels.filter(model => model.tools)} value={setup[`${role}Model`]} disabled={saving || !saved.data} className="mt-2" onChange={value => { setNotice(null); setSetup(current => ({ ...current, [`${role}Model`]: value })) }} /> : <SettingsSelect id={`settings-model-${role}`} label={`${locale === 'ar' ? 'الموديل' : 'Model'} · ${role === 'planner' ? (locale === 'ar' ? 'المفكّر' : 'Planner') : (locale === 'ar' ? 'المنفّذ' : 'Executor')}`} value={setup[`${role}Model`]} disabled={saving || !saved.data}
                       options={[{ value: '', label: setup[role] === 'cline' ? (locale === 'ar' ? 'اختر الموديل' : 'Choose a model') : (locale === 'ar' ? 'الافتراضي' : 'Default') }, ...modelOptions(setup[role]).map(model => ({ value: model.id, label: model.name }))]}
-                      onChange={value => { setNotice(null); setSetup(current => ({ ...current, [`${role}Model`]: value })) }} />
+                      onChange={value => { setNotice(null); setSetup(current => ({ ...current, [`${role}Model`]: value })) }} />}
                   </div>
                 </fieldset>)}
               </div>

@@ -18,6 +18,7 @@ import { BrainMemory } from './server/brain-memory.mjs'
 import { SuperAgentCoordinator, superAgentTools } from './server/super-agent-coordinator.mjs'
 import { SuperDeskStatus } from './server/super-agent-status.mjs'
 import { createMochiIntegration } from './server/mochi/integration.mjs'
+import { visibleOpenCodeModels } from './server/opencode-model-visibility.mjs'
 import { CoreBrainMcp } from './server/core-brain-mcp.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
@@ -1188,7 +1189,7 @@ const mochi = await createMochiIntegration({
   turn: (id, provider) => superTurn(id, provider),
   license: { consume: consumeLicensedMessage, check: async () => (await readLicenseStatus()).active === true },
   sendMessage: sendSuperAgentMessage,
-  listOpenCodeModels,
+  listOpenCodeModels: async () => visibleOpenCodeModels(await listOpenCodeModels()),
   modelSelectorToPayload,
 })
 
@@ -3349,7 +3350,8 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/models') {
-      sendJson(response, 200, { data: await listOpenCodeModels() })
+      const models = await listOpenCodeModels()
+      sendJson(response, 200, { data: url.searchParams.get('visibility') === 'shown' ? await visibleOpenCodeModels(models) : models })
       return
     }
 

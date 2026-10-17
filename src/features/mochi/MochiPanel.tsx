@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocale, type AppLocale } from '../../lib/i18n'
 import type { ModelInfo } from '../../lib/types'
+import { OpenCodeModelPicker } from '../../components/ui/OpenCodeModelPicker'
 import { fetchMochiSnapshot, fetchOpenCodeModels, saveMochiConfig, resolveMochiProposal } from './api'
 import type { MochiConfigPatch, MochiProposal, MochiRuntimeState, MochiSnapshot } from './types'
 import './mochi-panel.css'
@@ -392,15 +393,9 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
         <div className="mochi-field">
           <label htmlFor="mochi-model">{s.modelLabel}</label>
           {models.length ? (
-            <select id="mochi-model" className="mochi-select"
-              value={config?.model ?? ''}
-              disabled={savingConfig}
-              onChange={event => selectModel(event.target.value)}>
-              <option value="" disabled>{s.modelPlaceholder}</option>
-              {models.map(model => (
-                <option key={model.id} value={model.id}>{model.name || model.id} — {model.id}</option>
-              ))}
-            </select>
+            <OpenCodeModelPicker id="mochi-model" label={s.modelLabel} placeholder={s.modelPlaceholder}
+              models={models} value={config?.model ?? ''} disabled={savingConfig}
+              onChange={selectModel} />
           ) : (
             <p className="mochi-hint">
               {modelsError ? <>{s.catalogError}<span className="mochi-banner__detail"> · {s.serverSaid}: {modelsError}</span></> : s.noModels}

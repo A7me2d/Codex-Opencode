@@ -96,7 +96,7 @@ export async function resolveMochiProposal(
  * visibility window and never claimed free or paid: the copy stays factual.
  */
 export async function fetchOpenCodeModels(signal?: AbortSignal): Promise<ModelInfo[]> {
-  const body = await requestJson<{ data?: unknown }>('/api/models', { signal })
+  const body = await requestJson<{ data?: unknown }>('/api/models?visibility=shown', { signal })
   const entries = body?.data
   if (!Array.isArray(entries)) throw new Error(mochiUnavailableMessage)
   const models: ModelInfo[] = []

@@ -188,7 +188,7 @@ export const api = {
     post<{ data: { sessionId: string; directory: string } }>(`/api/opencode/sessions/${sessionId}/open-folder`),
 
   // Models: what the local OpenCode install can run
-  models: () => requestJson<{ data: ModelInfo[] }>('/api/models').then(unwrap),
+  models: () => requestJson<{ data: ModelInfo[] }>('/api/models?visibility=shown').then(unwrap),
 
   // Which model one conversation runs OpenCode on
   threadModel: (threadId: string) =>

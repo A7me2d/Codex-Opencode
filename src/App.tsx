@@ -204,9 +204,7 @@ function WorkspaceApp() {
           modelError={conversation.model.error}
           sessions={room.openCodeSessions}
           onRefreshSessions={room.onRefreshSessions}
-          workRoot={room.workRoot}
-          modelIds={(room.models.data ?? []).filter((entry) => entry.tools).map((entry) => entry.id)}
-        />
+          workRoot={room.workRoot}        />
 
   const executorConversation = room.executorConversation
   const executorPane = executorConversation.view.thread ? <CodexConversation
@@ -339,9 +337,7 @@ function WorkspaceApp() {
           modelError={conversation.model.error}
           sessions={room.openCodeSessions}
           onRefreshSessions={room.onRefreshSessions}
-          workRoot={room.workRoot}
-          modelIds={(room.models.data ?? []).filter((entry) => entry.tools).map((entry) => entry.id)}
-        />) : null}
+          workRoot={room.workRoot}        />) : null}
       </ErrorBoundary>
 
       <div

@@ -14,13 +14,14 @@ import { MessageChanges } from './MessageChanges'
 import { usePolling } from '../../hooks/usePolling'
 import { useProviderActivity } from '../../hooks/useProviderActivity'
 import type { Notify } from '../../hooks/useAgentAlerts'
-import type { OpenCodeSession } from '../../lib/types'
+import { OpenCodeModelPicker } from '../../components/ui/OpenCodeModelPicker'
+import type { ModelInfo, OpenCodeSession } from '../../lib/types'
 
 export interface OpenCodeChatProps {
   sessions: OpenCodeSession[]
   /** The model new sessions should run on. */
   model: string
-  models: string[]
+  models: ModelInfo[]
   /** The folder new sessions should be created in. */
   workRoot?: string
   /** The session the open Codex conversation is linked to, if any. */
@@ -174,15 +175,7 @@ export function OpenCodeChat({ sessions, model, models, workRoot, linkedSessionI
           {tr("جلسة OpenCode جديدة")}<span className="font-normal text-ink-soft">{tr("اختياري")}</span>
         </summary>
         <div className="flex items-center gap-2 border-t border-line p-2">
-          <select
-            value={newModel}
-            onChange={(event) => setNewModel(event.target.value)}
-            aria-label={tr("موديل الجلسة الجديدة")}
-            className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-2 py-1 text-[10px] text-ink outline-none focus:border-ready/55"
-          >
-            <option value="">{tr("موديل الجلسة الجديدة:")}{' '}{clip(model || tr("الافتراضي"), 28)}</option>
-            {models.map((id) => <option key={id} value={id}>{clip(id, 40)}</option>)}
-          </select>
+          <div className="min-w-0 flex-1"><OpenCodeModelPicker id={`${panelId}-model`} models={models.filter(model => model.tools)} value={newModel} onChange={setNewModel} disabled={starting} label={tr('موديل OpenCode')} placeholder={model || tr('الافتراضي')} allowDefault /></div>
           <button type="button" onClick={() => void startSession()} disabled={starting} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ready/30 bg-ready-tint px-2 py-1 text-[10px] font-bold text-ready-ink transition-colors hover:bg-ready-tint/80 disabled:opacity-55" aria-label={tr("ابدأ جلسة OpenCode جديدة")}>
             {starting ? <Spinner className="h-3 w-3" /> : <Plus className="h-3 w-3" aria-hidden="true" />}
             {tr("ابدأ")}</button>
