@@ -118,9 +118,9 @@ export class MochiRuntime {
     return this.snapshot(teamId)
   }
 
-  #providerAvailable(team) {
+  #providerAvailable(team, config) {
     if (typeof this.deps.providerAvailable === 'function') {
-      try { return this.deps.providerAvailable(team) === true } catch { return false }
+      try { return this.deps.providerAvailable(team, config) === true } catch { return false }
     }
     for (const key of ['providerAvailable', 'mochiProviderAvailable', 'providerOnline']) {
       if (typeof team[key] === 'boolean') return team[key]
@@ -132,7 +132,7 @@ export class MochiRuntime {
     if (!team) return { state: 'blocked', error: 'team_not_found' }
     if (!config.enabled) return { state: 'disabled', error: null }
     if (team.archived) return { state: 'disabled', error: null }
-    if (!this.#providerAvailable(team)) return { state: 'blocked', error: 'provider_unavailable' }
+    if (!this.#providerAvailable(team, config)) return { state: 'blocked', error: 'provider_unavailable' }
     return null
   }
 
@@ -202,6 +202,9 @@ export class MochiRuntime {
       status: 'pending',
       answer: proposal?.answer,
       reason: typeof proposal?.reason === 'string' ? proposal.reason : '',
+      // Carry the brain that produced a model decision (question events only);
+      // the policy path refuses to apply it after a provider/model switch.
+      ...(proposal?.brain && typeof proposal.brain === 'object' ? { brain: proposal.brain } : {}),
     }
     const result = await this.store.putProposal(entry)
     return result.proposal

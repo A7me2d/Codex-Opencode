@@ -1,7 +1,91 @@
-﻿.mochi-launcher { position: absolute; right: 16px; bottom: 16px; z-index: 40; max-width: calc(100% - 32px); }
-.mochi-launcher__drawer { position: absolute; bottom: calc(100% + 10px); right: 0; width: min(380px, calc(100vw - 48px)); max-height: min(70dvh, 680px); overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--color-line); border-radius: 18px; background: var(--color-card); color: var(--color-ink); box-shadow: 0 16px 48px rgb(0 0 0 / 22%); }
-.mochi-launcher__close { position: sticky; top: 8px; margin: 8px 8px 0 auto; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; background: var(--color-paper); color: var(--color-ink-soft); z-index: 1; }
+﻿/*
+ * Mochi launcher — floating pet + panel over the Super Agent work area.
+ *
+ * The pet is draggable: the wrapper carries pointer capture, so layout stays
+ * untouched while traveling (transform only) and the position commits once
+ * per drag end. Colors come from theme tokens; reduced motion silences the
+ * small transitions. The drawer placement is computed in mochi-position.ts.
+ */
+
+.mochi-launcher { position: fixed; z-index: 40; max-width: calc(100vw - 24px); }
+.mochi-launcher[data-anchored='false'] { right: 16px; bottom: 16px; }
+
+.mochi-launcher__drag {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 2px;
+  touch-action: none; /* the pet is a control: drags here never scroll the work area */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mochi-launcher__drag[data-dragging='true'] { cursor: grabbing; }
+.mochi-launcher__drag[data-dragging='true'] .mochi-trigger { transition: none; }
+
+.mochi-launcher__grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-ink-soft);
+  cursor: grab;
+  touch-action: none;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.mochi-launcher__grip:hover { background: var(--color-relay-tint); color: var(--color-relay-ink); }
+.mochi-launcher__grip:focus-visible { outline: 2px solid var(--color-relay); outline-offset: 1px; }
+.mochi-launcher__grip svg { width: 14px; height: 14px; }
+
+.mochi-launcher__drawer {
+  position: absolute;
+  width: min(380px, calc(100vw - 48px));
+  max-height: min(70dvh, 680px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  background: var(--color-card);
+  color: var(--color-ink);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 22%);
+  transition: opacity 150ms ease-out;
+}
+
+/* Placement is measured before paint; until then the drawer never flashes. */
+.mochi-launcher__drawer[data-placed='false'] { visibility: hidden; }
+.mochi-launcher[data-dragging='true'] .mochi-launcher__drawer { opacity: 0; pointer-events: none; }
+
+.mochi-launcher__close {
+  position: sticky;
+  top: 8px;
+  margin: 8px 8px 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--color-paper);
+  color: var(--color-ink-soft);
+  z-index: 1;
+}
+
 .mochi-launcher__close:focus-visible { outline: 2px solid var(--color-relay); outline-offset: 2px; }
-@media (max-width: 600px) { .mochi-launcher { right: 8px; bottom: 8px; } .mochi-launcher__drawer { max-height: 65dvh; } }
 
 .mochi-launcher__drawer .mochi-panel { padding: 0 12px 12px; }
+
+@media (max-width: 600px) {
+  .mochi-launcher__drawer { width: min(340px, calc(100vw - 32px)); max-height: 65dvh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mochi-launcher__grip,
+  .mochi-launcher__drawer,
+  .mochi-launcher__drag .mochi-trigger { transition: none; }
+}

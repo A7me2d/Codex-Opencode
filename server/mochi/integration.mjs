@@ -4,9 +4,10 @@ import { superProvider } from '../super-agent.mjs'
 import { MochiStore } from './store.mjs'
 import { MochiRuntime } from './runtime.mjs'
 import { MochiOpenCodeModel, redactSecrets } from './opencode-model.mjs'
+import { MochiClineModel, CLINE_BRAIN_OBSTACLE } from './cline-model.mjs'
 import { planQuestion, questionIsSensitive } from './questions.mjs'
 import { planRecovery, applyRecovery } from './recovery.mjs'
-import { validateConfig, DEFAULT_MOCHI_CONFIG } from './policy.mjs'
+import { validateConfig, brainModel, DEFAULT_MOCHI_CONFIG } from './policy.mjs'
 import { applyMochiProposal } from './actions.mjs'
 
 export const MOCHI_DEFAULT_CONFIG = DEFAULT_MOCHI_CONFIG
@@ -15,6 +16,19 @@ const iso = value => new Date(value || Date.now()).toISOString()
 const dataList = response => Array.isArray(response?.data) ? response.data : []
 const short = value => redactSecrets(typeof value === 'string' ? value : '').slice(0, 500)
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 20)
+
+/**
+ * The brain a config selects, normalized. The brain is Mochi's own mind and is
+ * independent of the desks it watches; its model selector only ever goes to the
+ * provider it names, never to the other one.
+ */
+const brainStamp = (config, revision = 0) => ({
+  provider: config?.brainProvider === 'cline' ? 'cline' : 'opencode',
+  model: String(brainModel(config) || ''),
+  account: config?.brainProvider === 'cline' ? config.clineProvider || 'cline' : '',
+  revision,
+})
+const sameBrain = (left, right) => left.provider === right.provider && left.model === right.model && left.account === right.account && left.revision === right.revision
 
 // Match the IDs and fallback keys used by src/lib/forms.ts. Retain exact option
 // values; neither the model nor a stale proposal may invent a different choice.
@@ -45,6 +59,20 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
   const store = new MochiStore(path.join(deps.stateDirectory, 'mochi'), { validateConfig })
   await store.ready
   const applying = new Set()
+  const pendingBrains = new Map()
+  const currentBrain = async teamId => {
+    const record = await store.get(teamId)
+    return brainStamp(record.config, record.brainRevision || 0)
+  }
+  const verifyInference = async ({ teamId, event, model: selectedModel }, provider) => {
+    const record = await store.get(teamId)
+    const team = await deps.superAgent.get(teamId)
+    const stamp = brainStamp(record.config, record.brainRevision || 0)
+    const expected = pendingBrains.get(teamId + ':' + event.id)
+    if (!record.config.enabled || team.archived || stamp.provider !== provider || stamp.model !== selectedModel || !expected || !sameBrain(stamp, expected)) throw problem('Mochi stopped or its brain configuration changed before inference.')
+    await deps.providerActivity.require(provider)
+    return record.config
+  }
   const licenseReady = async () => {
     if (typeof deps.license?.check !== 'function' || await deps.license.check() !== true) throw problem('Mochi needs an active Open Zero license.', 403)
   }
@@ -54,8 +82,9 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
     if (team.archived || !slot?.thread || slot.thread.archived || slot.thread.id !== identity.threadId || slot.id === 'manager') throw problem('The desk binding changed. Nothing was sent.')
     const config = (await store.get(team.id)).config
     if (!config.enabled) throw problem('Mochi is disabled. Nothing was sent.')
+    if (identity.brain && !sameBrain(identity.brain, await currentBrain(team.id))) throw problem('The Mochi brain changed; this suggestion is stale.')
     const provider = superProvider(slot.thread)
-    await deps.providerActivity.require('opencode')
+    await deps.providerActivity.require(brainStamp(config).provider)
     await deps.providerActivity.require(provider)
     return { team, slot, provider, config }
   }
@@ -65,20 +94,40 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
     // create an agent session or run a worker's tools. Unsupported versions fail
     // explicitly; there is deliberately no fallback to an unrestricted agent.
     capabilities: () => ({ toolFree: true, dedicatedContext: true }),
-    invokeModel: async ({ teamId, model: selector, prompt }) => {
-      const config = (await store.get(teamId)).config
-      const team = await deps.superAgent.get(teamId)
-      if (!config.enabled || team.archived || config.model !== selector) throw problem('Mochi stopped or its model changed before inference.')
-      await deps.providerActivity.require('opencode')
+    invokeModel: async payload => {
+      const { model: selector, prompt } = payload
+      await verifyInference(payload, 'opencode')
       await licenseReady()
       const slash = selector.indexOf('/')
       if (slash < 1 || slash === selector.length - 1) throw problem('Choose an OpenCode model as providerID/modelID.', 400)
       await deps.license.consume()
+      await verifyInference(payload, 'opencode')
       const response = await deps.openCodeApi('POST', '/api/experimental/generate', { model: { providerID: selector.slice(0, slash), id: selector.slice(slash + 1) }, prompt })
       if (typeof response?.data?.text !== 'string') throw problem('OpenCode did not return a stateless text result.', 502)
       return { text: response.data.text }
     },
   })
+
+  const clineBrain = new MochiClineModel({
+    requireEnabled: () => deps.providerActivity.require('cline'),
+    capabilities: async ({ teamId }) => {
+      const config = (await store.get(teamId)).config
+      return deps.clineText?.availability(config.clineProvider || 'cline')
+    },
+    invokeModel: async payload => {
+      const config = await verifyInference(payload, 'cline')
+      if (!deps.clineText?.generate) throw problem(CLINE_BRAIN_OBSTACLE)
+      await licenseReady()
+      await deps.license.consume()
+      await verifyInference(payload, 'cline')
+      return deps.clineText.generate({ provider: config.clineProvider || 'cline', model: payload.model, prompt: payload.prompt, maxOutputChars: payload.maxOutputChars })
+    },
+  })
+  const brains = { opencode: model, cline: clineBrain }
+  const clineCatalog = async provider => {
+    if (typeof deps.listClineModels !== 'function') throw problem('The Cline model catalog is unavailable in this build.', 503)
+    return deps.listClineModels(provider || 'cline')
+  }
 
   const currentJob = identity => deps.superCoordinator.jobs.filter(job => job.teamId === identity.teamId && job.slotId === identity.slotId && job.threadId === identity.threadId).at(-1)
   const readTask = async identity => {
@@ -116,6 +165,15 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
       const record = await store.get(proposal.teamId)
       const saved = record.proposals.find(item => item.id === proposal.id)
       if (!saved || saved.status !== 'pending') return { status: 'blocked', reason: 'This proposal is no longer pending.' }
+      if (saved.kind === 'answer_question' && !saved.brain) {
+        await store.change(saved.teamId, current => {
+          const item = current.proposals.find(candidate => candidate.id === saved.id)
+          if (item?.status !== 'pending') return
+          item.status = 'stale'; item.resolvedAt = Date.now()
+          item.reason = 'This older suggestion has no verified brain identity. Answer the question in its desk conversation.'
+        })
+        return { status: 'stale', reason: 'The older suggestion has no verified brain identity.' }
+      }
       let claimTaken = false
       const claim = async () => {
         // Persist BEFORE the network side effect. On a crash, an uncertain action
@@ -123,6 +181,7 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
         const claimed = await store.change(proposal.teamId, current => {
           const item = current.proposals.find(candidate => candidate.id === proposal.id)
           if (item?.status !== 'pending' || !current.config.enabled) return false
+          if (!operatorApproved && (current.config.mode !== 'automatic' || current.config.autoAnswer !== true || saved.kind !== 'answer_question')) return false
           item.status = 'blocked'; item.resolvedAt = Date.now()
           item.reason = 'Execution claimed; outcome unconfirmed until the provider replies. Do not replay automatically.'
           return true
@@ -134,6 +193,12 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
         liveContext: async () => {
           await binding(saved)
           await licenseReady()
+          // A suggestion decided by one brain must not be executed after the
+          // operator switched Mochi's brain provider or model.
+          if (saved.brain) {
+            const current = await currentBrain(saved.teamId)
+            if (!sameBrain(current, saved.brain)) throw problem("Mochi's brain changed after this suggestion was made. Answer it in the desk conversation, or wait for a fresh suggestion from the current brain.")
+          }
           const event = record.events.find(item => item.id === saved.eventId)
           if (!event || event.sourceId !== saved.sourceId) throw problem('The source event is unavailable.')
           let source, task
@@ -151,6 +216,10 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
           await claim()
           await deps.license.consume()
           await readQuestion(saved)
+          if (!operatorApproved) {
+            const latest = (await store.get(saved.teamId)).config
+            if (latest.mode !== 'automatic' || latest.autoAnswer !== true) throw problem('Automatic answering was disabled before sending.')
+          }
           // Same reply shape/path as the main Agent question UI.
           await deps.openCodeApi('POST', `/api/session/${encodeURIComponent(saved.threadId)}/form/${encodeURIComponent(saved.sourceId)}/reply`, { answer: saved.answer })
           return { ok: true, status: 'applied' }
@@ -212,10 +281,28 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
   }
   const runtime = new MochiRuntime(store, {
     listTeams: () => deps.superAgent.list(),
-    providerAvailable: () => deps.providerActivity.enabled('opencode'),
+    // The brain's own provider gates inference; a desk only needs its own provider.
+    providerAvailable: (_team, config) => deps.providerActivity.enabled(brainStamp(config).provider),
     collect,
     plan: async (event, config) => {
-      if (event.kind === 'question') return planQuestion(event, config, { decide: (source, settings) => model.decide(source, settings) })
+      if (event.kind === 'question') {
+        const current = await store.get(event.teamId)
+        const before = brainStamp(current.config, current.brainRevision || 0)
+        if (!current.config.enabled) return null
+        const key = event.teamId + ':' + event.id
+        pendingBrains.set(key, before)
+        let proposal
+        try { proposal = await planQuestion(event, current.config, { decide: (source, settings) => brains[before.provider].decide(source, { ...settings, model: before.model }) }) }
+        finally { pendingBrains.delete(key) }
+        if (!proposal) return null
+        // The brain may have been switched while the request was in flight: an
+        // old decision is never stored, and the event waits for the new brain.
+        const after = await currentBrain(event.teamId)
+        if (!sameBrain(before, after)) {
+          return { kind: 'escalate', reason: "Mochi's brain changed while this was being decided. Nothing was applied; the next event will be planned by the new brain." }
+        }
+        return { ...proposal, brain: before }
+      }
       if (event.kind === 'failed') return planRecovery(event, config)
       return { kind: 'escalate', reason: event.kind === 'permission' ? 'Review this permission in its desk conversation. Mochi does not approve tools in this version.' : 'Tracking is uncertain; the task may still be running. Open the desk; nothing was resent.' }
     },
@@ -225,18 +312,43 @@ export async function createMochiIntegration(deps, { intervalMs = 15000 } = {}) 
   const snapshot = async teamId => {
     await deps.superAgent.get(teamId)
     const result = await runtime.snapshot(teamId)
-    return { ...result, proposals: result.proposals.map(item => ({ ...item, createdAt: iso(item.createdAt) })), events: result.events.map(item => ({ ...item, createdAt: iso(item.createdAt) })) }
+    // Capability truth lives on the server: the panel renders it, it never claims it.
+    const stamp = await currentBrain(teamId)
+    const activity = deps.providerActivity.enabled(stamp.provider)
+    const availability = stamp.provider === 'cline' && activity ? await deps.clineText?.availability(stamp.account) : null
+    const brain = { ...stamp, available: activity && (stamp.provider === 'opencode' || availability?.available === true), reason: !activity ? 'The selected Mochi provider is disabled.' : stamp.provider === 'cline' && !availability?.available ? availability?.reason || CLINE_BRAIN_OBSTACLE : null }
+    return { ...result, brain, proposals: result.proposals.map(item => ({ ...item, createdAt: iso(item.createdAt) })), events: result.events.map(item => ({ ...item, createdAt: iso(item.createdAt) })) }
   }
   const configure = async (teamId, patch) => {
     const team = await deps.superAgent.get(teamId)
     if (team.archived) throw problem('Restore the team before configuring Mochi.')
+    const current = (await store.get(teamId)).config
     const effectivePatch = patch?.enabled === false ? { ...patch, mode: 'suggest' } : patch
-    const next = validateConfig(effectivePatch, (await store.get(teamId)).config)
+    const next = validateConfig(effectivePatch, current)
     if (next.autoApproveTools || next.autoResume) throw problem('Tool approvals and continuation require operator review in this version.', 400)
+    // Switching the brain is a stop-first operation: never swap it under a live assistant.
+    if (next.enabled && (next.brainProvider !== current.brainProvider || next.clineProvider !== current.clineProvider)) {
+      throw problem('Stop Mochi before changing its brain provider.')
+    }
     if (next.enabled) {
-      await deps.providerActivity.require('opencode')
-      const available = await deps.listOpenCodeModels()
-      if (!available.some(item => item.id === next.model)) throw problem('Choose an available OpenCode model.', 400)
+      // Enabling is refused, not degraded: an unsafe or unproven brain never runs.
+      await deps.providerActivity.require(next.brainProvider)
+      if (next.brainProvider === 'cline') {
+        const availability = await deps.clineText?.availability(next.clineProvider)
+        if (availability?.available !== true) throw problem(availability?.reason || CLINE_BRAIN_OBSTACLE)
+        const available = await clineCatalog(next.clineProvider)
+        if (!available.some(item => item.id === next.clineModel)) throw problem('Choose an available Cline model.', 400)
+      } else {
+        const available = await deps.listOpenCodeModels()
+        if (!available.some(item => item.id === next.model)) throw problem('Choose an available OpenCode model.', 400)
+      }
+    }
+    if (effectivePatch && 'clineModel' in effectivePatch && next.clineModel) {
+      // Cline models come from Cline's own catalog path and require Cline activity;
+      // OpenCode is never woken for this and never sees a Cline model id.
+      await deps.providerActivity.require('cline')
+      const catalog = await clineCatalog(next.clineProvider)
+      if (!catalog.some(item => item?.id === next.clineModel)) throw problem("Choose an available Cline model from Cline's own catalog.", 400)
     }
     await store.configure(teamId, effectivePatch)
     return snapshot(teamId)

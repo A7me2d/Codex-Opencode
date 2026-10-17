@@ -116,3 +116,28 @@ export async function fetchOpenCodeModels(signal?: AbortSignal): Promise<ModelIn
   }
   return models
 }
+
+export interface MochiClineModelInfo {
+  /** Cline model id, valid only against Cline's own catalog. */
+  id: string
+  name: string
+}
+
+/**
+ * Cline's own model catalog (`GET /api/cline/models`, read from the installed
+ * Cline CLI package on disk). Strict shape validation; ids are Cline's and are
+ * never sent to another provider.
+ */
+export async function fetchClineModels(signal?: AbortSignal, provider = 'cline'): Promise<MochiClineModelInfo[]> {
+  const body = await requestJson<{ data?: unknown }>(`/api/cline/models?provider=${encodeURIComponent(provider)}`, { signal })
+  const entries = body?.data
+  if (!Array.isArray(entries)) throw new Error(mochiUnavailableMessage)
+  const models: MochiClineModelInfo[] = []
+  for (const entry of entries) {
+    if (typeof entry !== 'object' || entry === null) throw new Error(mochiUnavailableMessage)
+    const model = entry as Partial<MochiClineModelInfo>
+    if (typeof model.id !== 'string' || !model.id || typeof model.name !== 'string') throw new Error(mochiUnavailableMessage)
+    models.push({ id: model.id, name: model.name })
+  }
+  return models
+}

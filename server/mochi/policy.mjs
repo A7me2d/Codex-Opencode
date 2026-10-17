@@ -18,7 +18,13 @@
 export const DEFAULT_MOCHI_CONFIG = Object.freeze({
   enabled: false,
   mode: 'suggest',
+  /** Which provider serves Mochi's own brain. Independent of the desks Mochi watches. */
+  brainProvider: 'opencode',
+  /** OpenCode model selector (`providerID/modelID`) when brainProvider is "opencode". */
   model: '',
+  /** Cline model id from Cline's own catalog when brainProvider is "cline". */
+  clineModel: '',
+  clineProvider: 'cline',
   autoAnswer: false,
   autoResume: false,
   autoApproveTools: false,
@@ -26,6 +32,17 @@ export const DEFAULT_MOCHI_CONFIG = Object.freeze({
 
 const CONFIG_FIELDS = new Set(Object.keys(DEFAULT_MOCHI_CONFIG))
 const MODES = new Set(['suggest', 'automatic'])
+const BRAIN_PROVIDERS = new Set(['opencode', 'cline'])
+
+/** The model selector that matters for the currently selected brain provider. */
+export function brainModel(config) {
+  return config?.brainProvider === 'cline' ? config?.clineModel || '' : config?.model || ''
+}
+
+/** Human name of the selected brain provider, for honest operator messages. */
+export function brainProviderName(config) {
+  return config?.brainProvider === 'cline' ? 'Cline' : 'OpenCode'
+}
 
 export class PolicyError extends Error {
   constructor(message, { status = 400 } = {}) {
@@ -55,13 +72,13 @@ function safeText(value, field, { maxLength = 200, allowEmpty = false } = {}) {
 /**
  * Validate a partial config patch and merge it over the current config.
  *
- * Strict types/enums/field bounds, only the seven contract fields, unknown
- * fields rejected. Returns the full merged config (never a partial). Throws
+ * Strict types/enums/field bounds, only the contract fields, unknown fields
+ * rejected. Returns the full merged config (never a partial). Throws
  * `PolicyError` with a `.status` HTTP code on any invalid input.
  *
- * Enabling or automatic mode requires a configured model string; actual model
- * availability is the runtime's job (`requireEnabled`), this only guarantees
- * the field is present and well-formed.
+ * Enabling or automatic mode requires a configured model string for the
+ * selected brain provider; actual model availability is the runtime's job
+ * (`requireEnabled`), this only guarantees the field is present and well-formed.
  */
 export function validateConfig(patch, current) {
   if (patch === undefined || patch === null) return normalize(defaultOr(current))
@@ -80,14 +97,25 @@ export function validateConfig(patch, current) {
     merged.mode = patch.mode
   }
   if ('model' in patch) merged.model = safeText(patch.model, 'model', { maxLength: 200, allowEmpty: true })
+  if ('clineModel' in patch) merged.clineModel = safeText(patch.clineModel, 'clineModel', { maxLength: 200, allowEmpty: true })
+  if ('clineProvider' in patch) {
+    if (!['cline', 'openrouter', 'anthropic'].includes(patch.clineProvider)) throw new PolicyError('Choose a supported Cline provider.')
+    merged.clineProvider = patch.clineProvider
+  }
+  if ('brainProvider' in patch) {
+    if (typeof patch.brainProvider !== 'string' || !BRAIN_PROVIDERS.has(patch.brainProvider)) {
+      throw new PolicyError('Mochi config field "brainProvider" must be "opencode" or "cline".')
+    }
+    merged.brainProvider = patch.brainProvider
+  }
   for (const field of ['autoAnswer', 'autoResume', 'autoApproveTools']) {
     if (field in patch) {
       if (typeof patch[field] !== 'boolean') throw new PolicyError(`Mochi config field "${field}" must be a boolean.`)
       merged[field] = patch[field]
     }
   }
-  if (merged.enabled === true && !merged.model) {
-    throw new PolicyError('Enabling Mochi requires a configured OpenCode model (model availability is checked at runtime).')
+  if (merged.enabled === true && !brainModel(merged)) {
+    throw new PolicyError(`Enabling Mochi requires a configured ${brainProviderName(merged)} model (model availability is checked at runtime).`)
   }
   if (merged.mode === 'automatic' && merged.enabled !== true) {
     throw new PolicyError('Automatic mode requires Mochi to be enabled.')
@@ -107,7 +135,14 @@ function defaultOr(current) {
 function normalize(partial) {
   const config = { ...DEFAULT_MOCHI_CONFIG, ...partial }
   config.model = typeof config.model === 'string' ? config.model.trim() : ''
+  config.clineModel = typeof config.clineModel === 'string' ? config.clineModel.trim() : ''
+  if (!['cline', 'openrouter', 'anthropic'].includes(config.clineProvider)) config.clineProvider = 'cline'
   if (config.model.length > 200) throw new PolicyError('Stored Mochi model selector exceeds 200 characters.', { status: 500 })
+  if (config.clineModel.length > 200) throw new PolicyError('Stored Mochi Cline model selector exceeds 200 characters.', { status: 500 })
+  if (!BRAIN_PROVIDERS.has(config.brainProvider)) {
+    // Stored configs from before brain providers existed stay on OpenCode, untouched.
+    config.brainProvider = 'opencode'
+  }
   if (!MODES.has(config.mode)) throw new PolicyError('Stored Mochi mode is invalid.', { status: 500 })
   for (const field of ['enabled', 'autoAnswer', 'autoResume', 'autoApproveTools']) {
     if (typeof config[field] !== 'boolean') throw new PolicyError(`Stored Mochi config field "${field}" is invalid.`, { status: 500 })

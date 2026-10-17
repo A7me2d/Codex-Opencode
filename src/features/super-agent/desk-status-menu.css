@@ -1,0 +1,9 @@
+/* Open Zero — folding chrome for the desk status panel (desk-status-menu).
+   Theme tokens only; the chevron motion stops under prefers-reduced-motion. */
+
+.desk-status-chevron { transition: transform .16s ease-out; }
+.desk-status-panel[data-desk-status-open="true"] .desk-status-chevron { transform: rotate(180deg); }
+.desk-status-menu { overscroll-behavior: contain; }
+@media (prefers-reduced-motion: reduce) {
+  .desk-status-chevron { transition: none !important; }
+}

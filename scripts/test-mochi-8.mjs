@@ -1,5 +1,5 @@
 ﻿import assert from 'node:assert/strict'
-import { mkdtemp, readdir, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createMochiIntegration } from '../server/mochi/integration.mjs'
@@ -18,9 +18,19 @@ async function fixture() {
   const deps = {
     stateDirectory: directory,
     superAgent: { list: async () => [state.team], get: async id => { assert.equal(id, state.team.id); return structuredClone(state.team) } },
-    providerActivity: { enabled: () => state.enabled, require: async () => { if (!state.enabled) throw new Error('provider disabled') } },
+    providerActivity: { enabled: provider => state.enabled && state.providerEnabled?.[provider] !== false, require: async provider => { (state.requiredProviders ||= []).push(provider); if (!state.enabled || state.providerEnabled?.[provider] === false) throw new Error('provider disabled') } },
     license: { check: async () => state.licensed, consume: async () => { if (!state.licensed) throw new Error('license disabled'); state.consumed++ } },
     listOpenCodeModels: async () => [{ id: 'test/zero-cost-unconfirmed', tools: false }],
+    listClineModels: async provider => [{ id: provider + '/model', name: 'Synthetic Cline model' }, { id: provider + '/second', name: 'Synthetic second model' }],
+    clineText: {
+      availability: async () => ({ available: state.clineAvailable !== false, toolFree: state.clineAvailable !== false, stateless: true, dedicatedContext: true, reason: state.clineAvailable === false ? 'Synthetic Cline unavailable' : null }),
+      generate: async input => {
+        (state.clineCalls ||= []).push(input)
+        if (state.onClineGenerate) await state.onClineGenerate()
+        if (state.clineFails) throw new Error('Synthetic Cline failure')
+        return { text: JSON.stringify(state.modelReply) }
+      },
+    },
     superCoordinator: { jobs: state.jobs },
     guards: { requireSuperOpenCodeThread: async () => { if (state.busy) throw new Error('binding unavailable') } },
     superOpenCode: { prepare: async () => { if (state.busy || state.forms.length || state.permissions.length) throw new Error('desk busy or waiting') } },
@@ -144,6 +154,76 @@ check('sensitive form text is not persisted or sent to the model', isolated(asyn
   const [file] = await readdir(path.join(f.directory, 'mochi'))
   const raw = await readFile(path.join(f.directory, 'mochi', file), 'utf8')
   assert(!raw.includes('example-secret-value'))
+}))
+check('Cline brain answers through its own text transport and catalog only', isolated(async f => {
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineProvider: 'cline', clineModel: 'cline/model' })
+  await f.mochi.configure('team-one', { enabled: true }); await f.tick()
+  assert.equal(f.state.clineCalls.length, 1); assert.equal(f.state.clineCalls[0].provider, 'cline'); assert.equal(f.state.clineCalls[0].model, 'cline/model')
+  assert.equal(f.state.calls.filter(x => x.url.includes('/generate')).length, 0)
+  await f.approve(); assert.equal(f.replies().length, 1)
+}))
+check('Cline can be configured and enabled while OpenCode is disabled', isolated(async f => {
+  f.state.providerEnabled = { opencode: false }
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineModel: 'cline/model' })
+  const snapshot = await f.mochi.configure('team-one', { enabled: true })
+  assert.equal(snapshot.brain.available, true); assert(!f.state.requiredProviders.includes('opencode'))
+  await f.tick(); assert.equal(f.state.calls.length, 0, 'disabled OpenCode desk is skipped')
+}))
+check('another Cline account uses that account catalog and not the OpenCode selector', isolated(async f => {
+  await assert.rejects(f.mochi.configure('team-one', { brainProvider: 'cline', clineModel: 'test/zero-cost-unconfirmed' }))
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineProvider: 'openrouter', clineModel: 'openrouter/model' })
+  await f.mochi.configure('team-one', { enabled: true }); await f.tick()
+  assert.equal(f.state.clineCalls[0].provider, 'openrouter')
+}))
+check('missing Cline capability cannot be enabled and never invokes inference', isolated(async f => {
+  f.state.clineAvailable = false
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineModel: 'cline/model' })
+  await assert.rejects(f.mochi.configure('team-one', { enabled: true }), /unavailable/)
+  assert.equal((f.state.clineCalls || []).length, 0)
+}))
+check('changing the Cline model during inference blocks the old answer', isolated(async f => {
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineModel: 'cline/model' })
+  await f.mochi.configure('team-one', { enabled: true, mode: 'automatic', autoAnswer: true })
+  f.state.onClineGenerate = () => f.mochi.configure('team-one', { clineModel: 'cline/second' })
+  await f.tick(); assert.equal(f.replies().length, 0); assert.equal((await f.pending()).kind, 'escalate')
+  await f.tick(); assert.equal(f.state.clineCalls.length, 1, 'same event is not resent to the new model')
+}))
+check('switching away and back while waiting still invalidates an old Cline decision', isolated(async f => {
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineModel: 'cline/model' })
+  await f.mochi.configure('team-one', { enabled: true, mode: 'automatic', autoAnswer: true })
+  f.state.onClineGenerate = async () => {
+    await f.mochi.configure('team-one', { enabled: false })
+    await f.mochi.configure('team-one', { brainProvider: 'opencode' })
+    await f.mochi.configure('team-one', { brainProvider: 'cline' })
+    await f.mochi.configure('team-one', { enabled: true, mode: 'automatic' })
+  }
+  await f.tick(); assert.equal(f.replies().length, 0); assert.equal((await f.pending()).kind, 'escalate')
+}))
+check('a stored pending Cline answer cannot apply after a later model change', isolated(async f => {
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineModel: 'cline/model' })
+  await f.mochi.configure('team-one', { enabled: true }); await f.tick()
+  await f.mochi.configure('team-one', { clineModel: 'cline/second' })
+  const restored = await f.restart(); const proposal = await f.pending()
+  await restored.resolve('team-one', proposal.id, 'approve'); assert.equal(f.replies().length, 0)
+}))
+check('Cline failures escalate once without consuming twice or falling back to OpenCode', isolated(async f => {
+  await f.mochi.configure('team-one', { brainProvider: 'cline', clineModel: 'cline/model' })
+  await f.mochi.configure('team-one', { enabled: true }); f.state.clineFails = true
+  await f.tick(); await f.tick(); assert.equal((await f.pending()).kind, 'escalate')
+  assert.equal(f.state.consumed, 1); assert.equal(f.state.clineCalls.length, 1)
+  assert.equal(f.state.calls.filter(x => x.url.includes('/generate')).length, 0)
+}))
+check('old persisted teams migrate to OpenCode without enabling or losing their model', isolated(async f => {
+  await f.mochi.configure('team-one', { model: 'test/zero-cost-unconfirmed' })
+  const directory = path.join(f.directory, 'mochi'); const [file] = await readdir(directory)
+  const stored = JSON.parse(await readFile(path.join(directory, file), 'utf8'))
+  for (const key of ['brainProvider', 'clineProvider', 'clineModel']) delete stored.config[key]
+  delete stored.brainRevision
+  await writeFile(path.join(directory, file), JSON.stringify(stored))
+  const restored = await f.restart(); const snapshot = await restored.snapshot('team-one')
+  assert.equal(snapshot.config.brainProvider, 'opencode'); assert.equal(snapshot.config.clineProvider, 'cline')
+  assert.equal(snapshot.config.model, 'test/zero-cost-unconfirmed'); assert.equal(snapshot.config.enabled, false)
+  assert.equal(snapshot.config.mode, 'suggest'); assert(validateMochiSnapshot(snapshot))
 }))
 let passed = 0
 for (const [name, run] of cases) { await run(); passed++; console.log(`PASS ${name}`) }
