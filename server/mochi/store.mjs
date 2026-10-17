@@ -20,8 +20,8 @@ import { redactSecrets } from './opencode-model.mjs'
  * restored as `failed` so nothing is ever replayed at startup.
  */
 
-/** The only persisted config fields. Defaults are always disabled + suggest. */
-export const DEFAULT_CONFIG = Object.freeze({ enabled: false, mode: 'suggest', model: '', autoAnswer: false, autoResume: false, autoApproveTools: false })
+/** The only persisted config fields. Defaults are always disabled + suggest + OpenCode brain. */
+export const DEFAULT_CONFIG = Object.freeze({ enabled: false, mode: 'suggest', brainProvider: 'opencode', model: '', clineModel: '', clineProvider: 'cline', autoAnswer: false, autoResume: false, autoApproveTools: false })
 export const CONFIG_KEYS = Object.freeze(Object.keys(DEFAULT_CONFIG))
 export const EVENT_KINDS = Object.freeze(['question', 'permission', 'failed', 'tracking_unknown'])
 export const EVENT_STATUSES = Object.freeze(['new', 'processing', 'done', 'failed'])
@@ -87,7 +87,7 @@ function sanitizeAnswer(value) {
 }
 
 function defaultRecord(teamId) {
-  return { id: String(teamId), config: { ...DEFAULT_CONFIG }, events: [], proposals: [], log: [], seen: {}, updatedAt: 0 }
+  return { id: String(teamId), config: { ...DEFAULT_CONFIG }, events: [], proposals: [], log: [], seen: {}, updatedAt: 0, brainRevision: 0 }
 }
 
 function normalizeEvent(event) {
@@ -129,6 +129,11 @@ function normalizeProposal(proposal) {
     status,
     answer: sanitizeAnswer(proposal.answer),
     reason: text(proposal.reason, MOCHI_LIMITS.reason),
+    // The brain that produced this decision, so a later provider/model switch
+    // can refuse to apply a stale suggestion. Deterministic paths carry none.
+    ...(isPlainObject(proposal.brain)
+      ? { brain: { provider: proposal.brain.provider === 'cline' ? 'cline' : 'opencode', model: text(proposal.brain.model, 200), account: text(proposal.brain.account, 40), revision: Number.isSafeInteger(proposal.brain.revision) ? proposal.brain.revision : 0 } }
+      : {}),
     createdAt: Date.now(),
     resolvedAt: status === 'pending' ? null : Date.now(),
   }
@@ -160,19 +165,27 @@ function fallbackValidateConfig(patch, current) {
     if (!CONFIG_KEYS.includes(key)) { errors.push(`Unknown field “${key}”.`); continue }
     if (key === 'mode') { if (value !== 'suggest' && value !== 'automatic') errors.push('Choose suggest or automatic mode.'); else next.mode = value; continue }
     if (key === 'model') { if (typeof value !== 'string' || value.length > 200) errors.push('Choose a valid OpenCode model.'); else next.model = value.trim(); continue }
+    if (key === 'clineModel') { if (typeof value !== 'string' || value.length > 200) errors.push('Choose a valid Cline model.'); else next.clineModel = value.trim(); continue }
+    if (key === 'brainProvider') { if (value !== 'opencode' && value !== 'cline') errors.push('Choose OpenCode or Cline as the Mochi brain.'); else next.brainProvider = value; continue }
+    if (key === 'clineProvider') { if (!['cline', 'openrouter', 'anthropic'].includes(value)) errors.push('Choose a supported Cline provider.'); else next.clineProvider = value; continue }
     if (typeof value !== 'boolean') errors.push(`“${key}” must be true or false.`); else next[key] = value
   }
-  if (next.enabled && !next.model) errors.push('A configured, available OpenCode model is required before enabling Mochi.')
+  const wanted = next.brainProvider === 'cline' ? 'Cline' : 'OpenCode'
+  if (next.enabled && !(next.brainProvider === 'cline' ? next.clineModel : next.model)) errors.push(`A configured, available ${wanted} model is required before enabling Mochi.`)
   if (errors.length) { const error = problem(errors.join(' ')); error.errors = errors; throw error }
-  return { ...next, model: text(next.model, 200) }
+  return { ...next, model: text(next.model, 200), clineModel: text(next.clineModel, 200) }
 }
 
 function normalizeRecord(raw) {
   if (!isPlainObject(raw) || typeof raw.id !== 'string' || !raw.id) return null
   const record = defaultRecord(raw.id)
+  record.brainRevision = Number.isSafeInteger(raw.brainRevision) && raw.brainRevision >= 0 ? raw.brainRevision : 0
   if (isPlainObject(raw.config)) for (const key of CONFIG_KEYS) if (typeof raw.config[key] === typeof DEFAULT_CONFIG[key]) record.config[key] = raw.config[key]
   if (!['suggest', 'automatic'].includes(record.config.mode)) record.config.mode = 'suggest'
+  if (record.config.brainProvider !== 'cline') record.config.brainProvider = 'opencode'
   record.config.model = text(record.config.model, 200)
+  record.config.clineModel = text(record.config.clineModel, 200)
+  if (!['cline', 'openrouter', 'anthropic'].includes(record.config.clineProvider)) record.config.clineProvider = 'cline'
   if (Array.isArray(raw.events)) {
     record.events = raw.events.filter(event => isPlainObject(event) && typeof event.key === 'string').map(event => ({
       ...normalizeEvent({ ...event, teamId: raw.id }),
@@ -284,7 +297,10 @@ export class MochiStore {
     const next = { ...DEFAULT_CONFIG }
     if (isPlainObject(value)) for (const key of CONFIG_KEYS) if (typeof value[key] === typeof DEFAULT_CONFIG[key]) next[key] = value[key]
     if (!['suggest', 'automatic'].includes(next.mode)) next.mode = 'suggest'
+    if (next.brainProvider !== 'cline') next.brainProvider = 'opencode'
     next.model = text(next.model, 200)
+    next.clineModel = text(next.clineModel, 200)
+    if (!['cline', 'openrouter', 'anthropic'].includes(next.clineProvider)) next.clineProvider = 'cline'
     return next
   }
 
@@ -292,6 +308,7 @@ export class MochiStore {
   configure(teamId, patch) {
     return this.change(teamId, record => {
       const next = this.#validate(patch, record.config)
+      if (['brainProvider', 'model', 'clineModel', 'clineProvider', 'enabled'].some(key => next[key] !== record.config[key])) record.brainRevision = (record.brainRevision || 0) + 1
       record.config = next
       return next
     })

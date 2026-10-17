@@ -14,8 +14,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocale, type AppLocale } from '../../lib/i18n'
 import type { ModelInfo } from '../../lib/types'
 import { OpenCodeModelPicker } from '../../components/ui/OpenCodeModelPicker'
-import { fetchMochiSnapshot, fetchOpenCodeModels, saveMochiConfig, resolveMochiProposal } from './api'
-import type { MochiConfigPatch, MochiProposal, MochiRuntimeState, MochiSnapshot } from './types'
+import { SettingsSelect } from '../../components/ui/SettingsSelect'
+import { fetchMochiSnapshot, fetchClineModels, fetchOpenCodeModels, saveMochiConfig, resolveMochiProposal, type MochiClineModelInfo } from './api'
+import type { MochiBrainProvider, MochiConfigPatch, MochiProposal, MochiRuntimeState, MochiSnapshot } from './types'
 import './mochi-panel.css'
 
 export interface MochiPanelProps {
@@ -48,6 +49,14 @@ interface MochiPanelStrings {
   noModels: string
   catalogError: string
   modelRequired: string
+  brainLabel: string
+  brainHint: string
+  brains: { opencode: string; cline: string }
+  clineModelLabel: string
+  clineModelHint: string
+  clineModelPlaceholder: string
+  noClineModels: string
+  brainUnavailable: string
   flagsTitle: string
   autoAnswerLabel: string
   autoAnswerHint: string
@@ -99,6 +108,14 @@ const stringsByLocale: Record<AppLocale, MochiPanelStrings> = {
     modelPlaceholder: 'اختر موديلًا…',
     noModels: 'لا توجد موديلات قابلة للأدوات متاحة الآن.',
     modelRequired: 'اختر موديلًا من الكتالوج قبل التفعيل.',
+    brainLabel: 'مزوّد عقل Mochi',
+    brainHint: 'مستقل عن مزوّد المكاتب المراقَبة: يُستخدم لاستدلال Mochi فقط، ويتغيّر بعد إيقاف Mochi.',
+    brains: { opencode: 'OpenCode', cline: 'Cline' },
+    clineModelLabel: 'موديل Cline',
+    clineModelHint: 'من كتالوج Cline المحلي بعد تسجيل دخوله؛ لا يُرسل معرّفه لأي مزوّد آخر ولا ادّعاء بالمجانية.',
+    clineModelPlaceholder: 'اختر موديل Cline…',
+    noClineModels: 'لا توجد موديلات Cline متاحة الآن — تأكد من تثبيت Cline وتسجيل الدخول.',
+    brainUnavailable: 'عقل Mochi الحالي غير متاح للاستدلال:',
     flagsTitle: 'السماحيات التلقائية',
     autoAnswerLabel: 'إجابات تلقائية',
     autoAnswerHint: 'مدعوم جزئيًا: إجابات النماذج القابلة للتحقق فقط، والغموض يبدد إليك.',
@@ -159,6 +176,14 @@ const stringsByLocale: Record<AppLocale, MochiPanelStrings> = {
     modelPlaceholder: 'Choose a model…',
     noModels: 'No tool-capable models available right now.',
     modelRequired: 'Choose a model from the catalog before enabling.',
+    brainLabel: 'Mochi brain provider',
+    brainHint: 'Independent of the watched desks’ provider: used for Mochi inference only, changed after stopping Mochi.',
+    brains: { opencode: 'OpenCode', cline: 'Cline' },
+    clineModelLabel: 'Cline model',
+    clineModelHint: 'From the local Cline catalog after its own login; the id never reaches another provider and nothing is claimed free.',
+    clineModelPlaceholder: 'Choose a Cline model…',
+    noClineModels: 'No Cline models available right now — install Cline and sign in first.',
+    brainUnavailable: 'The current Mochi brain is not available for inference:',
     flagsTitle: 'Automatic allowances',
     autoAnswerLabel: 'Automatic answers',
     autoAnswerHint: 'Partially supported: deterministic form answers only; ambiguity comes to you.',
@@ -211,8 +236,10 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
 
   const [snapshot, setSnapshot] = useState<MochiSnapshot | null>(null)
   const [models, setModels] = useState<ModelInfo[]>([])
+  const [clineModels, setClineModels] = useState<MochiClineModelInfo[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [clineModelsError, setClineModelsError] = useState<string | null>(null)
   const [savingConfig, setSavingConfig] = useState(false)
   const [resolvingIds, setResolvingIds] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
@@ -251,9 +278,11 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
     }
   }, [visible, teamId, refresh])
 
-  // Catalog read: once per visibility window, model ids never come from polling.
+  const brainProvider: MochiBrainProvider = snapshot?.config.brainProvider === 'cline' ? 'cline' : 'opencode'
+  const clineProvider = snapshot?.config.clineProvider || 'cline'
+  // Catalog read: selected brain only, and no read until the snapshot is known.
   useEffect(() => {
-    if (!visible || !teamId) return undefined
+    if (!visible || !teamId || !snapshot || brainProvider !== 'opencode') return undefined
     const controller = new AbortController()
     fetchOpenCodeModels(controller.signal).then(list => {
       setModels(list)
@@ -264,7 +293,23 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
       setModelsError(String((error as Error)?.message ?? 'Unknown error') || 'Unknown error')
     })
     return () => controller.abort()
-  }, [visible, teamId])
+  }, [visible, teamId, Boolean(snapshot), brainProvider])
+
+  // Cline catalog read: same shape as the OpenCode read, but only when Cline is
+  // the selected brain (OpenCode is never woken for it and vice versa).
+  useEffect(() => {
+    if (!visible || !teamId || brainProvider !== 'cline') return undefined
+    const controller = new AbortController()
+    fetchClineModels(controller.signal, clineProvider).then(list => {
+      setClineModels(list)
+      setClineModelsError(null)
+    }).catch(error => {
+      if (controller.signal.aborted) return
+      setClineModels([])
+      setClineModelsError(String((error as Error)?.message ?? 'Unknown error') || 'Unknown error')
+    })
+    return () => controller.abort()
+  }, [visible, teamId, brainProvider, clineProvider])
 
   async function patchConfig(patch: MochiConfigPatch, savedText: string | null) {
     if (!teamId || savingConfig) return
@@ -287,7 +332,7 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
   }
 
   function toggleEnabled(next: boolean) {
-    if (next && (!snapshot?.config.model || !snapshot.config.model.trim())) {
+    if (next && !(brainProvider === 'cline' ? snapshot?.config.clineModel : snapshot?.config.model)?.trim()) {
       setActionError(null)
       setNotice(s.modelRequired)
       return
@@ -333,6 +378,7 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
       </header>
 
       {runtime?.error ? <p className="mochi-banner mochi-banner--error" role="alert">{runtime.error}</p> : null}
+      {snapshot?.brain && !snapshot.brain.available ? <p className="mochi-banner mochi-banner--error" role="status">{s.brainUnavailable} {snapshot.brain.reason}</p> : null}
 
       {loadError ? (
         <div className="mochi-banner mochi-banner--error" role="alert">
@@ -355,6 +401,29 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
 
       <section className="mochi-panel__section" aria-busy={savingConfig}>
         <h4>{s.configTitle}</h4>
+        <div className="mochi-field">
+          <label htmlFor="mochi-brain">{s.brainLabel}</label>
+          <SettingsSelect id="mochi-brain" label={s.brainLabel} value={brainProvider} disabled={savingConfig || !config || config.enabled}
+            options={[{ value: 'opencode', label: s.brains.opencode }, { value: 'cline', label: s.brains.cline }]}
+            onChange={value => void patchConfig({ brainProvider: value as MochiBrainProvider }, null)} />
+          <p className="mochi-hint">{s.brainHint}</p>
+        </div>
+        {brainProvider === 'cline' ? <>
+          <div className="mochi-field">
+            <label htmlFor="mochi-cline-account">{locale === 'ar' ? 'مزود الحساب داخل Cline' : 'Account provider in Cline'}</label>
+            <SettingsSelect id="mochi-cline-account" label={locale === 'ar' ? 'مزود حساب Cline' : 'Cline account provider'} value={clineProvider} disabled={savingConfig || !config || config.enabled}
+              options={[{ value: 'cline', label: 'Cline' }, { value: 'openrouter', label: 'OpenRouter' }, { value: 'anthropic', label: 'Anthropic' }]}
+              onChange={value => void patchConfig({ clineProvider: value as 'cline' | 'openrouter' | 'anthropic', clineModel: '' }, null)} />
+          </div>
+          <div className="mochi-field">
+            <label htmlFor="mochi-cline-model">{s.clineModelLabel}</label>
+            <SettingsSelect id="mochi-cline-model" label={s.clineModelLabel} searchPlaceholder={s.clineModelPlaceholder}
+              value={config?.clineModel || ''} disabled={savingConfig || !clineModels.length}
+              options={[{ value: '', label: s.clineModelPlaceholder }, ...clineModels.map(model => ({ value: model.id, label: `${model.name} · ${model.id}` }))]}
+              onChange={value => void patchConfig({ clineModel: value }, null)} />
+            <p className="mochi-hint">{clineModelsError || s.clineModelHint}</p>
+          </div>
+        </> : null}
 
         <div className="mochi-field-row">
           <div className="mochi-field">
@@ -390,7 +459,7 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
           </select>
         </div>
 
-        <div className="mochi-field">
+        {brainProvider === 'opencode' ? <div className="mochi-field">
           <label htmlFor="mochi-model">{s.modelLabel}</label>
           {models.length ? (
             <OpenCodeModelPicker id="mochi-model" label={s.modelLabel} placeholder={s.modelPlaceholder}
@@ -402,7 +471,7 @@ export function MochiPanel({ teamId, visible, onOpenDesk, onSnapshot }: MochiPan
             </p>
           )}
           <p className="mochi-hint">{s.modelHint}</p>
-        </div>
+        </div> : null}
 
         <fieldset className="mochi-flags">
           <legend>{s.flagsTitle}</legend>

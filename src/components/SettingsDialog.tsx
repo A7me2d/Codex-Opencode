@@ -9,6 +9,7 @@ import type { CodexModelInfo, ModelInfo, WorkflowSetup } from '../lib/types'
 import { ThemePanel } from './ThemePanel'
 import { SettingsSelect } from './ui/SettingsSelect'
 import { OpenCodeModelPicker } from './ui/OpenCodeModelPicker'
+import { readStoredTheme, type ThemeId } from '../lib/themes'
 import { useProviderActivity } from '../hooks/useProviderActivity'
 import type { ProviderId } from '../lib/types'
 
@@ -41,6 +42,7 @@ interface SettingsDialogProps {
 export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onResetLayout, locale, onToggleLanguage, handoffVisible, onToggleHandoff, onOpenExtensions }: SettingsDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [open, setOpen] = useState(false)
+  const [dialogTheme, setDialogTheme] = useState<ThemeId>(readStoredTheme)
   const activity = useProviderActivity()
   const [changingProvider, setChangingProvider] = useState<ProviderId | null>(null)
   const [providerError, setProviderError] = useState('')
@@ -65,6 +67,15 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
   const [activationKey, setActivationKey] = useState('')
   const [activatingLicense, setActivatingLicense] = useState(false)
   const [licenseError, setLicenseError] = useState('')
+  useEffect(() => {
+    if (!open) return
+    const root = document.documentElement
+    const sync = () => setDialogTheme((root.dataset.theme as ThemeId | undefined) || readStoredTheme())
+    sync()
+    const observer = new MutationObserver(sync)
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [open])
   useEffect(() => {
     if (!saved.data) return
     setSetup({
@@ -114,7 +125,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
     const timer = window.setInterval(() => void refresh(), 45_000)
     return () => { current = false; window.clearInterval(timer) }
   }, [])
-  function show() { setOpen(true); setError(null); setNotice(null); dialog.current?.showModal() }
+  function show() { setDialogTheme(readStoredTheme()); setOpen(true); setError(null); setNotice(null); dialog.current?.showModal() }
   const visibleQuota = licenseInfo?.active ? licenseInfo.entitlement?.remaining : 0
   const usageTitle = locale === 'ar'
     ? `الإعدادات · المتبقي ${visibleQuota ?? '…'} طلب`
@@ -180,7 +191,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
   const action = 'inline-flex min-h-9 shrink-0 items-center gap-2 rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink hover:bg-relay-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40'
   return <>
     <button type="button" onClick={show} aria-label={usageTitle} title={usageTitle} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-line px-2 text-ink-soft transition-colors hover:border-relay/40 hover:bg-relay-tint hover:text-relay-ink"><Settings className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="text-[10px] font-bold tabular-nums text-relay-ink" aria-live="polite">{visibleQuota ?? '…'}</span></button>
-    <dialog ref={dialog} onClose={() => setOpen(false)} aria-labelledby="settings-title" dir={direction()} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="fixed inset-0 m-auto h-[min(680px,90dvh)] max-h-none w-[min(94vw,920px)] max-w-none overflow-hidden rounded-2xl border border-line bg-card p-0 text-ink shadow-xl backdrop:bg-overlay/40">
+    <dialog ref={dialog} data-theme={dialogTheme} onClose={() => setOpen(false)} aria-labelledby="settings-title" dir={direction()} style={{ WebkitAppRegion: 'no-drag' } as CSSProperties} className="fixed inset-0 m-auto h-[min(680px,90dvh)] max-h-none w-[min(94vw,920px)] max-w-none overflow-clip rounded-2xl border border-line bg-card p-0 text-ink shadow-xl backdrop:bg-overlay/40">
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4"><div className="flex items-center gap-2.5"><Settings className="h-4 w-4 text-ink-soft" aria-hidden="true" /><h2 id="settings-title" className="text-base font-semibold">{tr('الإعدادات')}</h2></div><button type="button" aria-label={tr('إغلاق الإعدادات')} onClick={() => dialog.current?.close()} className="rounded-lg p-2 text-ink-soft hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-relay/40"><X className="h-4 w-4" /></button></header>
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
@@ -258,7 +269,7 @@ export function SettingsDialog({ codexConnected, openCodeOnline, codexError, onR
 
               </section>
             </section> : null}
-            {tab === 'themes' ? <ThemePanel /> : null}
+            {tab === 'themes' ? <ThemePanel onThemeChange={setDialogTheme} /> : null}
             {tab === 'setup' ? <section className="space-y-5">
               <div className="divide-y divide-line">
                 {(['planner', 'executor'] as const).map(role => <fieldset key={role} disabled={saving || !saved.data} className="min-w-0 py-5 first:pt-0 last:pb-0">

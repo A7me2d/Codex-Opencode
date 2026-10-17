@@ -18,6 +18,7 @@ import { BrainMemory } from './server/brain-memory.mjs'
 import { SuperAgentCoordinator, superAgentTools } from './server/super-agent-coordinator.mjs'
 import { SuperDeskStatus } from './server/super-agent-status.mjs'
 import { createMochiIntegration } from './server/mochi/integration.mjs'
+import { MochiClineText } from './server/mochi/cline-text.mjs'
 import { visibleOpenCodeModels } from './server/opencode-model-visibility.mjs'
 import { CoreBrainMcp } from './server/core-brain-mcp.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
@@ -1190,6 +1191,8 @@ const mochi = await createMochiIntegration({
   license: { consume: consumeLicensedMessage, check: async () => (await readLicenseStatus()).active === true },
   sendMessage: sendSuperAgentMessage,
   listOpenCodeModels: async () => visibleOpenCodeModels(await listOpenCodeModels()),
+  listClineModels: async provider => clineBridge.models(provider || 'cline'),
+  clineText: new MochiClineText(),
   modelSelectorToPayload,
 })
 
