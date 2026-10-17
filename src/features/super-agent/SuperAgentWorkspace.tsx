@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Archive, ArrowLeft, ArrowRightLeft, Check, FolderOpen, Paperclip, Pencil, Plus, Send, Square, Users, X, Brain, LayoutGrid, Map as MapIcon } from 'lucide-react'
 import { api } from '../../lib/api'
 import { direction, useLocale } from '../../lib/i18n'
@@ -14,6 +14,7 @@ import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { CodexSettingsPicker } from '../codex/CodexSettingsPicker'
 import { SettingsSelect } from '../../components/ui/SettingsSelect'
 import { SuperAgentOffice } from './SuperAgentOffice'
+import { officePopupEqual, officePopupPlacement, type OfficePopupPlacement } from './office-popup'
 import { CoreBrainPanel } from './CoreBrainPanel'
 import { OpenCodeSlot } from './OpenCodeSlot'
 import { ClineSlot } from './ClineSlot'
@@ -166,6 +167,66 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
   const officeVisible = presentation === 'office'
   const officePopup = officeVisible && Boolean(focused)
   const chatPanel = useRef<HTMLDivElement>(null)
+  const officeRef = useRef<HTMLDivElement>(null)
+  const popupGeometry = useRef<OfficePopupPlacement | null>(null)
+  // Float the desk chat beside the measured desk. Geometry is written straight to the DOM so
+  // scroll, zoom, resize and viewport tracking never re-render the workspace and never feed a
+  // ResizeObserver feedback loop; measurements come from live client rects, already scaled.
+  useLayoutEffect(() => {
+    const container = officeRef.current, panel = chatPanel.current
+    if (!container || !panel) return
+    const clear = () => {
+      popupGeometry.current = null
+      delete panel.dataset.popupReady
+      delete panel.dataset.popupMode
+      delete panel.dataset.popupSide
+      panel.style.removeProperty('left')
+      panel.style.removeProperty('top')
+      panel.style.removeProperty('width')
+      panel.style.removeProperty('height')
+    }
+    if (!visible || !officePopup || !focused) { clear(); return }
+    const measure = () => {
+      const viewport = container.querySelector<HTMLElement>('[data-office-viewport]')
+      const anchor = container.querySelector<HTMLElement>(`[data-office-station="${focused}"]`)
+      const next = officePopupPlacement({
+        container: container.getBoundingClientRect(),
+        viewport: viewport?.getBoundingClientRect() ?? null,
+        anchor: anchor?.getBoundingClientRect() ?? null,
+        avoid: [...container.querySelectorAll<HTMLElement>('[data-office-avoid]')].map(element => element.getBoundingClientRect()),
+        fallbackSide: direction() === 'rtl' ? 'left' : 'right',
+      })
+      if (officePopupEqual(popupGeometry.current, next)) return
+      popupGeometry.current = next
+      panel.style.left = `${next.left}px`
+      panel.style.top = `${next.top}px`
+      panel.style.width = `${next.width}px`
+      panel.style.height = `${next.height}px`
+      panel.dataset.popupMode = next.mode
+      panel.dataset.popupSide = next.side
+      panel.dataset.popupReady = 'true'
+    }
+    measure()
+    let frame = 0
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure() }) }
+    const observer = new ResizeObserver(schedule)
+    observer.observe(container)
+    const viewport = container.querySelector<HTMLElement>('[data-office-viewport]')
+    if (viewport) {
+      observer.observe(viewport)
+      const stage = viewport.firstElementChild
+      if (stage instanceof HTMLElement) observer.observe(stage)
+    }
+    container.addEventListener('scroll', schedule, { capture: true, passive: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      observer.disconnect()
+      container.removeEventListener('scroll', schedule, { capture: true })
+      window.removeEventListener('resize', schedule)
+      clear()
+    }
+  }, [visible, officePopup, focused, ar, team?.id, team?.slots.length])
   useEffect(() => {
     if (visible && officePopup && focused) chatPanel.current?.querySelector<HTMLTextAreaElement>(`[data-slot="${focused}"] textarea`)?.focus({ preventScroll: true })
   }, [visible, officePopup, focused])
@@ -182,7 +243,13 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
     </header>
     {!activity.providers.codex ? <p role="status" className="border-b border-line px-4 py-2 text-xs text-review-ink">{ar ? 'Codex موقوف. فعّله من الاتصال والتحديثات.' : 'Codex is disabled. Enable it in Connections & updates.'}</p> : null}
     {error || catalog.error ? <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2 text-xs text-review-ink"><span className="min-w-0 flex-1 break-words">{error || catalog.error}</span>{error ? <button type="button" onClick={() => setError('')} className="rounded-md p-1 hover:bg-paper focus-visible:ring-2 focus-visible:ring-relay/40" aria-label={ar ? 'إغلاق التنبيه' : 'Dismiss notice'}><X className="h-3.5 w-3.5" /></button> : null}</div> : null}
-    {!team ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center"><Users className="h-9 w-9 text-ink-soft" /><h1 className="text-lg font-semibold">{loading ? ar ? 'جارٍ تحميل الفرق…' : 'Loading teams…' : ar ? 'مساحة واحدة لفريقك' : 'One workspace for your team'}</h1><p className="max-w-md text-sm leading-7 text-ink-soft">{ar ? 'أنشئ فريقًا، ثم اختر محادثة المدير ومحادثات المهام. المدير يرسل للمكاتب التي تحددها ويجمع ردودها تلقائيًا.' : 'Create a team, then choose the manager and task conversations. The manager sends to the desks you request and gathers their actual replies.'}</p><button type="button" disabled={busy || loading} className={`${button} bg-relay-tint text-relay-ink`} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-4 w-4" />{ar ? 'إنشاء فريق' : 'Create team'}</button></div> : <div className="relative flex min-h-0 flex-1 overflow-hidden">
+    {!team ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center"><Users className="h-9 w-9 text-ink-soft" /><h1 className="text-lg font-semibold">{loading ? ar ? 'جارٍ تحميل الفرق…' : 'Loading teams…' : ar ? 'مساحة واحدة لفريقك' : 'One workspace for your team'}</h1><p className="max-w-md text-sm leading-7 text-ink-soft">{ar ? 'أنشئ فريقًا، ثم اختر محادثة المدير ومحادثات المهام. المدير يرسل للمكاتب التي تحددها ويجمع ردودها تلقائيًا.' : 'Create a team, then choose the manager and task conversations. The manager sends to the desks you request and gathers their actual replies.'}</p><button type="button" disabled={busy || loading} className={`${button} bg-relay-tint text-relay-ink`} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-4 w-4" />{ar ? 'إنشاء فريق' : 'Create team'}</button></div> : <div ref={officeRef} onKeyDown={event => {
+      // Dismiss the floating desk chat from office chrome too (e.g. after focus moves to the zoom controls).
+      // Escape already consumed by a model menu/dropdown/dialog sets defaultPrevented or stops propagation,
+      // and an open modal blocks this path, so their behavior is unchanged; chats mode never closes here.
+      if (!officePopup || event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return
+      event.preventDefault(); setFocused(null)
+    }} className="relative flex min-h-0 flex-1 overflow-hidden">
       {officeVisible ? <SuperAgentOffice teamId={team.id} selectedSlotId={focused} slots={visibleSlots} archived={team.archived} enabled={visible} onOpen={slot => slot.thread ? setFocused(slot.id) : setPicker(slot.id)} /> : null}
       <div ref={chatPanel} data-workers={Math.max(0, visibleSlots.length - 1)} dir="ltr" role={officePopup ? 'complementary' : undefined} aria-label={officePopup ? ar ? 'محادثة المكتب' : 'Desk conversation' : undefined} onKeyDown={event => { if (officePopup && event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); setFocused(null) } }} style={{ ...(officeVisible && !focused ? { display: 'none' } : {}), '--worker-rows': Math.max(1, rightCount), '--grid-rows': gridRows } as CSSProperties} className={cx('super-agent-grid thin-scroll min-h-0 flex-1 gap-3 overflow-y-auto p-3', (focused || visibleSlots.length === 1) && 'super-agent-focused', officePopup && 'super-agent-popup')}>
       {visibleSlots.map((slot, index) => {
