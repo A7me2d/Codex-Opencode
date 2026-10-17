@@ -16,6 +16,7 @@ import { SuperAgentOpenCode } from './server/super-agent-opencode.mjs'
 import { SuperAgentCline } from './server/super-agent-cline.mjs'
 import { BrainMemory } from './server/brain-memory.mjs'
 import { SuperAgentCoordinator, superAgentTools } from './server/super-agent-coordinator.mjs'
+import { SuperDeskStatus } from './server/super-agent-status.mjs'
 import { CoreBrainMcp } from './server/core-brain-mcp.mjs'
 import { acceptedCodexChangeIds, unacceptedCodexItems, conversationTime, conversationTitle } from './server/conversation-management.mjs'
 import { hostname } from 'node:os'
@@ -1161,6 +1162,15 @@ const superCoordinator = new SuperAgentCoordinator(stateDirectory, {
 })
 codexBridge.onSuperTurnCompleted = (threadId, turn) => superCoordinator.complete(threadId, turn)
 const coreBrainMcp = new CoreBrainMcp(superCoordinator, id => codexBridge.getTurnState(id))
+// Desk status list: one cached snapshot per team; adapters and bindings only, no extra CLI calls.
+const superDeskStatus = new SuperDeskStatus({
+  getTeam: id => superAgent.get(id),
+  jobs: () => superCoordinator.jobs,
+  activity: providerActivity,
+  openCodeStatus: id => superOpenCode.status(id),
+  clineStatus: id => superCline.status(id),
+  codexTurn: id => codexBridge.getTurnState(id),
+})
 
 async function superAgentKnowledge(team, slotId, query = '') {
   const slot = team.slots.find(slot => slot.id === slotId)
@@ -2628,6 +2638,10 @@ const server = createServer(async (request, response) => {
       if (taskMatch && request.method === 'GET') {
         await superAgent.get(taskMatch[1]); await superCoordinator.ready
         sendJson(response, 200, { data: superCoordinator.jobs.filter(job => job.teamId === taskMatch[1]).slice(-50).reverse() }); return
+      }
+      const deskStatusMatch = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/desk-status$/)
+      if (deskStatusMatch && request.method === 'GET') {
+        sendJson(response, 200, { data: await superDeskStatus.snapshot(deskStatusMatch[1]) }); return
       }
       const addSlotMatch = url.pathname.match(/^\/api\/super-agent\/teams\/([A-Za-z0-9-]+)\/slots$/)
       if (addSlotMatch && request.method === 'POST') { sendJson(response, 201, { data: await superAgent.addSlot(addSlotMatch[1]) }); return }
