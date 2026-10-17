@@ -14,6 +14,7 @@ import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { CodexSettingsPicker } from '../codex/CodexSettingsPicker'
 import { SettingsSelect } from '../../components/ui/SettingsSelect'
 import { BrainComposer } from './BrainComposer'
+import { MochiLauncher } from '../mochi/MochiLauncher'
 import { SuperAgentOffice } from './SuperAgentOffice'
 import { officePopupEqual, officePopupPlacement, type OfficePopupPlacement } from './office-popup'
 import { CoreBrainPanel } from './CoreBrainPanel'
@@ -235,7 +236,7 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
   useEffect(() => {
     if (visible && officePopup && focused) chatPanel.current?.querySelector<HTMLTextAreaElement>(`[data-slot="${focused}"] textarea`)?.focus({ preventScroll: true })
   }, [visible, officePopup, focused])
-  return <main id="workspace-super" role="tabpanel" aria-labelledby="workspace-mode-super" dir={direction()} style={!visible ? { display: 'none' } : undefined} className="flex min-h-0 flex-1 flex-col overflow-hidden bg-paper">
+  return <main id="workspace-super" role="tabpanel" aria-labelledby="workspace-mode-super" dir={direction()} style={!visible ? { display: 'none' } : undefined} className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-paper">
     <header className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-card px-3 py-2">
       <div className="min-w-32 max-w-56 flex-1"><SettingsSelect label={ar ? 'الفريق' : 'Team'} value={team?.id || ''} onChange={setSelected} disabled={busy || !choices.length} options={choices.length ? choices.map(item => ({ value: item.id, label: item.title })) : [{ value: '', label: ar ? 'اختر فريقًا' : 'Choose a team' }]} className="!mt-0 !min-h-8 !rounded-lg !py-1.5" /></div>
       <button type="button" className={`${button} !px-2`} title={ar ? 'فريق جديد' : 'New team'} aria-label={ar ? 'فريق جديد' : 'New team'} disabled={busy} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-3.5 w-3.5" /></button>
@@ -281,5 +282,6 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
       if (!target?.thread) return
       setIncoming({ id: Date.now(), teamId: team.id, slotId: target.id, threadId: target.thread.id, text: `[${slotName(transfer.source, ar)} · ${transfer.source.thread?.directory || ''}]\n${transfer.text}` }); setFocused(target.id); setTransfer(null)
     }}><ArrowLeft className="h-3.5 w-3.5" />{ar ? 'إضافة للمسودة' : 'Add to draft'}</button></div></Dialog> : null}
+    {team && !team.archived ? <MochiLauncher key={team.id} teamId={team.id} visible={visible} onOpenDesk={slotId => { if (team.slots.some(slot => slot.id === slotId && slot.thread)) setFocused(slotId as SuperSlotId) }} /> : null}
   </main>
 }

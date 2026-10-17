@@ -1,0 +1,157 @@
+/*
+ * Mochi — the in-app compact assistant mascot (desk 6, visual only).
+ *
+ * Every color comes from theme tokens, so all twelve themes follow without
+ * side effects. Motion is transform/opacity only, slow and limited to the
+ * states that express something (idle working waiting), and is disabled
+ * entirely under prefers-reduced-motion. No blur, no loops, no assets.
+ */
+
+.mochi {
+  --mochi-accent: var(--color-relay);
+  --mochi-fur: color-mix(in srgb, var(--color-card) 74%, var(--color-user-surface));
+  --mochi-rim: color-mix(in srgb, var(--color-line-strong) 45%, var(--color-line));
+  --mochi-chip-bg: color-mix(in srgb, var(--mochi-accent) 10%, var(--color-card));
+  --mochi-chip-ink: var(--color-ink-soft);
+  display: inline-flex;
+  align-items: flex-start;
+  gap: .375rem;
+  max-width: min(15rem, 58vw);
+}
+
+.mochi[data-state='disabled'] { --mochi-accent: var(--color-ink-soft); }
+.mochi[data-state='idle'] { --mochi-accent: var(--color-relay); }
+.mochi[data-state='working'] { --mochi-accent: var(--color-relay); }
+.mochi[data-state='waiting_user'] { --mochi-accent: var(--color-user-surface); --mochi-chip-ink: var(--color-ink); }
+.mochi[data-state='blocked'] { --mochi-accent: var(--color-review); --mochi-chip-bg: var(--color-review-tint); --mochi-chip-ink: var(--color-review-ink); }
+
+.mochi-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .25rem;
+  border: 0;
+  border-radius: 1rem;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+  transition: transform 150ms ease-out;
+}
+
+.mochi-trigger:hover { transform: translateY(-1px); }
+.mochi-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-relay) 45%, transparent);
+}
+
+.mochi[data-state='disabled'] .mochi-figure { opacity: .68; }
+
+.mochi-face {
+  display: block;
+  width: 2.9rem;
+  height: 2.9rem;
+  flex-shrink: 0;
+}
+
+.mochi-body,
+.mochi-ear {
+  fill: var(--mochi-fur);
+  stroke: var(--mochi-rim);
+  stroke-width: 1.4;
+}
+
+.mochi-ear-in { fill: color-mix(in srgb, var(--mochi-accent) 45%, var(--color-card)); }
+.mochi-cheek { fill: color-mix(in srgb, var(--mochi-accent) 28%, transparent); }
+.mochi-eye { fill: var(--color-ink); }
+.mochi-glint { fill: var(--color-card); }
+.mochi-line { fill: none; stroke: var(--color-ink); stroke-width: 2; }
+.mochi-mouth { fill: none; stroke: var(--color-ink); stroke-width: 1.8; }
+
+.mochi-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .3rem;
+  padding-top: .375rem;
+}
+
+.mochi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  max-width: 100%;
+  padding: .25rem .55rem;
+  border: 1px solid var(--mochi-rim);
+  border-radius: 9999px;
+  background: var(--mochi-chip-bg);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.mochi-chip-icon { width: .875rem; height: .875rem; flex-shrink: 0; }
+.mochi-chip-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mochi-chip-ink); }
+
+.mochi-notice {
+  padding: 0 .25rem;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--color-ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.mochi-pause {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: .25rem;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 9999px;
+  background: var(--color-card);
+  color: var(--color-ink-soft);
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.mochi-pause:hover { background: var(--color-relay-tint); color: var(--color-relay-ink); }
+.mochi-pause:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-relay) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mochi[data-state='idle'] .mochi-figure { animation: mochi-breathe 4.8s ease-in-out infinite; }
+  .mochi[data-state='working'] .mochi-figure { animation: mochi-work 1.7s ease-in-out infinite; transform-origin: 50% 88%; }
+  .mochi[data-state='working'] .mochi-spin { animation: mochi-rotate 1.4s linear infinite; }
+  .mochi[data-state='waiting_user'] .mochi-figure { animation: mochi-ask 2.8s ease-in-out infinite; }
+}
+
+@keyframes mochi-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+
+@keyframes mochi-work {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-3deg) translateY(-.5px); }
+  70% { transform: rotate(3deg) translateY(-.5px); }
+}
+
+@keyframes mochi-rotate { to { transform: rotate(360deg); } }
+
+@keyframes mochi-ask {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-2.5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mochi-figure,
+  .mochi-chip-icon,
+  .mochi-pause { animation: none !important; transition: none !important; }
+}
