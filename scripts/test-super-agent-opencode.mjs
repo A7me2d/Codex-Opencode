@@ -102,7 +102,7 @@ try {
   const pending = { id: 'timed', active: true }
   stale.turns.set('ses_stale', pending)
   await stale.monitor('ses_stale', pending, { messages: [{ id: 'old' }] }, 'task')
-  assert.equal(stale.turn('ses_stale').status, 'failed')
+  assert.equal(stale.turn('ses_stale').status, 'tracking_unknown')
   assert.equal(stale.replies.size, 0, 'old answers must never complete a new task')
   let sessionModel = 'provider/old', modelWrites = 0, modelBusy = false, ignoreChange = false
   const modelContext = vm.createContext({

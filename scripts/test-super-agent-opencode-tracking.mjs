@@ -341,7 +341,7 @@ export async function runTrackingChecks(Adapter = SuperAgentOpenCode) {
     assert.equal(adapter.replies.get(`${session}:${turn.turnId}`), 'REAL ANSWER')
   })
 
-  scenario('transient snapshot failure is not success and does not resend', async () => {
+  scenario('transient snapshot failure recovers only after a confirmed reply, without resend', async () => {
     const { api, queues, calls } = makeSessions({ failMessageIds: new Set(['s10']) })
     const results = []
     const adapter = new Adapter(api, (sessionId, turn) => results.push({ sessionId, status: turn.status, error: turn.error && turn.error.message, turnId: turn.id }), { interval: 2, timeout: 5000 })
@@ -353,8 +353,10 @@ export async function runTrackingChecks(Adapter = SuperAgentOpenCode) {
     ])
     await adapter.send(session, EXPECTED, { messages: [] })
     const turn = await awaitTurn(adapter, session)
-    assert.notEqual(turn.status, 'completed')
-    assert.equal(results.filter(r => r.status === 'completed').length, 0)
+    assert.equal(turn.status, 'completed')
+    assert.equal(adapter.replies.get(`${session}:${turn.id}`), 'after failure')
+    assert.ok(calls.filter(call => call.endpoint?.endsWith('/message')).length >= 3, 'completion requires successful reads after the failed read')
+    assert.equal(results.filter(r => r.status === 'completed').length, 1)
     assert.equal(calls.filter(call => call.endpoint?.endsWith('/prompt')).length, 1, 'no resend after a transient failure')
   })
 

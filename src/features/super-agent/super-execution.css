@@ -23,3 +23,15 @@
 .super-office-station[data-connection="waiting_input"] .super-office-state-dot {
   background: var(--color-user-surface);
 }
+
+.super-office-link[data-state="tracking_unknown"],
+.super-office-link-label[data-state="tracking_unknown"] {
+  color: var(--color-review-ink);
+}
+.super-office-link[data-state="tracking_unknown"] .super-link-track {
+  stroke-dasharray: 2 8;
+  opacity: .65;
+}
+.super-office-station[data-connection="tracking_unknown"] .super-office-state-dot {
+  background: var(--color-review);
+}

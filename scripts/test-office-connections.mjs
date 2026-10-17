@@ -33,6 +33,8 @@ assert.equal(officeConnection(desk, [task], 'manager', false, false).state, 'pau
 assert.equal(officeConnection(desk, [task], 'manager', true, true).state, 'unavailable', 'failed polling must not advertise stale activity')
 assert.equal(officeConnection(desk, [task], undefined, true, false).state, 'unassigned')
 assert.equal(officeConnection({ id: 'worker-9', thread: null }, [task], 'manager', true, false).state, 'unassigned')
+assert.equal(officeConnection(desk, [{ ...task, status: 'tracking_unknown' }], 'manager', true, false).state, 'tracking_unknown', 'lost tracking is neither a failed task nor a ready desk')
+assert.notEqual(connectionLabel('tracking_unknown', true), connectionLabel('failed', true))
 assert.equal(officeConnection(desk, [{ ...task, status: 'queued' }, { ...task, id: 'old', status: 'completed' }], 'manager', true, false).state, 'queued', 'the newest task overrides earlier successes')
 for (const count of [1, 2, 3, 4, 8, 11, 24, 25, 48]) {
   const slots = [{ id: 'manager' }, ...Array.from({ length: count }, (_, index) => ({ id: `worker-${index * 2 + 1}` }))]

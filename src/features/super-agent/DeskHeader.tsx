@@ -19,7 +19,7 @@ export function DeskHeader({ slot, teamId, live, disabled, focused, office, onCh
   // `waitingInput` rides on the execution contract; until the server emits it this prompt stays quiet — no invented state.
   const openCodeWatch = usePolling(teamId && providerId === 'opencode' && live ? () => api.superOpenCodeStatus(teamId, slot.id) : null, data => data?.active ? 2500 : 7000, { resetKey: slot.thread?.id })
   const clineState = !slot.thread || providerId !== 'cline' ? null : clineWatch.data?.waitingPermission ? ar ? 'بانتظار صلاحية' : 'Waiting permission' : clineWatch.data?.error || clineWatch.error ? ar ? 'خطأ' : 'Error' : clineWatch.data?.active ? ar ? 'يعمل…' : 'Working…' : null
-  const openCodeState = !slot.thread || providerId !== 'opencode' ? null : openCodeWatch.error ? ar ? 'خطأ' : 'Error' : openCodeWatch.data?.waitingInput ? ar ? 'بانتظار إجابة' : 'Waiting for answer' : null
+  const openCodeState = !slot.thread || providerId !== 'opencode' ? null : openCodeWatch.error || openCodeWatch.data?.status === 'tracking_unknown' ? ar ? 'تعذّرت المتابعة' : 'Tracking unavailable' : openCodeWatch.data?.waitingInput ? ar ? 'بانتظار إجابة' : 'Waiting for answer' : null
   const deskState = clineState || openCodeState
   const [open, setOpen] = useState(false), root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null)
   useEffect(() => {

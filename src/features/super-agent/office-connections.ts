@@ -1,6 +1,6 @@
 import type { SuperAgentSlot, SuperSlotId, SuperTask } from '../../lib/types'
 
-export type ConnectionState = 'unassigned' | 'ready' | 'queued' | 'dispatching' | 'running' | 'completed' | 'failed' | 'interrupted' | 'waiting_input' | 'paused' | 'unavailable'
+export type ConnectionState = 'unassigned' | 'ready' | 'queued' | 'dispatching' | 'running' | 'completed' | 'failed' | 'interrupted' | 'waiting_input' | 'tracking_unknown' | 'paused' | 'unavailable'
 export type OfficeDock = 'left' | 'right' | 'top' | 'bottom'
 export type OfficePosition = { left: number; top: number; accent: string; dock: OfficeDock }
 export const stationWidth = (width: number) => Math.min(width * .24, 280)
@@ -65,7 +65,7 @@ export function officeConnection(slot: SuperAgentSlot, tasks: SuperTask[], manag
   if (!providerEnabled) return { state: 'paused' }
   if (unavailable) return { state: 'unavailable' }
   const task = managerId ? tasks.find(task => task.slotId === slot.id && task.threadId === slot.thread!.id && task.managerThreadId === managerId) : undefined
-  const state = task && ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted', 'waiting_input'].includes(task.status) ? task.status as ConnectionState : 'ready'
+  const state = task && ['queued', 'dispatching', 'running', 'completed', 'failed', 'interrupted', 'waiting_input', 'tracking_unknown'].includes(task.status) ? task.status as ConnectionState : 'ready'
   return { state, task }
 }
 
@@ -105,6 +105,7 @@ export function connectionLabel(state: ConnectionState, ar: boolean) {
   const labels: Record<ConnectionState, [string, string]> = {
     unassigned: ['غير مرتبط', 'Unassigned'], ready: ['جاهز للاستقبال', 'Ready'], queued: ['بانتظار الإرسال', 'Queued'],
     dispatching: ['جارٍ الإرسال', 'Sending'],
+    tracking_unknown: ['تعذّرت متابعة المهمة', 'Tracking unavailable'],
     running: ['قيد التنفيذ', 'Working'], completed: ['وصل الرد', 'Reply received'], failed: ['تعذّر التنفيذ', 'Task failed'],
     interrupted: ['المهمة توقفت', 'Interrupted'], waiting_input: ['بانتظار إجابة', 'Waiting for answer'], paused: ['المزود موقوف', 'Provider paused'], unavailable: ['الحالة غير متاحة', 'Status unavailable'],
   }
