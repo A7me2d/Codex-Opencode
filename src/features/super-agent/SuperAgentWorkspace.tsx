@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Archive, ArrowLeft, ArrowRightLeft, Check, FolderOpen, Paperclip, Pencil, Plus, Send, Square, Users, X, Brain, LayoutGrid, Map as MapIcon } from 'lucide-react'
 import { api } from '../../lib/api'
 import { direction, useLocale } from '../../lib/i18n'
@@ -14,8 +14,10 @@ import { EarlierMessages } from '../../components/ui/EarlierMessages'
 import { CodexSettingsPicker } from '../codex/CodexSettingsPicker'
 import { SettingsSelect } from '../../components/ui/SettingsSelect'
 import { SuperAgentOffice } from './SuperAgentOffice'
+import { officePopupEqual, officePopupPlacement, type OfficePopupPlacement } from './office-popup'
 import { CoreBrainPanel } from './CoreBrainPanel'
 import { OpenCodeSlot } from './OpenCodeSlot'
+import { ClineSlot } from './ClineSlot'
 import { ChangedFiles } from '../opencode/ChangedFiles'
 import type { CodexModelInfo, CodexSettings, SuperAgentSlot, SuperAgentTeam, SuperSlotId } from '../../lib/types'
 
@@ -37,17 +39,31 @@ function Dialog({ title, children, onClose }: { title: string; children: ReactNo
 function SlotPicker({ team, slot, onChange, onClose }: { team: SuperAgentTeam; slot: SuperAgentSlot; onChange: (team: SuperAgentTeam) => void; onClose: () => void }) {
   const ar = useLocale() === 'ar'
   const activity = useProviderActivity()
-  const [provider, setProvider] = useState<'codex' | 'opencode'>(slot.thread?.provider || 'codex')
-  const list = usePolling(activity.providers[provider] ? provider === 'opencode' ? api.superOpenCodeSessions : api.threads : null, 0, { resetKey: provider })
+  const [provider, setProvider] = useState<'codex' | 'opencode' | 'cline'>(slot.thread?.provider || 'codex')
+  const list = usePolling(activity.providers[provider] ? provider === 'opencode' ? api.superOpenCodeSessions : provider === 'cline' ? api.superClineSessions : api.threads : null, 0, { resetKey: provider })
+  const clineStatus = usePolling(provider === 'cline' && activity.providers.cline ? api.clineStatus : null, 0, { resetKey: provider })
+  const [clineProvider, setClineProvider] = useState(slot.thread?.clineProvider || 'cline'), [clineModel, setClineModel] = useState('')
   const [mode, setMode] = useState<'existing' | 'new'>('existing'), [search, setSearch] = useState('')
+  const clineModels = usePolling(provider === 'cline' && mode === 'new' && activity.providers.cline ? () => api.clineModels(clineProvider || 'cline') : null, 0, { resetKey: `${provider}:${mode}:${clineProvider}` })
   const [selected, setSelected] = useState(''), [directory, setDirectory] = useState(''), [label, setLabel] = useState(slot.label)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const taken = new Set(team.slots.filter(item => item.id !== slot.id).map(item => item.thread?.id))
   const threads = (list.data || []).filter(thread => !thread.localWorkflow && !thread.archived && !taken.has(thread.id) && `${thread.title} ${thread.directory}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
+  const clineAccounts = (clineStatus.data?.providers || []).filter(account => account.configured).map(account => ({ value: account.id, label: account.name }))
+  const clineAccountValid = Boolean(clineStatus.data?.available && clineAccounts.some(account => account.value === clineProvider))
+  const clineModelOptions = [{ value: '', label: ar ? 'الموديل الافتراضي' : 'Default model' }, ...((clineModels.data || []).map(model => ({ value: model.id, label: `${model.free ? 'FREE · ' : ''}${model.name}` })))]
   async function bind() {
     if (busy) return
     setBusy(true); setError('')
-    try { onChange(await api.bindSuperSlot(team.id, slot.id, mode === 'existing' ? { threadId: selected, provider, label } : { directory, provider, title: `${team.title} · ${slotName({ ...slot, label }, ar)}`, label })); onClose() }
+    try {
+      const title = `${team.title} · ${slotName({ ...slot, label }, ar)}`
+      const input = mode === 'existing'
+        ? { threadId: selected, provider, label }
+        : provider === 'cline'
+          ? { directory, provider, clineProvider: clineProvider || 'cline', ...(clineModel ? { model: clineModel } : {}), title, label }
+          : { directory, provider, title, label }
+      onChange(await api.bindSuperSlot(team.id, slot.id, input)); onClose()
+    }
     catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
     finally { setBusy(false) }
   }
@@ -58,13 +74,19 @@ function SlotPicker({ team, slot, onChange, onClose }: { team: SuperAgentTeam; s
     finally { setBusy(false) }
   }
   return <Dialog title={slotName(slot, ar)} onClose={onClose}>
-    {slot.id !== 'manager' ? <div className="mb-4"><SettingsSelect label={ar ? 'مزود المكتب' : 'Desk provider'} value={provider} disabled={busy} onChange={value => { setProvider(value as 'codex' | 'opencode'); setSelected(''); setSearch('') }} options={[{ value: 'codex', label: 'Codex' }, { value: 'opencode', label: 'OpenCode' }]} /></div> : <p className="mb-4 text-xs text-ink-soft">{ar ? 'المدير · Codex' : 'Manager · Codex'}</p>}
+    {slot.id !== 'manager' ? <div className="mb-4"><SettingsSelect label={ar ? 'مزود المكتب' : 'Desk provider'} value={provider} disabled={busy} onChange={value => { setProvider(value as 'codex' | 'opencode' | 'cline'); setSelected(''); setSearch('') }} options={[{ value: 'codex', label: 'Codex' }, { value: 'opencode', label: 'OpenCode' }, { value: 'cline', label: 'Cline' }]} /></div> : <p className="mb-4 text-xs text-ink-soft">{ar ? 'المدير · Codex' : 'Manager · Codex'}</p>}
     <label className="mb-4 block text-xs text-ink-soft">{ar ? 'اسم المهمة' : 'Task name'}<input value={label} maxLength={120} onChange={event => setLabel(event.target.value)} className={`${field} mt-2 w-full`} placeholder={slotName({ ...slot, label: '' }, ar)} /></label>
     <div role="tablist" aria-label={ar ? 'اختيار المحادثة' : 'Conversation source'} className="mb-4 flex gap-1 rounded-lg bg-paper p-1">{(['existing', 'new'] as const).map(value => <button type="button" role="tab" aria-selected={mode === value} key={value} onClick={() => setMode(value)} className={cx('min-h-9 flex-1 rounded-md px-3 text-xs', mode === value && 'bg-card font-semibold text-relay-ink shadow-sm')}>{value === 'existing' ? ar ? 'محادثة موجودة' : 'Existing conversation' : ar ? 'محادثة جديدة' : 'New conversation'}</button>)}</div>
-    {mode === 'existing' ? <div className="space-y-3"><input aria-label={ar ? 'بحث بالمحادثة أو المجلد' : 'Search conversations or folders'} className={`${field} w-full`} value={search} onChange={event => setSearch(event.target.value)} placeholder={ar ? 'اسم المحادثة أو مسار المشروع…' : 'Conversation name or project path…'} /><div role="listbox" aria-label={`${provider === 'opencode' ? 'OpenCode' : 'Codex'} conversations`} className="thin-scroll max-h-64 space-y-1 overflow-y-auto">{threads.map(thread => <button key={thread.id} type="button" role="option" aria-selected={selected === thread.id} onClick={() => setSelected(thread.id)} className={cx('block w-full rounded-lg border p-3 text-start', selected === thread.id ? 'border-relay/50 bg-relay-tint' : 'border-transparent hover:bg-paper')}><span className="block truncate text-xs font-semibold">{thread.title || thread.name || thread.id}</span><code dir="ltr" className="mt-1 block truncate text-[10px] text-ink-soft">{thread.directory}</code></button>)}{!threads.length ? <p className="py-5 text-center text-xs text-ink-soft">{list.status === 'loading' ? ar ? 'جارٍ تحميل المحادثات…' : 'Loading conversations…' : ar ? 'لا توجد محادثات مطابقة' : 'No matching conversations'}</p> : null}</div></div> : <label className="block text-xs text-ink-soft">{ar ? 'مجلد المشروع' : 'Project folder'}<span className="mt-2 flex gap-2"><input dir="ltr" value={directory} onChange={event => setDirectory(event.target.value)} className={`${field} flex-1`} placeholder="D:\\project" /><button type="button" className={button} disabled={busy} onClick={() => void browse()} aria-label={ar ? 'اختيار المجلد' : 'Choose folder'}><FolderOpen className="h-4 w-4" /></button></span></label>}
-    {error || list.error ? <p role="alert" className="mt-3 text-xs leading-5 text-review-ink">{error || list.error}</p> : null}
-    {!activity.providers[provider] ? <p role="status" className="mt-3 text-xs text-ink-soft">{ar ? `فعّل ${provider === 'opencode' ? 'OpenCode' : 'Codex'} من الاتصال والتحديثات أولًا.` : `Enable ${provider === 'opencode' ? 'OpenCode' : 'Codex'} in Connections & updates first.`}</p> : null}
-    <footer className="mt-5 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className={button} onClick={onClose}>{ar ? 'إلغاء' : 'Cancel'}</button><button type="button" className={`${button} bg-relay-tint text-relay-ink`} disabled={busy || !activity.providers[provider] || (mode === 'existing' ? !selected : !directory.trim())} onClick={() => void bind()}>{busy ? ar ? 'جارٍ التجهيز…' : 'Preparing…' : ar ? 'فتح المحادثة' : 'Open conversation'}</button></footer>
+    {mode === 'existing' ? <div className="space-y-3"><input aria-label={ar ? 'بحث بالمحادثة أو المجلد' : 'Search conversations or folders'} className={`${field} w-full`} value={search} onChange={event => setSearch(event.target.value)} placeholder={ar ? 'اسم المحادثة أو مسار المشروع…' : 'Conversation name or project path…'} /><div role="listbox" aria-label={`${provider === 'opencode' ? 'OpenCode' : provider === 'cline' ? 'Cline' : 'Codex'} conversations`} className="thin-scroll max-h-64 space-y-1 overflow-y-auto">{threads.map(thread => <button key={thread.id} type="button" role="option" aria-selected={selected === thread.id} onClick={() => setSelected(thread.id)} className={cx('block w-full rounded-lg border p-3 text-start', selected === thread.id ? 'border-relay/50 bg-relay-tint' : 'border-transparent hover:bg-paper')}><span className="block truncate text-xs font-semibold">{thread.title || thread.name || thread.id}</span><code dir="ltr" className="mt-1 block truncate text-[10px] text-ink-soft">{thread.directory}</code></button>)}{!threads.length ? <p className="py-5 text-center text-xs text-ink-soft">{list.status === 'loading' ? ar ? 'جارٍ تحميل المحادثات…' : 'Loading conversations…' : ar ? 'لا توجد محادثات مطابقة' : 'No matching conversations'}</p> : null}</div></div> : <div className="space-y-3"><label className="block text-xs text-ink-soft">{ar ? 'مجلد المشروع' : 'Project folder'}<span className="mt-2 flex gap-2"><input dir="ltr" value={directory} onChange={event => setDirectory(event.target.value)} className={`${field} flex-1`} placeholder="D:\\project" /><button type="button" className={button} disabled={busy} onClick={() => void browse()} aria-label={ar ? 'اختيار المجلد' : 'Choose folder'}><FolderOpen className="h-4 w-4" /></button></span></label>{provider === 'cline' ? <>
+      <SettingsSelect label={ar ? 'حساب Cline' : 'Cline account'} value={clineProvider} disabled={busy || !clineAccounts.length} onChange={value => { setClineProvider(value); setClineModel('') }} options={clineAccounts} />
+      {clineStatus.data && !clineStatus.data.available ? <p role="status" className="text-[11px] text-review-ink">{ar ? 'Cline CLI غير متاح على هذا الجهاز. ثبّته ثم أعد فتح اختيار المكتب.' : 'Cline CLI is unavailable on this device. Install it, then reopen this desk picker.'}</p> : null}
+      {!clineAccounts.length ? <p role="status" className="text-[11px] text-ink-soft">{clineStatus.status === 'loading' ? ar ? 'جارٍ تحميل حسابات Cline…' : 'Loading Cline accounts…' : ar ? 'لا يوجد حساب Cline مسجّل — سجّل الدخول عبر cline auth.' : 'No registered Cline account — sign in with cline auth.'}</p> : null}
+      <SettingsSelect label={ar ? 'موديل Cline' : 'Cline model'} searchPlaceholder={ar ? 'ابحث عن موديل…' : 'Search models…'} value={clineModel} disabled={busy || !clineModelOptions.length} onChange={setClineModel} options={clineModelOptions} />
+      {clineModels.status === 'loading' ? <p role="status" className="text-[11px] text-ink-soft">{ar ? 'جارٍ تحميل الموديلات…' : 'Loading models…'}</p> : null}
+    </> : null}</div>}
+    {(error || list.error || clineStatus.error || clineModels.error) && provider === 'cline' ? <p role="alert" className="mt-3 text-xs leading-5 text-review-ink">{error || list.error || clineStatus.error || clineModels.error}</p> : error || list.error ? <p role="alert" className="mt-3 text-xs leading-5 text-review-ink">{error || list.error}</p> : null}
+    {!activity.providers[provider] ? <p role="status" className="mt-3 text-xs text-ink-soft">{ar ? `فعّل ${provider === 'opencode' ? 'OpenCode' : provider === 'cline' ? 'Cline' : 'Codex'} من الاتصال والتحديثات أولًا.` : `Enable ${provider === 'opencode' ? 'OpenCode' : provider === 'cline' ? 'Cline' : 'Codex'} in Connections & updates first.`}</p> : null}
+    <footer className="mt-5 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className={button} onClick={onClose}>{ar ? 'إلغاء' : 'Cancel'}</button><button type="button" className={`${button} bg-relay-tint text-relay-ink`} disabled={busy || !activity.providers[provider] || (mode === 'existing' ? !selected : !directory.trim() || (provider === 'cline' && !clineAccountValid))} onClick={() => void bind()}>{busy ? ar ? 'جارٍ التجهيز…' : 'Preparing…' : ar ? 'فتح المحادثة' : 'Open conversation'}</button></footer>
   </Dialog>
 }
 
@@ -145,6 +167,66 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
   const officeVisible = presentation === 'office'
   const officePopup = officeVisible && Boolean(focused)
   const chatPanel = useRef<HTMLDivElement>(null)
+  const officeRef = useRef<HTMLDivElement>(null)
+  const popupGeometry = useRef<OfficePopupPlacement | null>(null)
+  // Float the desk chat beside the measured desk. Geometry is written straight to the DOM so
+  // scroll, zoom, resize and viewport tracking never re-render the workspace and never feed a
+  // ResizeObserver feedback loop; measurements come from live client rects, already scaled.
+  useLayoutEffect(() => {
+    const container = officeRef.current, panel = chatPanel.current
+    if (!container || !panel) return
+    const clear = () => {
+      popupGeometry.current = null
+      delete panel.dataset.popupReady
+      delete panel.dataset.popupMode
+      delete panel.dataset.popupSide
+      panel.style.removeProperty('left')
+      panel.style.removeProperty('top')
+      panel.style.removeProperty('width')
+      panel.style.removeProperty('height')
+    }
+    if (!visible || !officePopup || !focused) { clear(); return }
+    const measure = () => {
+      const viewport = container.querySelector<HTMLElement>('[data-office-viewport]')
+      const anchor = container.querySelector<HTMLElement>(`[data-office-station="${focused}"]`)
+      const next = officePopupPlacement({
+        container: container.getBoundingClientRect(),
+        viewport: viewport?.getBoundingClientRect() ?? null,
+        anchor: anchor?.getBoundingClientRect() ?? null,
+        avoid: [...container.querySelectorAll<HTMLElement>('[data-office-avoid]')].map(element => element.getBoundingClientRect()),
+        fallbackSide: direction() === 'rtl' ? 'left' : 'right',
+      })
+      if (officePopupEqual(popupGeometry.current, next)) return
+      popupGeometry.current = next
+      panel.style.left = `${next.left}px`
+      panel.style.top = `${next.top}px`
+      panel.style.width = `${next.width}px`
+      panel.style.height = `${next.height}px`
+      panel.dataset.popupMode = next.mode
+      panel.dataset.popupSide = next.side
+      panel.dataset.popupReady = 'true'
+    }
+    measure()
+    let frame = 0
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure() }) }
+    const observer = new ResizeObserver(schedule)
+    observer.observe(container)
+    const viewport = container.querySelector<HTMLElement>('[data-office-viewport]')
+    if (viewport) {
+      observer.observe(viewport)
+      const stage = viewport.firstElementChild
+      if (stage instanceof HTMLElement) observer.observe(stage)
+    }
+    container.addEventListener('scroll', schedule, { capture: true, passive: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      observer.disconnect()
+      container.removeEventListener('scroll', schedule, { capture: true })
+      window.removeEventListener('resize', schedule)
+      clear()
+    }
+  }, [visible, officePopup, focused, ar, team?.id, team?.slots.length])
   useEffect(() => {
     if (visible && officePopup && focused) chatPanel.current?.querySelector<HTMLTextAreaElement>(`[data-slot="${focused}"] textarea`)?.focus({ preventScroll: true })
   }, [visible, officePopup, focused])
@@ -161,15 +243,21 @@ export function SuperAgentWorkspace({ visible, identity }: { visible: boolean; i
     </header>
     {!activity.providers.codex ? <p role="status" className="border-b border-line px-4 py-2 text-xs text-review-ink">{ar ? 'Codex موقوف. فعّله من الاتصال والتحديثات.' : 'Codex is disabled. Enable it in Connections & updates.'}</p> : null}
     {error || catalog.error ? <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2 text-xs text-review-ink"><span className="min-w-0 flex-1 break-words">{error || catalog.error}</span>{error ? <button type="button" onClick={() => setError('')} className="rounded-md p-1 hover:bg-paper focus-visible:ring-2 focus-visible:ring-relay/40" aria-label={ar ? 'إغلاق التنبيه' : 'Dismiss notice'}><X className="h-3.5 w-3.5" /></button> : null}</div> : null}
-    {!team ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center"><Users className="h-9 w-9 text-ink-soft" /><h1 className="text-lg font-semibold">{loading ? ar ? 'جارٍ تحميل الفرق…' : 'Loading teams…' : ar ? 'مساحة واحدة لفريقك' : 'One workspace for your team'}</h1><p className="max-w-md text-sm leading-7 text-ink-soft">{ar ? 'أنشئ فريقًا، ثم اختر محادثة المدير ومحادثات المهام. المدير يرسل للمكاتب التي تحددها ويجمع ردودها تلقائيًا.' : 'Create a team, then choose the manager and task conversations. The manager sends to the desks you request and gathers their actual replies.'}</p><button type="button" disabled={busy || loading} className={`${button} bg-relay-tint text-relay-ink`} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-4 w-4" />{ar ? 'إنشاء فريق' : 'Create team'}</button></div> : <div className="relative flex min-h-0 flex-1 overflow-hidden">
+    {!team ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center"><Users className="h-9 w-9 text-ink-soft" /><h1 className="text-lg font-semibold">{loading ? ar ? 'جارٍ تحميل الفرق…' : 'Loading teams…' : ar ? 'مساحة واحدة لفريقك' : 'One workspace for your team'}</h1><p className="max-w-md text-sm leading-7 text-ink-soft">{ar ? 'أنشئ فريقًا، ثم اختر محادثة المدير ومحادثات المهام. المدير يرسل للمكاتب التي تحددها ويجمع ردودها تلقائيًا.' : 'Create a team, then choose the manager and task conversations. The manager sends to the desks you request and gathers their actual replies.'}</p><button type="button" disabled={busy || loading} className={`${button} bg-relay-tint text-relay-ink`} onClick={() => void perform(() => api.createSuperTeam(ar ? 'فريق جديد' : 'New team'), true)}><Plus className="h-4 w-4" />{ar ? 'إنشاء فريق' : 'Create team'}</button></div> : <div ref={officeRef} onKeyDown={event => {
+      // Dismiss the floating desk chat from office chrome too (e.g. after focus moves to the zoom controls).
+      // Escape already consumed by a model menu/dropdown/dialog sets defaultPrevented or stops propagation,
+      // and an open modal blocks this path, so their behavior is unchanged; chats mode never closes here.
+      if (!officePopup || event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return
+      event.preventDefault(); setFocused(null)
+    }} className="relative flex min-h-0 flex-1 overflow-hidden">
       {officeVisible ? <SuperAgentOffice teamId={team.id} selectedSlotId={focused} slots={visibleSlots} archived={team.archived} enabled={visible} onOpen={slot => slot.thread ? setFocused(slot.id) : setPicker(slot.id)} /> : null}
       <div ref={chatPanel} data-workers={Math.max(0, visibleSlots.length - 1)} dir="ltr" role={officePopup ? 'complementary' : undefined} aria-label={officePopup ? ar ? 'محادثة المكتب' : 'Desk conversation' : undefined} onKeyDown={event => { if (officePopup && event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); setFocused(null) } }} style={{ ...(officeVisible && !focused ? { display: 'none' } : {}), '--worker-rows': Math.max(1, rightCount), '--grid-rows': gridRows } as CSSProperties} className={cx('super-agent-grid thin-scroll min-h-0 flex-1 gap-3 overflow-y-auto p-3', (focused || visibleSlots.length === 1) && 'super-agent-focused', officePopup && 'super-agent-popup')}>
       {visibleSlots.map((slot, index) => {
         const shown = !focused || focused === slot.id
         const span = gridRows / Math.max(1, index % 2 === 1 ? rightCount : leftCount)
         return <section key={`${team.id}:${slot.id}`} data-slot={slot.id} data-compact={!focused && slot.id !== 'manager'} dir={direction()} style={{ ...(!shown ? { display: 'none' } : {}), '--slot-column': index % 2 === 1 ? 3 : 1, '--slot-row': Math.floor((index - 1) / 2) * span + 1, '--slot-span': span } as CSSProperties} className={cx('chat-panel super-agent-slot flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border bg-card', slot.id === 'manager' ? 'border-relay/40' : 'border-line')}>
-          <DeskHeader slot={slot} disabled={team.archived || busy} focused={Boolean(focused)} office={officeVisible} onChoose={() => setPicker(slot.id)} onFocus={() => setFocused(focused ? null : slot.id)} onUnlink={() => void perform(() => api.bindSuperSlot(team.id, slot.id, { clear: true }))} onRemove={() => void perform(() => api.removeSuperSlot(team.id, slot.id))} />
-          {slot.thread ? slot.thread.provider === 'opencode' ? <OpenCodeSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.opencode} models={openCodeModels.data || []} modelsError={openCodeModels.error} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : <ConversationSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.codex} models={catalog.data || []} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 py-8 text-center"><p className="text-xs text-ink-soft">{slot.id === 'manager' ? ar ? 'اختر محادثة المدير' : 'Choose the manager conversation' : ar ? 'اربط محادثة بهذه المهمة' : 'Assign a conversation to this task'}</p><button type="button" className={button} disabled={team.archived} onClick={() => setPicker(slot.id)}><Plus className="h-3.5 w-3.5" />{ar ? 'فتح محادثة' : 'Open conversation'}</button></div>}
+          <DeskHeader slot={slot} teamId={team.id} live={visible && (!officeVisible || officePopup) && shown && activity.providers.cline} disabled={team.archived || busy} focused={Boolean(focused)} office={officeVisible} onChoose={() => setPicker(slot.id)} onFocus={() => setFocused(focused ? null : slot.id)} onUnlink={() => void perform(() => api.bindSuperSlot(team.id, slot.id, { clear: true }))} onRemove={() => void perform(() => api.removeSuperSlot(team.id, slot.id))} />
+          {slot.thread ? slot.thread.provider === 'opencode' ? <OpenCodeSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.opencode} models={openCodeModels.data || []} modelsError={openCodeModels.error} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : slot.thread.provider === 'cline' ? <ClineSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.cline} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : <ConversationSlot key={`${team.id}:${slot.id}:${slot.thread.id}`} team={team} slot={slot} compact={!focused && slot.id !== 'manager'} enabled={visible && (!officeVisible || officePopup) && shown && activity.providers.codex} models={catalog.data || []} identity={identity} incoming={incoming} onTransfer={(source, text) => setTransfer({ source, text, target: '' })} /> : <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 py-8 text-center"><p className="text-xs text-ink-soft">{slot.id === 'manager' ? ar ? 'اختر محادثة المدير' : 'Choose the manager conversation' : ar ? 'اربط محادثة بهذه المهمة' : 'Assign a conversation to this task'}</p><button type="button" className={button} disabled={team.archived} onClick={() => setPicker(slot.id)}><Plus className="h-3.5 w-3.5" />{ar ? 'فتح محادثة' : 'Open conversation'}</button></div>}
         </section>
       })}
     </div></div>}

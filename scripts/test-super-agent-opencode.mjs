@@ -34,7 +34,7 @@ try {
     throw new Error(`Unexpected request: ${method} ${endpoint}`)
   }
   let coordinator
-  const adapter = new SuperAgentOpenCode(transport, (id, turn) => coordinator?.complete(id, turn), { interval: 1, timeout: 200 })
+  const adapter = new SuperAgentOpenCode(transport, (id, turn) => coordinator?.complete(id, turn, 'opencode'), { interval: 1, timeout: 200 })
   const store = new SuperAgentStore(root)
   let team = await store.create('Mixed team')
   for (let i = 0; i < 3; i++) team = await store.addSlot(team.id)

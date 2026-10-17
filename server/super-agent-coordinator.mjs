@@ -34,16 +34,32 @@ export class SuperAgentCoordinator {
     })
     this.writes = operation; return operation
   }
-  arm(threadId, teamId, slotId, messageId) { const grant = { threadId, teamId, slotId, messageId, turnId: null, used: false }; this.grants.set(threadId, grant); return grant }
+  arm(threadId, teamId, slotId, messageId) { const grant = { threadId, teamId, slotId, messageId, turnId: null, used: false, accepted: null }; this.grants.set(threadId, grant); return grant }
   bind(grant, turnId) { if (this.grants.get(grant.threadId) === grant) grant.turnId = turnId }
-  complete(threadId, turn) {
-    if (turn?.id) { this.results.set(`${threadId}:${turn.id}`, { status: turn.status, error: turn.error?.message }); if (this.results.size > 300) this.results.delete(this.results.keys().next().value) }
+  complete(threadId, turn, provider = 'codex') {
+    if (turn?.id) { this.results.set(`${provider}:${threadId}:${turn.id}`, { status: turn.status, error: turn.error?.message }); if (this.results.size > 300) this.results.delete(this.results.keys().next().value) }
+    if (provider !== 'codex') return
     const grant = this.grants.get(threadId)
+    // Settle the accepted batch only from the exact manager turn that accepted it, so a late
+    // or unrelated completion callback can never authorize (or re-authorize) queued work.
+    if (grant?.accepted && turn?.id && grant.accepted.turnId === turn.id) grant.accepted.outcome = { turnId: turn.id, status: turn.status ?? null }
     if (grant && (!grant.turnId || grant.turnId === turn?.id)) this.grants.delete(threadId)
   }
   current(grant) {
     const turn = this.deps.turn(grant.threadId)
     return this.grants.get(grant.threadId) === grant && turn.active && (!grant.turnId || turn.turnId === grant.turnId)
+  }
+  // A queued task normally needs the manager turn to still be current. The one narrow exception:
+  // the batch was accepted by `tool` (every target validated) under this exact manager turn, and
+  // that turn has since ended as a confirmed natural completion. An explicit stop, a failure, an
+  // unconfirmed end or a new/replaced turn all keep the queued task unsent.
+  mayRun(grant) {
+    if (this.current(grant)) return true
+    const batch = grant?.accepted
+    if (!batch || batch.threadId !== grant.threadId || batch.messageId !== grant.messageId || batch.provider !== 'codex') return false
+    if (batch.outcome?.status !== 'completed' || batch.outcome.turnId !== batch.turnId) return false
+    const turn = this.deps.turn(batch.threadId)
+    return !turn.active && (!turn.turnId || turn.turnId === batch.turnId)
   }
   async tool(params) {
     const grant = this.grants.get(params.threadId)
@@ -67,6 +83,10 @@ export class SuperAgentCoordinator {
     if (this.calls.has(key)) return this.calls.get(key)
     if (grant.used) throw new Error('A batch was already dispatched for this user message. Use its returned results; another batch requires a new user request.')
     grant.used = true
+    // The batch is accepted while this manager turn is provably current and every target of the
+    // batch was validated above. Record that proof so queued tasks can be released by the natural
+    // completion of this exact turn (see mayRun) without unlocking new MCP commands.
+    if (params.turnId) grant.accepted = { threadId: grant.threadId, teamId: grant.teamId, messageId: grant.messageId, turnId: params.turnId, provider: 'codex', outcome: null }
     const pending = Promise.all(targets.map(target => this.run(grant, target)))
     this.calls.set(key, pending)
     try { return await pending } finally { if (this.calls.size > 100) this.calls.delete(this.calls.keys().next().value) }
@@ -78,31 +98,41 @@ export class SuperAgentCoordinator {
     try {
       await this.record(job, {})
       await new Promise(resolve => { if (this.active < 2) { this.active++; resolve() } else this.waiters.push(resolve) }); acquired = true
-      if (!this.current(grant)) throw new Error('Manager stopped. This queued task was not sent.')
+      if (!this.mayRun(grant)) throw new Error('Manager stopped. This queued task was not sent.')
       const team = await this.deps.team(grant.teamId)
-      if (team.archived || team.slots.find(slot => slot.id === target.slot.id)?.thread?.id !== job.threadId || team.slots.find(slot => slot.id === 'manager')?.thread?.id !== grant.threadId) throw new Error('Team bindings changed. Task was not sent.')
-      if (this.reserved.has(job.threadId) || this.deps.turn(job.threadId).active) throw new Error('Worker is already busy. Task was not sent.')
-      this.reserved.add(job.threadId); reserved = true
+      const current = team.slots.find(slot => slot.id === target.slot.id)?.thread
+      if (team.archived || current?.id !== job.threadId || (current.provider || 'codex') !== job.provider || team.slots.find(slot => slot.id === 'manager')?.thread?.id !== grant.threadId) throw new Error('Team bindings changed. Task was not sent.')
+      const reservation = `${job.provider}:${job.threadId}`
+      if (this.reserved.has(reservation) || this.deps.turn(job.threadId, job.provider).active) throw new Error('Worker is already busy. Task was not sent.')
+      this.reserved.add(reservation); reserved = true
       await this.deps.enabled()
+      // Re-check the batch at the send boundary: an operator stop that lands during the awaits
+      // above must not send this task after the stop was recorded.
+      if (!this.mayRun(grant)) throw new Error('Manager stopped. This queued task was not sent.')
       await this.record(job, { status: 'dispatching' })
+      // Final batch check: an operator stop that lands during the persisted dispatching write
+      // must abort here. This check is synchronous and directly precedes the send call, so no
+      // await sits between the decision to send and the send itself.
+      if (!this.mayRun(grant)) throw new Error('Manager stopped. This queued task was not sent.')
       const response = await this.deps.send(grant, target, job.id)
       const turn = response?.turn
       if (!turn?.id) throw new Error('The provider did not confirm a worker turn. Inspect its conversation before retrying.')
       await this.record(job, { status: 'running', turnId: turn.id })
       const deadline = Date.now() + 10 * 60_000
-      while (this.deps.turn(job.threadId).active && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 500))
-      if (this.deps.turn(job.threadId).active) throw new Error('Worker is still running after ten minutes. It has not been interrupted; inspect its conversation.')
-      const outcome = this.results.get(`${job.threadId}:${turn.id}`) || turn
-      if (outcome.status !== 'completed') throw new Error(outcome.error || `Worker turn ${outcome.status || 'ended without a confirmed completion'}.`)
-      const reply = await this.deps.reply(job.threadId, turn.id)
+      while (this.deps.turn(job.threadId, job.provider).active && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 500))
+      if (this.deps.turn(job.threadId, job.provider).active) throw new Error('Worker is still running or waiting for permission after ten minutes. It has not been interrupted; inspect its conversation.')
+      const outcome = this.results.get(`${job.provider}:${job.threadId}:${turn.id}`) || turn
+      if (outcome.status !== 'completed') throw Object.assign(new Error(outcome.error || `Worker turn ${outcome.status || 'ended without a confirmed completion'}.`), { turnStatus: outcome.status })
+      const reply = await this.deps.reply(job.threadId, turn.id, job.provider)
       if (!reply) throw new Error('Worker completed without a readable reply for this turn.')
       await this.record(job, { status: 'completed', turnId: turn.id, reply: reply.slice(0, 12000) })
       return { slotId: job.slotId, threadId: job.threadId, turnId: turn.id, status: 'completed', reply: reply.slice(0, 4000), truncated: reply.length > 4000 }
     } catch (error) {
-      await this.record(job, { status: 'failed', error: error.message })
-      return { slotId: job.slotId, status: 'failed', error: error.message }
+      const status = error.turnStatus === 'interrupted' ? 'interrupted' : 'failed'
+      await this.record(job, { status, error: error.message })
+      return { slotId: job.slotId, status, error: error.message }
     } finally {
-      if (reserved) this.reserved.delete(job.threadId)
+      if (reserved) this.reserved.delete(`${job.provider}:${job.threadId}`)
       if (acquired) { const next = this.waiters.shift(); if (next) next(); else this.active-- }
     }
   }

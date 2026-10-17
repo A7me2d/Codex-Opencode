@@ -658,14 +658,16 @@
 .super-agent-grid.super-agent-focused .super-agent-slot { grid-column: 1; grid-row: 1; min-height: 0; }
 .super-agent-grid.super-agent-popup {
   position: absolute;
-  inset: 0 0 0 auto;
   z-index: 30;
-  width: min(460px, 100%);
   padding: 0;
   background: var(--color-card);
-  border-inline-start: 1px solid var(--color-line);
-  box-shadow: -12px 0 36px color-mix(in srgb, var(--color-overlay) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-line) 70%, var(--color-relay));
+  border-radius: 1rem;
+  box-shadow: 0 24px 48px -18px color-mix(in srgb, var(--color-overlay) 32%, transparent);
 }
+/* Geometry is written on the first layout pass, so the panel never flashes before it is placed. */
+.super-agent-grid.super-agent-popup:not([data-popup-ready="true"]) { visibility: hidden; }
+.super-agent-popup[data-popup-mode="dock"] { border-color: var(--color-line); }
 .super-agent-popup .super-agent-slot { border: 0; border-radius: 0; }
 [data-theme="liquid-glass"] .super-agent-popup { background-color: oklch(0.2 0.008 255); }
 
@@ -689,7 +691,17 @@
 .super-office-marker { color: var(--office-accent); background: color-mix(in srgb, var(--office-accent) 14%, var(--color-card)); }
 .super-office-room { display: block; }
 .super-office-port { color: var(--office-accent); }
-.super-office-station[data-selected="true"] .super-office-label { border-color: var(--office-accent); }
+.super-office-station[data-selected="true"] {
+  z-index: 5;
+  --office-floor: color-mix(in srgb, var(--office-accent) 46%, var(--color-card));
+  --office-wall: color-mix(in srgb, var(--office-accent) 30%, var(--color-card));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--office-accent) 80%, transparent),
+    0 0 0 7px color-mix(in srgb, var(--office-accent) 16%, transparent),
+    0 22px 38px -18px color-mix(in srgb, var(--color-overlay) 36%, transparent);
+}
+.super-office-station[data-selected="true"] .super-office-label { border-color: var(--office-accent); background: color-mix(in srgb, var(--office-accent) 9%, var(--color-card)); }
+.super-office-stage[data-spotlight="true"] .super-office-station { transition: opacity .18s ease-out; }
+.super-office-stage[data-spotlight="true"] .super-office-station[data-selected="false"] { opacity: .58; }
 .super-office-station[data-active="true"] .super-office-state-dot,
 .super-office-station[data-connection="completed"] .super-office-state-dot { background: var(--color-ready); }
 .super-office-station[data-connection="queued"] .super-office-state-dot,
@@ -726,6 +738,7 @@
   .super-link-outbound, .super-link-return { animation: none; }
   .super-office-room { transition: none; }
   .super-office-station:hover .super-office-room, .super-office-station:focus-visible .super-office-room { transform: none; }
+  .super-office-stage[data-spotlight="true"] .super-office-station { transition: none; }
   .super-office-station[data-active="true"] .super-office-cursor { animation: none; }
   .super-office-brain[data-active="true"] :is(.super-brain-node, .super-brain-halo) { animation: none; }
 }

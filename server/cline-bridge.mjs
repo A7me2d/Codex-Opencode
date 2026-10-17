@@ -58,11 +58,11 @@ export class ClineBridge {
   async restore() {
     try {
       const stored = JSON.parse(await readFile(this.file, 'utf8'))
-      for (const session of stored.sessions || []) if (typeof session.id === 'string' && typeof session.directory === 'string') this.sessions.set(session.id, { ...session, active: false, loading: false, preparing: false, permissions: [], error: null, run: null })
+      for (const session of stored.sessions || []) if (typeof session.id === 'string' && typeof session.directory === 'string') this.sessions.set(session.id, { ...session, active: false, loading: false, preparing: false, permissions: [], error: null, run: null, lastTurn: null })
     } catch { /* First launch or no local Cline sessions. */ }
   }
   save() {
-    const snapshot = JSON.stringify({ sessions: [...this.sessions.values()].map(({ run, cancelTimer, permissions, active, loading, ...session }) => session) })
+    const snapshot = JSON.stringify({ sessions: [...this.sessions.values()].map(({ run, cancelTimer, lastTurn, permissions, active, loading, ...session }) => session) })
     this.saves = this.saves.catch(() => {}).then(async () => {
       await mkdir(this.storage, { recursive: true })
       const temporary = `${this.file}.${randomUUID()}.tmp`
@@ -93,7 +93,7 @@ export class ClineBridge {
     throw new Error('Could not read the model catalog from the installed Cline CLI package.')
   }
   snapshot(session) {
-    const { run, cancelTimer, ...data } = session
+    const { run, cancelTimer, lastTurn, ...data } = session
     return data
   }
   async list(directory) {
@@ -215,7 +215,7 @@ export class ClineBridge {
   async create(directory, provider, savedOptions = []) {
     await this.ready
     if (!providers.some(item => item.id === provider)) throw new Error('Choose a supported Cline provider.')
-    const session = { id: randomUUID(), remoteId: null, directory, provider, title: 'New Cline conversation', messages: [], tools: [], configOptions: [], savedOptions, active: false, loading: false, archived: false, updatedAt: Date.now(), permissions: [], error: null, run: null }
+    const session = { id: randomUUID(), remoteId: null, directory, provider, title: 'New Cline conversation', messages: [], tools: [], configOptions: [], savedOptions, active: false, loading: false, archived: false, updatedAt: Date.now(), permissions: [], error: null, run: null, lastTurn: null }
     this.sessions.set(session.id, session)
     try { await this.connect(session); return this.snapshot(session) }
     catch (error) { this.sessions.delete(session.id); await this.save(); throw error }
@@ -249,13 +249,16 @@ export class ClineBridge {
       await this.connect(session)
       await charge()
       session.active = true; session.error = null; session.tools = []; session.permissions = []
-      session.responseId = randomUUID()
+      const responseId = randomUUID()
+      session.responseId = responseId
       session.messages.push({ id: messageId, role: 'user', text: displayText.trim() }, { id: session.responseId, role: 'assistant', text: '' })
       if (session.messages.filter(message => message.role === 'user').length === 1) session.title = displayText.trim().slice(0, 70)
       session.updatedAt = Date.now()
       await this.save()
+      let outcome = null
+      session.lastTurn = null
       session.run = this.request(this.connections.get(id), 'session/prompt', { sessionId: session.remoteId, prompt: [{ type: 'text', text: text.trim() }] }, 0)
-        .catch(error => { session.error = failure(error) }).finally(async () => { clearTimeout(session.cancelTimer); session.cancelTimer = null; session.active = false; session.permissions = []; session.run = null; session.updatedAt = Date.now(); await this.save() }).catch(() => { session.error = 'Could not save the Cline conversation locally.' })
+        .then(result => { outcome = { stopReason: typeof result?.stopReason === 'string' ? result.stopReason : null, error: null } }, error => { session.error = failure(error); outcome = { stopReason: null, error: session.error } }).finally(async () => { clearTimeout(session.cancelTimer); session.cancelTimer = null; session.permissions = []; session.updatedAt = Date.now(); try { await this.save(); if (outcome) session.lastTurn = { messageId, responseId, ...outcome } } catch { session.error = 'Could not save the Cline conversation locally.' } finally { session.active = false; session.permissions = []; session.run = null; session.updatedAt = Date.now() } }).catch(() => { session.error = 'Could not save the Cline conversation locally.' })
       return this.snapshot(session)
     } finally { session.preparing = false }
   }

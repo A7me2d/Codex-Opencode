@@ -27,14 +27,15 @@ function body(text: string) {
 }
 
 export const SuperMessage = memo(function SuperMessage({ message, provider, identity, onTransfer }: {
-  message: ChatMessage; provider: 'codex' | 'opencode'; identity?: string; onTransfer: (text: string) => void
+  message: ChatMessage; provider: 'codex' | 'opencode' | 'cline'; identity?: string; onTransfer: (text: string) => void
 }) {
   const ar = useLocale() === 'ar', user = message.role === 'user'
+  const agentName = provider === 'codex' ? 'Codex' : provider === 'cline' ? 'Cline' : 'OpenCode'
   return <li data-super-message className="group/super-message min-w-0">
     <article className={`super-message min-w-0 ${user ? 'ms-5' : ''}`}>
       <div className="mb-1.5 flex min-h-5 items-center gap-1.5 text-[10px] text-ink-soft">
-        {user ? <span className="inline-flex [&>span]:h-5 [&>span]:w-5 [&>span]:text-[8px]"><AccountAvatar identity={identity} /></span> : provider === 'codex' ? <Sparkles aria-hidden="true" className="h-3 w-3 text-relay-ink" /> : <Bot aria-hidden="true" className="h-3 w-3 text-ready-ink" />}
-        <span dir="auto" className="min-w-0 truncate font-medium">{user ? accountIdentity(identity).name || (ar ? 'أنت' : 'You') : provider === 'codex' ? 'Codex' : 'OpenCode'}</span>
+        {user ? <span className="inline-flex [&>span]:h-5 [&>span]:w-5 [&>span]:text-[8px]"><AccountAvatar identity={identity} /></span> : provider === 'codex' ? <Sparkles aria-hidden="true" className="h-3 w-3 text-relay-ink" /> : <Bot aria-hidden="true" className={`h-3 w-3 ${provider === 'cline' ? 'text-relay-ink' : 'text-ready-ink'}`} />}
+        <span dir="auto" className="min-w-0 truncate font-medium">{user ? accountIdentity(identity).name || (ar ? 'أنت' : 'You') : agentName}</span>
         {message.live ? <span role="status" className="text-relay-ink">{ar ? 'يكتب…' : 'Writing…'}</span> : null}
         <button type="button" title={ar ? 'نقل إلى مسودة مكتب آخر' : 'Transfer to another desk draft'} aria-label={ar ? 'نقل إلى مسودة مكتب آخر' : 'Transfer to another desk draft'} onClick={event => {
           const selection = window.getSelection(), parent = event.currentTarget.closest('[data-super-message]')
